@@ -4,7 +4,8 @@
 // the run record and the chat card all name the same phase. A phase does real work (shell commands in the session's
 // folder, a subagent with read and bash, App State writes), records every step in the conversation document
 // `demo.job-runs`, then commits the next checkpoint. A restart resumes the unfinished phase from its checkpoint.
-import type { Context, JsonValue } from "@earendil-works/chord";
+import type { Context } from "@earendil-works/chord/context";
+import type { JsonValue } from "@earendil-works/chord/json";
 import {
   configure,
   defineDoc,
@@ -38,6 +39,7 @@ export const JobRuns = defineDoc<JobRunsDoc>({
   history: "latest",
   fork: "initial",
   initial: () => ({ counts: {}, items: {} }),
+  checkpointWhen: () => true,
 });
 
 type Values = Record<string, JobInputValue>;
@@ -55,6 +57,8 @@ const MAX_STEPS = 40;
 const RESULT_ROOT = "jobs";
 
 const plain = <T>(value: T): T => JSON.parse(JSON.stringify(value)) as T;
+/** Non-durable wait: pacing and polls that may simply restart after a crash. */
+const wait = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 const clip = (s: string, n: number) => (s.length > n ? `${s.slice(0, n - 1)}…` : s);
 const tail = (s: string, lines = 8) => s.trim().split("\n").slice(-lines).join("\n");
 const q = (s: string) => `'${s.replaceAll("'", `'\\''`)}'`;
@@ -390,7 +394,7 @@ export function createJobs(deps: JobsDeps) {
             );
             return;
           }
-          await runtime.sleep(runtime.now() + 500, ctx);
+          await wait(500);
         }
       },
     },
@@ -475,7 +479,7 @@ export function createJobs(deps: JobsDeps) {
           return undefined;
         }
       },
-      sleepUntil: (at) => runtime.sleep(at, ctx),
+      sleepUntil: (at) => wait(Math.max(0, at - runtime.now())),
       agent: async (prompt) => {
         let childId = 0;
         const stepId = `${spec.id}:${cp.iteration}:agent`;
@@ -560,7 +564,7 @@ export function createJobs(deps: JobsDeps) {
           runtime.signal.throwIfAborted();
           done = await Promise.race([
             settled,
-            runtime.sleep(runtime.now() + 600, ctx).then(
+            wait(600).then(
               () => undefined,
               () => undefined,
             ),
@@ -667,7 +671,7 @@ export function createJobs(deps: JobsDeps) {
   async function runPhase(def: JobDef, index: number, task: Running, runtime: Run, ctx: Context) {
     const spec = def.phases[index];
     const cp = task.state.checkpoint;
-    if (index > 0 && cp.iteration === 0 && cp.approvalTask === undefined) await runtime.sleep(runtime.now() + PACE_MS, ctx);
+    if (index > 0 && cp.iteration === 0 && cp.approvalTask === undefined) await wait(PACE_MS);
     if (spec.kind === "approval") return approvalPhase(def, index, task, runtime, ctx);
 
     // Enter the phase. Steps recorded by this same iteration mean a crash interrupted it: replace them.

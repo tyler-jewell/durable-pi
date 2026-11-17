@@ -57,9 +57,9 @@ test("agent, session and device streams carry snapshots and deltas that reduce t
     await until(async () => !model.state.running && model.state.items.filter((i) => i.kind === "assistant").length >= 2, 15000, "run end");
     const server_items = (await main.transcript("json")).items;
     assert.deepEqual(JSON.parse(JSON.stringify(model.state.items)), server_items);
-    const types = new Set(agentFrames.flatMap((f) => (f.type === "batch" ? f.events.map((e) => e.type) : [])));
-    for (const expected of ["run_start", "message_start", "message_end", "tool_execution_start", "tool_execution_update", "tool_execution_end", "run_end"])
-      assert.ok(types.has(expected as never), `missing ${expected}`);
+    // 1.5 snapshots carry the run, generation and tool slots directly; the reducer rebuilds the transcript from them.
+    assert.ok(agentFrames.some((f) => f.type === "snapshot" && f.snapshot.run), "snapshot with a run");
+    assert.ok(agentFrames.some((f) => f.type === "snapshot" && f.snapshot.tools.some((t) => t.status === "running")), "snapshot with a running tool");
     // A long reply streams partial text through message_update deltas.
     let sawPartial = false;
     const unsub = model.subscribe(() => {
@@ -70,7 +70,7 @@ test("agent, session and device streams carry snapshots and deltas that reduce t
     await until(async () => !model.state.running && model.state.items.filter((i) => i.kind === "assistant").length >= 3, 20000, "slow reply");
     unsub();
     assert.ok(sawPartial, "saw streamed partial text");
-    assert.ok(agentFrames.some((f) => f.type === "batch" && f.events.some((e) => e.type === "message_update")), "message_update frames");
+    assert.ok(agentFrames.some((f) => f.type === "snapshot" && f.snapshot.generation?.message), "snapshot with a streamed message");
     // RECORD_FIXTURES=1 saves the real frame log as the SDK fixture.
     if (process.env.RECORD_FIXTURES) {
       const fixtures = join(import.meta.dirname, "../../dpi-sdk/tests/fixtures");

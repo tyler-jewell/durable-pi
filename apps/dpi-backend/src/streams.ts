@@ -2,9 +2,22 @@
 // device (tree + activity), session (agents, tasks, usage) and agent (pi-durable agent events).
 // Streams are viewers only: closing one never aborts work or closes a harness.
 import type { Request, Response } from "express";
-import { watchEvents, type Conversation, type Harness } from "@earendil-works/pi-durable";
+import { AgentDoc, InboxDoc, LiveDoc, UsageDoc, type Conversation, type Harness, type LiveState } from "@earendil-works/pi-durable";
 import { BACKGROUND_CONTEXT as ctx } from "@earendil-works/chord/context";
-import type { Activity, DeviceTree, Frame, StreamScope } from "../../dpi-sdk/src/api.js";
+import type {
+  Activity,
+  DeviceTree,
+  Frame,
+  StreamScope,
+  WireAgentState,
+  WireAssistantMessage,
+  WireCompaction,
+  WireEntry,
+  WireQueued,
+  WireSnapshotEvent,
+  WireToolSlot,
+  WireUsageState,
+} from "../../dpi-sdk/src/api.js";
 import { AGENT_DOC_KINDS, DEVICE_DOC_KINDS, type SessionRow, type Store } from "./store.js";
 import { invalid } from "./errors.js";
 
@@ -165,9 +178,9 @@ export async function sessionStream(store: Store, row: SessionRow, res: Response
     Object.values(value.tasks).map((t) => store.taskNode(t));
   let tasks = await store.labelTasks(h, tasksOf(watch.value));
   sse.send({ type: "session", agents: await store.agents(row, tasks), tasks, usage: await store.usage(h) });
-  watch.start(async (value) => {
-    if (sse.closed) return;
-    tasks = await store.labelTasks(h, tasksOf(value));
+  watch.start(async (call) => {
+    if (sse.closed || call.kind !== "value") return;
+    tasks = await store.labelTasks(h, tasksOf(call.value));
     sse.sendIfChanged("tasks", { type: "tasks", tasks });
     push();
   });
@@ -176,11 +189,11 @@ export async function sessionStream(store: Store, row: SessionRow, res: Response
     sse.sendIfChanged("agents", { type: "agents", agents: await store.agents(row, tasks) });
     sse.sendIfChanged("usage", { type: "usage", usage: await store.usage(h) });
   }, 250);
-  const off = h.subscribeCommits(() => push());
+  const commits = h.observeCommits({ advance: () => push(), end: () => {} });
   // Agent names live in the device catalog, not the harness: a rename only fires the store's change feed.
   const offCatalog = store.subscribe(() => push());
   sse.onClose(() => {
-    off();
+    commits.detach();
     offCatalog();
     push.cancel();
     void watch.stop();
@@ -197,28 +210,65 @@ export async function agentStream(
 ) {
   const { row, h, c } = target;
   const docs = parseDocs(req.query.docs, AGENT_DOC_KINDS);
-  const stream = await watchEvents(h, c.id, ctx);
   const sse = openSse(res, { kind: "agent", sessionId: row.id, agentId: c.id as number });
-  sse.send({
-    type: "snapshot",
-    snapshot: JSON.parse(JSON.stringify(stream.snapshot)),
-    inbox: await store.inbox(h, c),
-  });
+
+  /** Build a wire snapshot from the conversation's view and active context (the old watchEvents shapes). */
+  const snapshotFor = async (): Promise<WireSnapshotEvent> => {
+    const view = await c.context(ctx);
+    const live = (await h.snapshot(LiveDoc, c.id, ctx)) as unknown as LiveState | undefined;
+    const agent = (await h.snapshot(AgentDoc, c.id, ctx)) as unknown as WireAgentState | undefined;
+    const usage = (await h.snapshot(UsageDoc, c.id, ctx)) as unknown as WireUsageState | undefined;
+    const inbox = (await h.snapshot(InboxDoc, c.id, ctx)) as unknown as { items: WireQueued[] } | undefined;
+    return {
+      type: "snapshot",
+      entries: view.entries as unknown as WireEntry[],
+      ...(live?.run ? { run: { inputs: live.run.inputs } } : {}),
+      ...(live?.generation
+        ? {
+            generation: {
+              attempt: live.generation.attempt,
+              message: live.generation.message as unknown as WireAssistantMessage,
+              ...(live.generation.retry ? { retry: { at: live.generation.retry.at, error: live.generation.retry.error } } : {}),
+              ...(live.generation.deferred ? { deferred: { pollAt: live.generation.deferred.pollAt } } : {}),
+            },
+          }
+        : {}),
+      tools: (live?.tools ?? []) as unknown as WireToolSlot[],
+      compactions: (live?.compactions ?? []).map(
+        (c) =>
+          ({
+            taskId: c.taskId,
+            reason: c.trigger,
+            blocking: c.blocking,
+            attempt: c.attempt,
+            ...(c.retry ? { retry: { at: c.retry.at, error: c.retry.error } } : {}),
+          }) as WireCompaction,
+      ),
+      inbox: inbox?.items ?? [],
+      agent: agent ?? {},
+      usage: usage ?? { models: {}, tools: {} },
+    };
+  };
+
+  const sendSnapshot = async () => {
+    if (sse.closed) return;
+    sse.send({ type: "snapshot", snapshot: await snapshotFor(), inbox: await store.inbox(h, c) });
+  };
+
+  await sendSnapshot();
   const pushDocs = coalesce(async () => {
     for (const kind of docs)
       sse.sendIfChanged(`doc:${kind}`, { type: "doc", kind, value: await store.agentDoc(h, c, kind) });
   }, 150);
   await pushDocs.now();
-  stream.start(async (events) => {
-    if (sse.closed) return;
-    sse.send({ type: "batch", events: JSON.parse(JSON.stringify(events)) });
-    if (events.some((e) => e.type === "inbox_update" || e.type === "snapshot"))
-      sse.send({ type: "inbox", items: await store.inbox(h, c) });
-  });
-  const offDocs = docs.length ? h.subscribeCommits(() => pushDocs()) : () => {};
+
+  const commits = h.observeCommits({ advance: () => push(), end: () => {} });
+  const push = coalesce(sendSnapshot, 150);
+  const offDocs = docs.length ? h.observeCommits({ advance: () => pushDocs(), end: () => {} }) : undefined;
   sse.onClose(() => {
-    offDocs();
+    commits.detach();
+    offDocs?.detach();
     pushDocs.cancel();
-    void stream.stop();
+    push.cancel();
   });
 }

@@ -88,7 +88,7 @@ app.get("/api/config", (_req, res) => {
       windowSeconds: config.windowMs / 1000,
     },
     repo: repoDir,
-    version: "1.0.3",
+    version: "1.5.2",
   });
 });
 
@@ -125,9 +125,8 @@ app.get("/api/conversations/:cid/events", async (req, res) => {
     dirty = true,
     previous = "",
     lastSent = 0;
-  const unsubscribe = ops.harness.subscribeCommits(() => {
-    dirty = true;
-  });
+  const commits = ops.harness.observeCommits({ advance: () => { dirty = true; }, end: () => {} });
+  const unsubscribe = () => commits.detach();
   const tick = async () => {
     if (closed || fetching || (!dirty && Date.now() - lastSent < 15000)) return;
     fetching = true;

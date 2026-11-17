@@ -61,7 +61,7 @@ import { createJobs, JobRuns, JOB_DEFS, jobDef, resolveJobInput, type Jobs } fro
 import { ADDON_INFO, createAddons, PROMPTS, PromptChecklist, type Addons } from "./addons.js";
 import { JOB_RUNS_DOC } from "../../dpi-sdk/src/jobs.js";
 
-export const DURABLE_VERSION = "1.0.3";
+export const DURABLE_VERSION = "1.5.2";
 
 /** Tools that create, update or delete: shell, files, App State, job runs, sessions, pages and subagents. */
 export const WRITE_TOOLS = new Set([
@@ -216,7 +216,7 @@ export class Store {
     try {
       store.unlockShared = lockFile(`${store.sharedStatePath}.lock`);
       store.shared = await SharedState.open(store.sharedStatePath);
-      store.shared.harness.subscribeCommits(() => store.notify());
+      store.shared.harness.observeCommits({ advance: () => store.notify(), end: () => {} });
       for (const row of store.list()) {
         try {
           await store.openAgent(row);
@@ -556,7 +556,8 @@ export class Store {
       row.provider = rootModel.provider;
       row.model = rootModel.modelId;
       this.catalog.prepare("UPDATE sessions SET provider=?,model=? WHERE id=?").run(row.provider, row.model, row.id);
-      const unsubscribe = harness.subscribeCommits(() => this.notify());
+      const observation = harness.observeCommits({ advance: () => this.notify(), end: () => {} });
+      const unsubscribe = () => observation.detach();
       this.opened.set(row.id, { harness, unlock, unsubscribe, jobs, addons });
       this.errors.delete(row.id);
       if (create) harness.resume();
@@ -625,11 +626,11 @@ export class Store {
   }
 
   async liveTasks(h: Harness): Promise<TaskNode[]> {
-    const graph = await h.taskGraph(ctx);
+    const graph = await h.watchTaskGraph(ctx);
     try {
       return await this.labelTasks(h, Object.values(graph.value.tasks).map((t) => this.taskNode(t)));
     } finally {
-      graph.dispose();
+      await graph.stop();
     }
   }
 
@@ -895,12 +896,8 @@ export class Store {
   }
 
   async activeEntries(c: Conversation): Promise<WireEntry[]> {
-    const view = await c.viewState(ctx);
-    try {
-      return JSON.parse(JSON.stringify(view.value.entries)) as WireEntry[];
-    } finally {
-      view.dispose();
-    }
+    const view = await c.context(ctx);
+    return JSON.parse(JSON.stringify(view.entries)) as WireEntry[];
   }
 
   async transcript(c: Conversation, format: string) {

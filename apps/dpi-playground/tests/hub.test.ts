@@ -205,11 +205,11 @@ test("hub: registry from YAML, monitoring, token-injecting proxy, guard, mux, of
         frames.some(
           (f) =>
             f.sub === subs[1] &&
-            f.frame.type === "batch" &&
-            f.frame.events.some((e) => e.type === "run_end"),
+            f.frame.type === "snapshot" &&
+            f.frame.snapshot.entries.some((e) => e.kind === "pi.assistant"),
         ),
       10000,
-      "batch via mux",
+      "run finished via mux",
     );
     assert.ok(frames.some((f) => f.sub === "network" && f.frame.type === "network"));
     assert.ok(frames.some((f) => f.sub === subs[0] && f.frame.type === "tree"));

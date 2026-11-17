@@ -225,24 +225,20 @@ Your worktree ${incident.worktree} is checkout-api on branch ${incident.branch},
 
   async snapshot(cid: number) {
     const conversation = await this.conversation(cid);
-    const view = await conversation.viewState(ctx);
-    try {
-      const [incidents, agent, deploys] = await Promise.all([
-        this.incidents(),
-        conversation.agent(ctx),
-        this.harness.snapshot(Deploys, ctx),
-      ]);
-      return {
-        conversationId: cid,
-        view: view.value,
-        incidents,
-        deploys: Object.values(deploys?.items ?? {}).filter((d) => d.conversationId === cid) as Deploy[],
-        tools: agent.tools.map((t) => t.name),
-        serverTime: Date.now(),
-      };
-    } finally {
-      view.dispose();
-    }
+    const view = await conversation.context(ctx);
+    const [incidents, agent, deploys] = await Promise.all([
+      this.incidents(),
+      conversation.agent(ctx),
+      this.harness.snapshot(Deploys, ctx),
+    ]);
+    return {
+      conversationId: cid,
+      view,
+      incidents,
+      deploys: Object.values(deploys?.items ?? {}).filter((d) => d.conversationId === cid) as Deploy[],
+      tools: agent.tools.map((t) => t.name),
+      serverTime: Date.now(),
+    };
   }
 
   modelList() {

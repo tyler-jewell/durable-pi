@@ -1,4 +1,4 @@
-import { Type } from "@earendil-works/pi-ai";
+import { bool, int, lit, num, obj, opt, str, union } from "@earendil-works/pi-schema";
 import {
   ToolTask,
   defineDoc,
@@ -10,7 +10,7 @@ import {
   type TaskId,
   type ToolExecutionApi,
 } from "@earendil-works/pi-durable";
-import type { Context } from "@earendil-works/chord";
+import type { Context } from "@earendil-works/chord/context";
 import type { Deploy, Incident, IncidentStatus, StreamRow } from "../../../shared/types.ts";
 import { verifyAndCommit } from "./repo.ts";
 import type { WatchStore } from "./watch-store.ts";
@@ -21,6 +21,7 @@ export const Incidents = defineDoc<{ seq: number; items: Record<string, Incident
   version: 1,
   scope: "session",
   initial: () => ({ seq: 0, items: {} }),
+  checkpointWhen: () => true,
 });
 
 /** Every deploy request and where its durable task stands. Session scoped, so any client can approve it. */
@@ -29,7 +30,11 @@ export const Deploys = defineDoc<{ items: Record<string, Deploy> }>({
   version: 1,
   scope: "session",
   initial: () => ({ items: {} }),
+  checkpointWhen: () => true,
 });
+
+/** Non-durable wait: pacing and polls that may simply restart after a crash. */
+const wait = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 
 /** The incident timeline. An agent reports each stage in order; submit_fix and the deploy finish it. */
 const STAGES: IncidentStatus[] = [
@@ -75,21 +80,21 @@ export function createExtensions(deps: {
     name: "query_logs",
     description:
       "Search the production log stream (Google Cloud Logging, Cloud Run, project lumen-market-prod). Every row carries the Jev verdict the watcher gave it. Returns newest first. Use full=true for the complete JSON entry, including stack traces.",
-    parameters: Type.Object({
-      since_minutes: Type.Optional(Type.Number({ minimum: 1, maximum: 1440, description: "Default 30" })),
-      service: Type.Optional(Type.String({ description: "checkout-api, catalog-api, cart-api, auth-api, payments-webhook" })),
-      route: Type.Optional(Type.String({ description: "Route template, such as /v1/checkout" })),
-      min_severity: Type.Optional(
-        Type.Union(["DEBUG", "INFO", "NOTICE", "WARNING", "ERROR"].map((s) => Type.Literal(s))),
+    parameters: obj({
+      since_minutes: opt(num({ minimum: 1, maximum: 1440, description: "Default 30" })),
+      service: opt(str({ description: "checkout-api, catalog-api, cart-api, auth-api, payments-webhook" })),
+      route: opt(str({ description: "Route template, such as /v1/checkout" })),
+      min_severity: opt(
+        union(["DEBUG", "INFO", "NOTICE", "WARNING", "ERROR"].map((s) => lit(s))),
       ),
-      status: Type.Optional(Type.Integer({ description: "HTTP status" })),
-      revision: Type.Optional(Type.String()),
-      text: Type.Optional(Type.String({ description: "Substring of the raw entry: message, error, stack trace, customer fields" })),
-      jev: Type.Optional(
-        Type.Union([Type.Literal("normal"), Type.Literal("suspicious"), Type.Literal("incident")]),
+      status: opt(int({ description: "HTTP status" })),
+      revision: opt(str()),
+      text: opt(str({ description: "Substring of the raw entry: message, error, stack trace, customer fields" })),
+      jev: opt(
+        union([lit("normal"), lit("suspicious"), lit("incident")]),
       ),
-      limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 100, description: "Default 30" })),
-      full: Type.Optional(Type.Boolean()),
+      limit: opt(int({ minimum: 1, maximum: 100, description: "Default 30" })),
+      full: opt(bool()),
     }),
     replay: "safe",
     execute: async (args) => {
@@ -107,7 +112,7 @@ export function createExtensions(deps: {
       const text = rows.length
         ? rows.map((row) => (args.full ? `${logLine(row)}\n${JSON.stringify(row.entry)}` : logLine(row))).join("\n")
         : "No matching rows.";
-      return { content: [{ type: "text", text: `${rows.length} rows, newest first\n${text}` }] };
+      return { output: [{ type: "text", text: `${rows.length} rows, newest first\n${text}` }] };
     },
   });
 
@@ -115,13 +120,13 @@ export function createExtensions(deps: {
     name: "log_summary",
     description:
       "Aggregate the log stream: rows, errors, 5xx, and Jev verdicts per minute; traffic per revision; deploy notices; and the fingerprints Jev flagged. Use it to size impact and line the start of a failure up with a deploy.",
-    parameters: Type.Object({
-      since_minutes: Type.Optional(Type.Number({ minimum: 1, maximum: 1440, description: "Default 15" })),
-      service: Type.Optional(Type.String()),
+    parameters: obj({
+      since_minutes: opt(num({ minimum: 1, maximum: 1440, description: "Default 15" })),
+      service: opt(str()),
     }),
     replay: "safe",
     execute: async (args) => ({
-      content: [
+      output: [
         {
           type: "text",
           text: JSON.stringify(deps.store.summary(args.since_minutes ?? 15, args.service), null, 1),
@@ -133,12 +138,12 @@ export function createExtensions(deps: {
   const listIncidents = defineTool({
     name: "list_incidents",
     description: "List incidents the watcher opened, with status, branch, and report.",
-    parameters: Type.Object({}),
+    parameters: obj({}),
     replay: "safe",
     execute: async (_args, api, context) => {
       const doc = await api.snapshot(Incidents, context);
       const items = Object.values(doc?.items ?? {}).map(({ timeline: _, ...incident }) => incident);
-      return { content: [{ type: "text", text: items.length ? JSON.stringify(items, null, 1) : "No incidents." }] };
+      return { output: [{ type: "text", text: items.length ? JSON.stringify(items, null, 1) : "No incidents." }] };
     },
   });
 
@@ -174,15 +179,15 @@ export function createExtensions(deps: {
     name: "update_incident",
     description:
       "Move your incident to its next stage on the timeline the engineer watches: investigating, then root_cause_found, then fix_in_progress. Stages go in order and none can be skipped. Use blocked if you cannot proceed. submit_fix and deploy finish the timeline.",
-    parameters: Type.Object({
-      status: Type.Union([
-        Type.Literal("investigating"),
-        Type.Literal("root_cause_found"),
-        Type.Literal("fix_in_progress"),
-        Type.Literal("blocked"),
+    parameters: obj({
+      status: union([
+        lit("investigating"),
+        lit("root_cause_found"),
+        lit("fix_in_progress"),
+        lit("blocked"),
       ]),
-      summary: Type.String({ description: "One or two sentences for the engineer" }),
-      root_cause: Type.Optional(Type.String()),
+      summary: str({ description: "One or two sentences for the engineer" }),
+      root_cause: opt(str()),
     }),
     replay: "safe",
     execute: async (args, api, context) => {
@@ -195,7 +200,7 @@ export function createExtensions(deps: {
         item.summary = args.summary;
         if (args.root_cause) item.report.rootCause = args.root_cause;
       });
-      return { content: [{ type: "text", text: `${incident.id} is now ${incident.status}.` }] };
+      return { output: [{ type: "text", text: `${incident.id} is now ${incident.status}.` }] };
     },
   });
 
@@ -203,11 +208,11 @@ export function createExtensions(deps: {
     name: "submit_fix",
     description:
       "Move the incident to ready_for_review after fix_in_progress. Proves the fix: the changed tests under test/ must fail on main's code and the whole suite must pass on your branch. Then it commits everything on your incident branch. If verification fails it explains why and changes nothing; fix the problem and call it again.",
-    parameters: Type.Object({
-      summary: Type.String({ description: "One or two sentences for the engineer" }),
-      root_cause: Type.String(),
-      fix: Type.String({ description: "What the change does" }),
-      commit_message: Type.String({ description: "fix(<area>): <what> (<incident id>)" }),
+    parameters: obj({
+      summary: str({ description: "One or two sentences for the engineer" }),
+      root_cause: str(),
+      fix: str({ description: "What the change does" }),
+      commit_message: str({ description: "fix(<area>): <what> (<incident id>)" }),
     }),
     replay: "safe",
     execute: async (args, api, context) => {
@@ -229,7 +234,7 @@ export function createExtensions(deps: {
         };
       });
       return {
-        content: [
+        output: [
           {
             type: "text",
             text: `Committed ${proof.head} on ${incident.branch}. ${incident.id} is ready for review.\n${tests}\n${proof.diffStat}`,
@@ -272,7 +277,7 @@ export function createExtensions(deps: {
             }, context);
             return;
           }
-          await runtime.sleep(runtime.now() + 400, context);
+          await wait(400);
         }
       },
       rollout: async (task, runtime, context) => {
@@ -290,7 +295,7 @@ export function createExtensions(deps: {
             }, context);
             return;
           }
-          await runtime.sleep(runtime.now() + 250, context);
+          await wait(250);
         }
         await runtime.commit(async (tx) => {
           (await tx.doc(Deploys)).items[String(task.id)].status = "verifying";
@@ -301,7 +306,7 @@ export function createExtensions(deps: {
         const { revision, liveAt } = task.state.checkpoint as { revision: string; liveAt: number };
         let stats = deps.store.checkoutStats(revision);
         while (stats.checkouts < 3 && runtime.now() < liveAt + 20_000) {
-          await runtime.sleep(runtime.now() + 400, context);
+          await wait(400);
           stats = deps.store.checkoutStats(revision);
         }
         const ok = stats.checkouts > 0 && stats.errors === 0;
@@ -354,14 +359,14 @@ export function createExtensions(deps: {
     name: "deploy",
     description:
       "Ship the fix on your incident branch to production. Asks the on-call engineer to approve and waits durably for the decision, through restarts. When approved, it rolls out a new checkout-api revision built from your commit and verifies live guest checkouts. Call it only after submit_fix. If the engineer declines, do not call it again until they ask.",
-    parameters: Type.Object({
-      summary: Type.String({ description: "One sentence: what ships and why it is safe" }),
+    parameters: obj({
+      summary: str({ description: "One sentence: what ships and why it is safe" }),
     }),
     replay: "safe",
     execute: async (args, api, context) => {
       const incident = await ownIncident(api, context);
       if (incident.status === "deployed")
-        return { content: [{ type: "text", text: `Already deployed as ${incident.report.deployedRevision}.` }] };
+        return { output: [{ type: "text", text: `Already deployed as ${incident.report.deployedRevision}.` }] };
       if (incident.status !== "ready_for_review" || !incident.report.commit)
         throw Error("Nothing to deploy yet. Run submit_fix first.");
       const commit = incident.report.commit;
@@ -419,7 +424,7 @@ export function createExtensions(deps: {
       if (outcome.status === "completed" && outcome.result.approved) {
         const r = outcome.result;
         return {
-          content: [
+          output: [
             {
               type: "text",
               text: `Deployed ${commit} as ${r.revision}. Verified on live traffic: ${r.checkouts} checkouts, ${r.guests} from guests, ${r.errors} errors.`,
@@ -429,7 +434,7 @@ export function createExtensions(deps: {
       }
       if (outcome.status === "completed")
         return {
-          content: [
+          output: [
             {
               type: "text",
               text: `The engineer declined the deploy${outcome.result.note ? `: ${outcome.result.note}` : ""}. Nothing shipped. Wait for their direction and call deploy again only if they ask.`,
