@@ -5,7 +5,7 @@ import { resolve } from "node:path";
 import { visibleWidth } from "@earendil-works/pi-tui";
 import { AgentModel } from "../../dpi-sdk/src/models.ts";
 import type { Frame } from "../../dpi-sdk/src/api.ts";
-import type { TranscriptItem } from "../../dpi-sdk/src/transcript.ts";
+import type { ToolCallView, TranscriptItem } from "../../dpi-sdk/src/transcript.ts";
 import { itemComponent, TranscriptView } from "../src/render.ts";
 
 const long = "x".repeat(500);
@@ -47,13 +47,21 @@ for (const width of [40, 80, 200])
     });
 
 test("collapsed tool output shows the last 6 lines and a count; expanded shows all", () => {
-  const item = items[1] as Extract<TranscriptItem, { kind: "assistant" }>;
-  const tool = item.blocks[2] as Extract<(typeof item.blocks)[number], { type: "tool" }>;
-  const collapsed = itemComponent({ kind: "tool", id: "a", call: tool.call }, false).render(200);
-  assert.ok(collapsed.some((l) => l.includes("6 earlier lines")));
-  assert.equal(collapsed.length, 1 + 1 + 6);
-  const expanded = itemComponent({ kind: "tool", id: "a", call: tool.call }, true).render(200);
-  assert.ok(expanded.length > collapsed.length);
+  const call: ToolCallView = {
+    callId: "a",
+    name: "bash",
+    args: { command: "echo rows" },
+    status: "done",
+    result: Array.from({ length: 12 }, (_, i) => `row-${String(i + 1).padStart(2, "0")}`).join("\n"),
+    resultEntryId: 3,
+  };
+  const collapsed = itemComponent({ kind: "tool", id: "a", call }, false).render(200);
+  assert.ok(collapsed.some((l) => l.includes("6 earlier lines")), "counts the hidden lines");
+  assert.ok(collapsed.some((l) => l.includes("row-12")), "shows the last line");
+  assert.ok(!collapsed.some((l) => l.includes("row-01")), "hides the first line");
+  const expanded = itemComponent({ kind: "tool", id: "a", call }, true).render(200);
+  assert.ok(expanded.some((l) => l.includes("row-01")) && expanded.some((l) => l.includes("row-12")), "shows every line");
+  assert.ok(!expanded.some((l) => l.includes("earlier lines")), "no hidden-lines count when expanded");
 });
 
 test("TranscriptView reuses components for unchanged items and renders a recorded tool turn", () => {
