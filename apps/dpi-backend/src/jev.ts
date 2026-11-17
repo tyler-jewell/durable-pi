@@ -22,6 +22,7 @@ interface JevTransport {
   readonly endpoint: string;
   readonly key?: string;
   readonly model: string;
+  readonly headers?: Record<string, string>;
   payload(state: unknown, questions: Record<string, JevQuestion>): unknown;
   /** Unwrap the wire body into the System One `answers` record. */
   answers(body: unknown): Record<string, JevAnswer>;
@@ -47,6 +48,7 @@ const cloudflare = (endpoint: string): JevTransport => ({
   endpoint,
   key: env("CLOUDFLARE_API_KEY"),
   model: env("JEV_MODEL") ?? "typesafe/jev",
+  headers: { "cf-aig-gateway-id": env("CLOUDFLARE_GATEWAY_ID") ?? "default" },
   payload: (state, questions) => ({ model: env("JEV_MODEL") ?? "typesafe/jev", input: { state, questions } }),
   answers: (body) => {
     const b = body as { success?: boolean; result?: { state?: string; result?: { answers?: Record<string, JevAnswer> }; answers?: Record<string, JevAnswer> } };
@@ -91,6 +93,7 @@ export async function askJev(
     const res = await fetch(transport.endpoint, {
       method: "POST",
       headers: {
+        ...transport.headers,
         ...(transport.key ? { Authorization: `Bearer ${transport.key}` } : {}),
         "Content-Type": "application/json",
       },

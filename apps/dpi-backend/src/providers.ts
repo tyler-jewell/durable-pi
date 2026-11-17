@@ -6,7 +6,7 @@
 import type { Provider } from "@earendil-works/pi-ai/models";
 import { openrouterProvider } from "@earendil-works/pi-ai/providers/openrouter";
 import { deepseekProvider } from "@earendil-works/pi-ai/providers/deepseek";
-import { cloudflareAIGatewayProvider } from "@earendil-works/pi-ai/providers/cloudflare-ai-gateway";
+import { cloudflareWorkersAIProvider } from "@earendil-works/pi-ai/providers/cloudflare-workers-ai";
 import { curatedModels, defaultModelId } from "./model-catalog.js";
 
 export type ProviderId = "openrouter" | "deepseek" | "cloudflare-ai-gateway" | "faux";
@@ -56,30 +56,42 @@ export const networkProviders: Record<Exclude<ProviderId, "faux">, NetworkProvid
     id: "cloudflare-ai-gateway",
     label: "Cloudflare AI Gateway",
     envKeys: ["CLOUDFLARE_API_KEY", "CLOUDFLARE_ACCOUNT_ID", "CLOUDFLARE_GATEWAY_ID"],
-    factory: cloudflareAIGatewayProvider,
+    factory: () => {
+      // The modern Cloudflare REST API (api.cloudflare.com) with Workers AI models. AI Gateway
+      // features apply automatically; `cf-aig-gateway-id` routes the request to our gateway.
+      const base = cloudflareWorkersAIProvider();
+      const gatewayId = process.env.CLOUDFLARE_GATEWAY_ID?.trim() || "default";
+      const id = "cloudflare-ai-gateway";
+      const header = { "cf-aig-gateway-id": gatewayId };
+      return {
+        ...base,
+        id,
+        name: "Cloudflare AI Gateway",
+        headers: { ...base.headers, ...header },
+        getModels: () => base.getModels().map((m) => ({ ...m, provider: id, headers: { ...m.headers, ...header } })),
+      };
+    },
     models: [
-      // Anthropic models served by the gateway (anthropic-messages).
-      { id: "claude-opus-5-5", name: "Claude Opus 5.5", tier: "S+", icon: "anthropic.png" },
-      { id: "claude-sonnet-5", name: "Claude Sonnet 5", tier: "S+", icon: "anthropic.png" },
-      { id: "claude-opus-5", name: "Claude Opus 5", tier: "S+", icon: "anthropic.png" },
-      { id: "claude-fable-5-1", name: "Claude Fable 5.1", tier: "S+", icon: "anthropic.png" },
-      { id: "claude-sonnet-4-5", name: "Claude Sonnet 4.5", tier: "S", icon: "anthropic.png" },
-      { id: "claude-haiku-4-5", name: "Claude Haiku 4.5", tier: "A", icon: "anthropic.png" },
-      // OpenAI models served by the gateway (openai-responses).
-      { id: "gpt-6-sol", name: "GPT-6 Sol", tier: "S+", icon: "openai.png" },
-      { id: "gpt-6-astra", name: "GPT-6 Astra", tier: "S+", icon: "openai.png" },
-      { id: "gpt-5.5", name: "GPT-5.5", tier: "S", icon: "openai.png" },
-      { id: "gpt-5.6-luna", name: "GPT-5.6 Luna", tier: "A", icon: "openai.png" },
-      { id: "gpt-4.1", name: "GPT-4.1", tier: "B", icon: "openai.png" },
-      // Cloudflare Workers AI models (openai-completions).
-      { id: "workers-ai/@cf/deepseek-ai/deepseek-v4-pro-0813", name: "DeepSeek V4 Pro (CF)", tier: "A", icon: "deepseek.png" },
-      { id: "workers-ai/@cf/deepseek-ai/deepseek-v4-flash-0731", name: "DeepSeek V4 Flash (CF)", tier: "A", icon: "deepseek.png" },
-      { id: "workers-ai/@cf/qwen/qwen3.8-27b", name: "Qwen3.8 27B (CF)", tier: "A", icon: "qwen.png" },
-      { id: "workers-ai/@cf/moonshotai/kimi-k2.7-code", name: "Kimi K2.7 Code (CF)", tier: "A", icon: "kimi.png" },
-      { id: "workers-ai/@cf/zai-org/glm-5.3", name: "GLM 5.3 (CF)", tier: "A", icon: "zai.png" },
-      { id: "workers-ai/@cf/meta/llama-4-scout-17b-16e-instruct", name: "Llama 4 Scout (CF)", tier: "B", icon: "meta.png" },
+      { id: "@cf/meta/llama-3.3-70b-instruct-fp8-fast", name: "Llama 3.3 70B Instruct", tier: "S", icon: "meta.png" },
+      { id: "@cf/meta/llama-4-scout-17b-16e-instruct", name: "Llama 4 Scout 17B", tier: "S", icon: "meta.png" },
+      { id: "@cf/deepseek-ai/deepseek-v4-flash-0731", name: "DeepSeek V4 Flash", tier: "S", icon: "deepseek.png" },
+      { id: "@cf/deepseek-ai/deepseek-v4-pro-0813", name: "DeepSeek V4 Pro", tier: "S", icon: "deepseek.png" },
+      { id: "@cf/qwen/qwen3.8-27b", name: "Qwen3.8 27B", tier: "A", icon: "qwen.png" },
+      { id: "@cf/qwen/qwen3-30b-a3b-fp8", name: "Qwen3 30B A3B", tier: "A", icon: "qwen.png" },
+      { id: "@cf/moonshotai/kimi-k2.6", name: "Kimi K2.6", tier: "A", icon: "kimi.png" },
+      { id: "@cf/moonshotai/kimi-k2.7-code", name: "Kimi K2.7 Code", tier: "A", icon: "kimi.png" },
+      { id: "@cf/zai-org/glm-5.3", name: "GLM 5.3", tier: "A", icon: "zai.png" },
+      { id: "@cf/zai-org/glm-5.2", name: "GLM 5.2", tier: "A", icon: "zai.png" },
+      { id: "@cf/openai/gpt-oss-120b", name: "GPT-OSS 120B", tier: "A", icon: "openai.png" },
+      { id: "@cf/nvidia/nemotron-3-120b-a12b", name: "Nemotron 3 120B", tier: "A", icon: "lab.png" },
+      { id: "@cf/google/gemma-4-26b-a4b-it", name: "Gemma 4 26B", tier: "B", icon: "gemini.png" },
+      { id: "@cf/mistralai/mistral-small-3.1-24b-instruct", name: "Mistral Small 3.1", tier: "B", icon: "lab.png" },
+      { id: "@cf/ibm-granite/granite-4.0-h-micro", name: "Granite 4.0 Micro", tier: "B", icon: "lab.png" },
+      { id: "@cf/openai/gpt-oss-20b", name: "GPT-OSS 20B", tier: "B", icon: "openai.png" },
+      { id: "@cf/zai-org/glm-4.7-flash", name: "GLM 4.7 Flash", tier: "B", icon: "zai.png" },
+      { id: "@cf/zai-org/glm-5.3-flash", name: "GLM 5.3 Flash", tier: "B", icon: "zai.png" },
     ],
-    defaultModelId: "claude-sonnet-5",
+    defaultModelId: "@cf/meta/llama-3.3-70b-instruct-fp8-fast",
   },
 };
 

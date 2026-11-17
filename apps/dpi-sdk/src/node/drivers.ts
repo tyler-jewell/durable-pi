@@ -443,6 +443,15 @@ async function containerDeploy(device: NetDevice, ctx: DriverContext) {
 async function containerStart(device: NetDevice, ctx: DriverContext) {
   const code = containerAbs(device.codeDir);
   const log = `${containerAbs(device.homeDir)}/backend.log`;
+  // Stop any previous backend first: the SQLite lock names its pid, and tsx/npm may linger.
+  await containerExec(
+    device,
+    `PID=$(cat "${containerAbs(device.homeDir)}/backend/catalog.sqlite.lock" 2>/dev/null || true)
+[ -n "$PID" ] && kill "$PID" 2>/dev/null || true
+pkill -f 'src/main.ts' 2>/dev/null || true
+pkill -f 'node_modules/.bin/tsx' 2>/dev/null || true
+sleep 1`,
+  );
   await run("container", ["exec", "-d", device.id, "sh", "-c", `cd "${code}/apps/dpi-backend" && exec npm start >> "${log}" 2>&1`]);
   ctx.log(`start ${device.id}: backend started`);
 }
