@@ -36,8 +36,10 @@ defaults:
   home_dir: ~/.dpi                 # backend.env, data and logs; deploys never touch it
   start_dirs: ["~/dpi-work"]       # where new sessions start (created if missing); any existing folder works as a cwd
   env_keys: [OPENROUTER_API_KEY]   # secrets: copied by name from .env, never written here
+  #   deepseek:               env_keys: [DEEPSEEK_API_KEY]
+  #   cloudflare-ai-gateway:  env_keys: [CLOUDFLARE_API_KEY, CLOUDFLARE_ACCOUNT_ID, CLOUDFLARE_GATEWAY_ID]
   # env:                           # plain settings, written as-is
-  #   DPI_PROVIDER: faux           # the free deterministic model, for tests
+  #   DPI_PROVIDER: faux           # the free deterministic model, for tests (openrouter | deepseek | cloudflare-ai-gateway | faux)
 
 devices:
   local:

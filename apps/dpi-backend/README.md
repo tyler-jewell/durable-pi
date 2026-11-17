@@ -13,7 +13,7 @@ Needs Node 22.19 or newer (`.nvmrc` pins 24).
 ```bash
 cd apps/dpi-backend && npm install
 npm run token                  # creates ~/.dpi/backend.env with DPI_TOKEN and prints it (npm run token -- --rotate replaces it)
-echo "OPENROUTER_API_KEY=sk-or-..." >> ~/.dpi/backend.env
+echo "OPENROUTER_API_KEY=sk-or-..." >> ~/.dpi/backend.env   # or DEEPSEEK_API_KEY / CLOUDFLARE_* with DPI_PROVIDER set to match
 npm start                      # 127.0.0.1:4780; data in ~/.dpi/backend
 ```
 
@@ -30,8 +30,10 @@ With the repo's network config, `just net up local && just backend run` does the
 | `DPI_DATA_DIR` | `$DPI_HOME/backend` | catalog, app state, `sessions/`, `archive/` |
 | `DPI_HOME` | `~/.dpi` | where `backend.env` is read (set by the service unit) |
 | `DPI_ENV_FILE` | `$DPI_HOME/backend.env` | the env file to read |
-| `DPI_PROVIDER` | `openrouter` | `faux` gives a free deterministic model for tests |
-| `OPENROUTER_API_KEY` | | model access, required unless `DPI_PROVIDER=faux`. Without it the device lists no models. Never sent to clients |
+| `DPI_PROVIDER` | `openrouter` | the device's model provider: `openrouter`, `deepseek`, `cloudflare-ai-gateway`, or `faux` (free deterministic model for tests) |
+| `OPENROUTER_API_KEY` | | model access when `DPI_PROVIDER=openrouter`. Without a key the device lists no models. Never sent to clients |
+| `DEEPSEEK_API_KEY` | | model access when `DPI_PROVIDER=deepseek` |
+| `CLOUDFLARE_API_KEY` / `CLOUDFLARE_ACCOUNT_ID` / `CLOUDFLARE_GATEWAY_ID` | | model access when `DPI_PROVIDER=cloudflare-ai-gateway` |
 | `TYPESAFE_API_KEY` | | optional: `jev-damage-control` asks Jev with it, else through OpenRouter |
 
 Flags `--port`, `--host`, `--name`, `--start-dirs`, `--data-dir` and `--env-file` override the env.

@@ -23,7 +23,7 @@ Open the repository in Claude Code (or Pi, or your favorite agentic coding tool)
 /install
 ```
 
-The command lives in [`.claude/commands/install.md`](.claude/commands/install.md). It checks Node 24, npm, just and zsh, confirms `OPENROUTER_API_KEY` in `.env` without printing it, runs `just install`, writes this machine's device config with `just net up local`, builds the web UI, offers to set up the proactive demo and finishes with `just check`. It never starts a server and never touches a device other than `local`. Run `/prime` afterwards to load the project context into your agent.
+The command lives in [`.claude/commands/install.md`](.claude/commands/install.md). It checks Node 24, npm, just and zsh, confirms a model-provider key in `.env` without printing it, runs `just install`, writes this machine's device config with `just net up local`, builds the web UI, offers to set up the proactive demo and finishes with `just check`. It never starts a server and never touches a device other than `local`. Run `/prime` afterwards to load the project context into your agent.
 
 ### Manual Install
 
@@ -34,7 +34,7 @@ brew install just tmux                         # macOS; Linux: sudo apt install 
 ```
 
 ```bash
-cp .env.example .env                           # set OPENROUTER_API_KEY; copied into each device's backend.env, never sent to clients
+cp .env.example .env                           # set the key for your provider (OPENROUTER_API_KEY / DEEPSEEK_API_KEY / Cloudflare gateway keys); copied into each device's backend.env, never sent to clients
 cp dpi-network.example.yaml dpi-network.yaml   # your devices; starts with only `local`
 just install                                   # npm install for dpi-sdk, dpi-backend, dpi-playground and dpi-tui
 ```
@@ -287,7 +287,7 @@ Each device owns its agents and their data in SQLite. The hub only stores how to
 ```text
 durable-pi/
 ├── dpi-network.example.yaml           # template for dpi-network.yaml (gitignored): devices, kinds, start_dirs
-├── .env.example                       # OPENROUTER_API_KEY (+ ELEVENLABS_API_KEY for the demo voice)
+├── .env.example                       # provider keys (OpenRouter, DeepSeek or Cloudflare AI Gateway) + ELEVENLABS_API_KEY for the demo voice
 ├── justfile                           # install, check, and one module per work area
 ├── just/                              # net, backend, hub, tui, test, proactive (one mod.just each)
 ├── apps/

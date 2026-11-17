@@ -60,9 +60,12 @@ Optional, so report them and continue:
 
 ### Step 2 — Check Environment
 
-1. If `.env` is missing, copy the template: `cp .env.example .env`, then ask the user to paste their OpenRouter key into `.env` (https://openrouter.ai/keys). Do not ask for the key in chat.
-2. Confirm the key is set without printing it: `grep -Eq '^OPENROUTER_API_KEY=sk-' .env && echo set || ([ -n "$OPENROUTER_API_KEY" ] && echo "set in environment") || echo missing`.
-3. If it is missing and the user wants to continue without a key, tell them the backend can run with the free deterministic model: `DPI_PROVIDER=faux just backend run`.
+1. If `.env` is missing, copy the template: `cp .env.example .env`. Ask the user which model provider they want, then have them set the matching key(s) in `.env` (never ask for a key value in chat):
+   - OpenRouter (default): `OPENROUTER_API_KEY` — https://openrouter.ai/keys
+   - DeepSeek: `DEEPSEEK_API_KEY` — https://platform.deepseek.com
+   - Cloudflare AI Gateway: `CLOUDFLARE_API_KEY`, `CLOUDFLARE_ACCOUNT_ID`, `CLOUDFLARE_GATEWAY_ID` — https://developers.cloudflare.com/ai-gateway
+2. Confirm the chosen key is set without printing it. For OpenRouter: `grep -Eq '^OPENROUTER_API_KEY=sk-' .env && echo set || ([ -n "$OPENROUTER_API_KEY" ] && echo "set in environment") || echo missing`; likewise `grep -Eq '^DEEPSEEK_API_KEY=.+' .env` for DeepSeek, and all three `grep -Eq '^CLOUDFLARE_(API_KEY|ACCOUNT_ID|GATEWAY_ID)=.+' .env` for the gateway.
+3. If no key is available and the user wants to continue, tell them the backend can run with the free deterministic model: `DPI_PROVIDER=faux just backend run`.
 4. Optional, for the proactive demo's voice line: `grep -Eq '^ELEVENLABS_API_KEY=.+' .env && echo set || echo "not set (the demo runs, the voice line is skipped)"`. The line plays through `afplay` on macOS and in the browser elsewhere; `ELEVENLABS_VOICE_ID` picks another voice from the user's ElevenLabs account.
 
 ### Step 3 — Install Dependencies
@@ -74,7 +77,7 @@ Optional, so report them and continue:
 
 1. If `dpi-network.yaml` is missing, create it: `cp dpi-network.example.yaml dpi-network.yaml`. Never overwrite an existing one.
 2. `just net ids`: the file parses and lists device ids. Confirm `local` is among them.
-3. `just net up local`: writes `~/.dpi/backend.env` with a fresh `DPI_TOKEN` (or keeps an existing one), copies `OPENROUTER_API_KEY` from `.env`, and registers the device in `~/.dpi/network.sqlite`. Then confirm `test -f ~/.dpi/backend.env && stat -f '%Lp' ~/.dpi/backend.env` (Linux: `stat -c '%a'`) shows `600`. Never print the file.
+3. `just net up local`: writes `~/.dpi/backend.env` with a fresh `DPI_TOKEN` (or keeps an existing one), copies the keys named in `env_keys` (the provider key(s) from `.env`), and registers the device in `~/.dpi/network.sqlite`. For DeepSeek set `env_keys: [DEEPSEEK_API_KEY]` in `dpi-network.yaml`; for Cloudflare AI Gateway set `env_keys: [CLOUDFLARE_API_KEY, CLOUDFLARE_ACCOUNT_ID, CLOUDFLARE_GATEWAY_ID]` and add `DPI_PROVIDER: cloudflare-ai-gateway` under the device's `env`. Then confirm `test -f ~/.dpi/backend.env && stat -f '%Lp' ~/.dpi/backend.env` (Linux: `stat -c '%a'`) shows `600`. Never print the file.
 4. `just hub build`: type-checks and builds the web UI that `just hub start` serves.
 5. Tell the user that new sessions start in `~/dpi-work` (created by `just net up local`) unless they set `start_dirs`, that any existing folder on the device works as a session cwd, and that remote machines are added by uncommenting the `ssh` or `exe-dev` example in `dpi-network.yaml` and running `just net up <id>`.
 
