@@ -10,6 +10,7 @@ import type {
   NetworkDevice,
 } from "../../../../dpi-sdk/src/api.js";
 import { toPublic, type NetworkRegistry } from "../../../../dpi-sdk/src/node/registry.js";
+import { sleep } from "./util.js";
 
 export interface LiveState {
   status: DeviceStatus;
@@ -18,13 +19,6 @@ export interface LiveState {
   tree?: DeviceTree;
   lastSeenAt?: number;
 }
-
-const sleep = (ms: number, signal: AbortSignal) =>
-  new Promise<void>((resolve) => {
-    if (signal.aborted) return resolve();
-    const timer = setTimeout(resolve, ms);
-    signal.addEventListener("abort", () => (clearTimeout(timer), resolve()), { once: true });
-  });
 
 export class DeviceMonitor {
   private live = new Map<string, LiveState>();

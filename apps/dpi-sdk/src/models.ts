@@ -9,12 +9,9 @@ import type {
   SessionSummary,
   TaskNode,
   UsageTotals,
-  WireAgentEvent,
   WireAgentState,
-  WireAssistantBlock,
   WireAssistantMessage,
   WireEntry,
-  WireMessageChange,
   WireSnapshotEvent,
   WireUsageState,
 } from "./api.js";
@@ -68,41 +65,6 @@ const emptyAgentState = (): AgentViewState => ({
   ready: false,
 });
 
-function setPath(target: Record<string | number, unknown>, path: readonly (string | number)[], delta: string) {
-  let node = target;
-  for (let i = 0; i < path.length - 1; i++) {
-    const key = path[i];
-    if (typeof node[key] !== "object" || node[key] === null)
-      node[key] = typeof path[i + 1] === "number" ? [] : {};
-    node = node[key] as Record<string | number, unknown>;
-  }
-  const last = path[path.length - 1];
-  node[last] = String(node[last] ?? "") + delta;
-}
-
-export function applyMessageChange(message: WireAssistantMessage, change: WireMessageChange): WireAssistantMessage {
-  if (change.type === "message") return structuredClone(change.message);
-  const content = [...message.content] as WireAssistantBlock[];
-  const i = change.contentIndex;
-  if (change.type === "block" || change.type.endsWith("_start")) {
-    content[i] = structuredClone((change as { block: WireAssistantBlock }).block);
-  } else if (change.type === "text_delta") {
-    const block = content[i];
-    content[i] = { type: "text", text: (block?.type === "text" ? block.text : "") + change.delta };
-  } else if (change.type === "thinking_delta") {
-    const block = content[i];
-    content[i] = {
-      type: "thinking",
-      thinking: (block?.type === "thinking" ? block.thinking : "") + change.delta,
-    };
-  } else if (change.type === "toolcall_delta") {
-    const block = structuredClone(content[i] ?? { type: "toolCall", id: "", name: "", arguments: {} });
-    setPath(block as unknown as Record<string, unknown>, change.path, change.delta);
-    content[i] = block;
-  }
-  return { ...message, content };
-}
-
 export class AgentModel extends Emitter {
   state: AgentViewState = emptyAgentState();
   private entries = new Map<number, WireEntry>();
@@ -115,9 +77,6 @@ export class AgentModel extends Emitter {
       case "snapshot":
         this.reset(frame.snapshot);
         this.state.inbox = frame.inbox;
-        break;
-      case "batch":
-        for (const event of frame.events) this.event(event);
         break;
       case "inbox":
         this.state.inbox = frame.items;
@@ -169,99 +128,6 @@ export class AgentModel extends Emitter {
     this.state.compactions = snapshot.compactions.map((c) => c.taskId);
     this.state.ready = true;
   }
-
-  /** Store a committed entry. Resets (sent as message_end) and compactions start a new context head. */
-  private commit(entry: WireEntry) {
-    this.entries.set(entry.id, entry);
-    if (entry.kind === "pi.reset" || entry.kind === "pi.compaction") {
-      const head = entry.head ?? entry.id;
-      for (const id of this.entries.keys()) if (id < head) this.entries.delete(id);
-    }
-  }
-
-  private event(event: WireAgentEvent) {
-    switch (event.type) {
-      case "snapshot":
-        return this.reset(event);
-      case "run_start":
-        this.state.running = true;
-        return;
-      case "run_end":
-        this.state.running = false;
-        this.live = undefined;
-        return;
-      case "message_start":
-        if (event.message.role === "assistant")
-          this.live = structuredClone(event.message as WireAssistantMessage);
-        return;
-      case "message_update":
-        if (!this.live)
-          this.live = {
-            role: "assistant",
-            content: [],
-            provider: "",
-            model: "",
-            usage: event.usage,
-            stopReason: "pending",
-          };
-        for (const change of event.changes) this.live = applyMessageChange(this.live, change);
-        this.live = { ...this.live, usage: event.usage };
-        return;
-      case "message_end":
-        this.live = undefined;
-        return this.commit(event.entry);
-      case "entry_appended":
-        return this.commit(event.entry);
-      case "tool_execution_start":
-        this.tools.set(event.toolCallId, {
-          name: event.toolName,
-          status: "running",
-          output: "",
-          args: event.args,
-        });
-        return;
-      case "tool_execution_update": {
-        const tool = this.tools.get(event.toolCallId) ?? {
-          name: event.toolName,
-          status: "running" as const,
-          output: "",
-        };
-        const output = event.output;
-        if (output && "set" in output) tool.output = output.set;
-        else if (output) tool.output = tool.output.slice(output.trimStart ?? 0) + (output.append ?? "");
-        tool.status = "running";
-        this.tools.set(event.toolCallId, tool);
-        return;
-      }
-      case "tool_execution_end":
-        this.tools.delete(event.toolCallId);
-        if (event.entry) this.entries.set(event.entry.id, event.entry);
-        return;
-      case "agent_changed":
-        this.state.agent = event.agent;
-        return;
-      case "usage_changed":
-        this.state.usage = event.usage;
-        return;
-      case "auto_retry_start":
-        this.state.retry = { at: event.at, error: event.errorMessage };
-        return;
-      case "auto_retry_end":
-        this.state.retry = undefined;
-        return;
-      case "compaction_start":
-        if (!this.state.compactions.includes(event.taskId)) this.state.compactions.push(event.taskId);
-        return;
-      case "compaction_end":
-        this.state.compactions = this.state.compactions.filter((id) => id !== event.taskId);
-        return;
-      case "task_failed":
-        this.state.notices = [...this.state.notices.slice(-9), `${event.kind} failed: ${event.message}`];
-        return;
-      default:
-        return;
-    }
-  }
 }
 
 // ---------------------------------------------------------------- session
@@ -271,10 +137,6 @@ export interface SessionViewState {
   tasks: TaskNode[];
   usage: UsageTotals;
   ready: boolean;
-}
-
-export function agentLabel(agent: Pick<AgentSummary, "id" | "name">) {
-  return agent.name;
 }
 
 export class SessionModel extends Emitter {

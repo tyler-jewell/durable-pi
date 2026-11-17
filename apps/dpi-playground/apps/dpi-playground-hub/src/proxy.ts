@@ -3,8 +3,7 @@
 import type { RequestHandler } from "express";
 import type { NetworkRegistry } from "../../../../dpi-sdk/src/node/registry.js";
 import type { DeviceMonitor } from "./monitor.js";
-
-const err = (code: string, message: string) => ({ error: { code, message } });
+import { err } from "./util.js";
 
 export function proxy(registry: NetworkRegistry, monitor: DeviceMonitor): RequestHandler {
   return async (req, res) => {

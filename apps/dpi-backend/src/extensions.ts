@@ -6,6 +6,7 @@ import type { SessionSummary, ThinkingLevel } from "../../dpi-sdk/src/api.js";
 import { THINKING_LEVELS } from "../../dpi-sdk/src/api.js";
 import type { WireEntry } from "../../dpi-sdk/src/api.js";
 import { jobRunDone, type JobRun } from "../../dpi-sdk/src/jobs.js";
+import { clip } from "../../dpi-sdk/src/transcript.js";
 import {
   defineDoc,
   defineTool,
@@ -62,7 +63,6 @@ function progressLines(run: JobRun) {
 }
 
 const phaseLabel = (run: JobRun) => run.phases.find((p) => p.id === run.phase)?.label;
-const clip = (s: string, n: number) => (s.length > n ? `${s.slice(0, n - 1)}…` : s);
 
 /** One run as check_durable_job reports it: compact enough for a model, complete enough to act on. */
 function runReport(run: JobRun, now: number) {

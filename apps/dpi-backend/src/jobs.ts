@@ -19,7 +19,7 @@ import {
 import { CodingTools, createBashTool, createReadTool } from "@earendil-works/pi-durable/tools";
 import { readState } from "../../dpi-sdk/src/app-state.js";
 import type { WireAssistantMessage, WireMessage, WireToolResultMessage } from "../../dpi-sdk/src/api.js";
-import { messageText } from "../../dpi-sdk/src/transcript.js";
+import { clip, messageText } from "../../dpi-sdk/src/transcript.js";
 import {
   JOB_RUNS_DOC,
   type JobDef,
@@ -50,7 +50,7 @@ type JobResult = { summary: string };
 type Run = TaskRuntime<JobInput, Checkpoint, JobResult, object>;
 type Running = RunningTask<JobInput, Checkpoint, JobResult>;
 
-/** Pause before each phase so a person can follow the run; durable, so a restart keeps the schedule. */
+/** Pause before each phase so a person can follow the run. */
 const PACE_MS = 900;
 const MAX_RUNS = 30;
 const MAX_STEPS = 40;
@@ -59,7 +59,6 @@ const RESULT_ROOT = "jobs";
 const plain = <T>(value: T): T => JSON.parse(JSON.stringify(value)) as T;
 /** Non-durable wait: pacing and polls that may simply restart after a crash. */
 const wait = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
-const clip = (s: string, n: number) => (s.length > n ? `${s.slice(0, n - 1)}…` : s);
 const tail = (s: string, lines = 8) => s.trim().split("\n").slice(-lines).join("\n");
 const q = (s: string) => `'${s.replaceAll("'", `'\\''`)}'`;
 
@@ -166,9 +165,14 @@ interface Phase {
   progress(done: number, total: number): Promise<void>;
   saveState(path: string, value: JsonValue): Promise<void>;
   readState(path: string): Promise<JsonValue | undefined>;
+  /** Write this job's result to its documented App State path (`def.resultPath`). */
+  saveResult(value: JsonValue): Promise<void>;
+  /** Read whatever is currently at this job's documented result path. */
+  readResult(): Promise<JsonValue | undefined>;
   /** Run a subagent with read and bash in an owned child conversation; its tool calls become steps. */
   agent(prompt: string): Promise<string>;
-  sleepUntil(at: number): Promise<void>;
+  /** Block (non-durably) until the given clock time, for pacing and repeat phases. */
+  waitUntil(at: number): Promise<void>;
 }
 
 type Outcome = { done: string; data?: Data } | { again: Data; summary?: string };
@@ -214,7 +218,7 @@ const HANDLERS: Record<string, Record<string, Handler>> = {
       };
     },
     save: async (p) => {
-      await p.saveState(`/${RESULT_ROOT}/workspace-snapshot`, {
+      await p.saveResult({
         run: p.run.n,
         at: new Date(p.now()).toISOString(),
         folder: String(p.input.path),
@@ -227,7 +231,7 @@ const HANDLERS: Record<string, Record<string, Handler>> = {
       return { done: `Saved to App State /${RESULT_ROOT}/workspace-snapshot` };
     },
     verify: async (p) => {
-      const saved = (await p.readState(`/${RESULT_ROOT}/workspace-snapshot`)) as { run?: number; files?: number } | undefined;
+      const saved = (await p.readResult()) as { run?: number; files?: number } | undefined;
       await p.step("state", `read_state /${RESULT_ROOT}/workspace-snapshot`, async () => {
         if (saved?.run !== p.run.n || saved.files !== p.data.files)
           throw Error(`App State holds run #${saved?.run ?? "none"}, not run #${p.run.n}. Another writer changed it.`);
@@ -249,11 +253,8 @@ const HANDLERS: Record<string, Record<string, Handler>> = {
       );
       return { done: clip(notes.split("\n").find((l) => l.trim()) ?? "Gathered", 120), data: { notes } };
     },
-    approve: async () => {
-      throw Error("approval phases run in the engine");
-    },
     publish: async (p) => {
-      await p.saveState(`/${RESULT_ROOT}/release-check`, {
+      await p.saveResult({
         run: p.run.n,
         at: new Date(p.now()).toISOString(),
         checks: p.data.checks ?? [],
@@ -263,7 +264,7 @@ const HANDLERS: Record<string, Record<string, Handler>> = {
       return { done: `Published to App State /${RESULT_ROOT}/release-check` };
     },
     verify: async (p) => {
-      const saved = (await p.readState(`/${RESULT_ROOT}/release-check`)) as { run?: number; notes?: string } | undefined;
+      const saved = (await p.readResult()) as { run?: number; notes?: string } | undefined;
       await p.step("state", `read_state /${RESULT_ROOT}/release-check`, async () => {
         if (saved?.run !== p.run.n) throw Error(`App State holds run #${saved?.run ?? "none"}, not run #${p.run.n}.`);
         return { value: undefined, detail: `run #${saved.run}, ${saved.notes?.length ?? 0} characters of notes` };
@@ -289,7 +290,7 @@ const HANDLERS: Record<string, Record<string, Handler>> = {
       const dir = String(p.input.path);
       const total = Number(p.input.checks);
       const n = p.iteration + 1;
-      await p.sleepUntil(Number(p.data.nextAt ?? 0));
+      await p.waitUntil(Number(p.data.nextAt ?? 0));
       const before = (p.data.sums ?? {}) as Record<string, string>;
       const { sums, found } = await p.step("checkpoint", `Check ${n}/${total}`, async () => {
         const r = await p.shell(inDir(dir, `${FIND} -exec cksum {} + 2>/dev/null | head -300`));
@@ -312,7 +313,7 @@ const HANDLERS: Record<string, Record<string, Handler>> = {
     },
     report: async (p) => {
       const changes = (p.data.changes ?? []) as string[];
-      await p.saveState(`/${RESULT_ROOT}/change-watch`, {
+      await p.saveResult({
         run: p.run.n,
         at: new Date(p.now()).toISOString(),
         folder: String(p.input.path),
@@ -441,6 +442,28 @@ export function createJobs(deps: JobsDeps) {
       }
     };
     const stateKey = (path: string) => `job:${deps.sessionId}:${task.id}:${spec.id}:${cp.iteration}:${path}`;
+    const save = (path: string, value: JsonValue) =>
+      step("state", `update_state ${path}`, async () => {
+        const [, top] = path.split("/");
+        const { value: root } = await deps.shared.snapshot();
+        const parent = root[top];
+        if (!parent || typeof parent !== "object" || Array.isArray(parent))
+          await deps.shared.change({ operation: parent === undefined ? "create" : "update", path: `/${top}`, value: {} }, `${stateKey(path)}:parent`);
+        const exists = (await deps.shared.snapshot()).value[top] as Record<string, unknown>;
+        const key = path.split("/").slice(2).join("/");
+        await deps.shared.change(
+          { operation: Object.hasOwn(exists ?? {}, key) ? "update" : "create", path, value },
+          stateKey(path),
+        );
+        return { value: undefined, detail: clip(JSON.stringify(value), 300) };
+      });
+    const read = async (path: string) => {
+      try {
+        return readState((await deps.shared.snapshot()).value, path);
+      } catch {
+        return undefined;
+      }
+    };
     return {
       input: task.input.input,
       data: cp.data,
@@ -457,29 +480,11 @@ export function createJobs(deps: JobsDeps) {
         }),
       note: (text, detail) => step("note", text, async () => ({ value: undefined, detail })),
       progress: (done, total) => record((_r, phase) => void (phase.progress = { done, total })),
-      saveState: (path, value) =>
-        step("state", `update_state ${path}`, async () => {
-          const [, top] = path.split("/");
-          const { value: root } = await deps.shared.snapshot();
-          const parent = root[top];
-          if (!parent || typeof parent !== "object" || Array.isArray(parent))
-            await deps.shared.change({ operation: parent === undefined ? "create" : "update", path: `/${top}`, value: {} }, `${stateKey(path)}:parent`);
-          const exists = (await deps.shared.snapshot()).value[top] as Record<string, unknown>;
-          const key = path.split("/").slice(2).join("/");
-          await deps.shared.change(
-            { operation: Object.hasOwn(exists ?? {}, key) ? "update" : "create", path, value },
-            stateKey(path),
-          );
-          return { value: undefined, detail: clip(JSON.stringify(value), 300) };
-        }),
-      readState: async (path) => {
-        try {
-          return readState((await deps.shared.snapshot()).value, path);
-        } catch {
-          return undefined;
-        }
-      },
-      sleepUntil: (at) => wait(Math.max(0, at - runtime.now())),
+      saveState: save,
+      readState: read,
+      saveResult: (value) => save(def.resultPath, value),
+      readResult: () => read(def.resultPath),
+      waitUntil: (at) => wait(Math.max(0, at - runtime.now())),
       agent: async (prompt) => {
         let childId = 0;
         const stepId = `${spec.id}:${cp.iteration}:agent`;

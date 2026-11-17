@@ -12,6 +12,7 @@ import { StreamMux } from "./mux.js";
 import { proxy } from "./proxy.js";
 import { guard } from "./guard.js";
 import { seedFromConfig } from "./seed.js";
+import { err } from "./util.js";
 
 const args = process.argv.slice(2);
 const option = (key: string, fallback: string) => {
@@ -43,9 +44,7 @@ if (host !== "127.0.0.1" && host !== "localhost") {
       if (a.family === "IPv4") allowedHosts.add(`${a.address}:${port}`);
 }
 
-const err = (code: string, message: string) => ({ error: { code, message } });
-type Handler = (req: express.Request, res: express.Response) => unknown;
-const safe =
+type Handler = (req: express.Request, res: express.Response) => unknown;const safe =
   (fn: Handler): express.RequestHandler =>
   async (req, res) => {
     try {

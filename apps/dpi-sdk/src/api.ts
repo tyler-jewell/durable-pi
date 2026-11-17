@@ -384,22 +384,6 @@ export interface WireQueued {
   mode: string;
 }
 
-export type WireMessageChange =
-  | {
-      type: "text_start" | "thinking_start" | "toolcall_start";
-      contentIndex: number;
-      block: WireAssistantBlock;
-    }
-  | { type: "text_delta" | "thinking_delta"; contentIndex: number; delta: string }
-  | {
-      type: "toolcall_delta";
-      contentIndex: number;
-      path: readonly (string | number)[];
-      delta: string;
-    }
-  | { type: "block"; contentIndex: number; block: WireAssistantBlock }
-  | { type: "message"; message: WireAssistantMessage };
-
 export interface WireSnapshotEvent {
   type: "snapshot";
   entries: readonly WireEntry[];
@@ -416,35 +400,6 @@ export interface WireSnapshotEvent {
   agent: WireAgentState;
   usage: WireUsageState;
 }
-
-export type WireAgentEvent =
-  | WireSnapshotEvent
-  | { type: "run_start" | "run_end"; inputs: readonly number[] }
-  | { type: "turn_start" | "turn_end" }
-  | { type: "message_start"; message: WireMessage }
-  | { type: "message_update"; usage: WireUsage; changes: readonly WireMessageChange[] }
-  | { type: "message_end"; entry: WireEntry }
-  | { type: "tool_execution_start"; toolCallId: string; toolName: string; args: unknown }
-  | {
-      type: "tool_execution_update";
-      toolCallId: string;
-      toolName: string;
-      output?: { trimStart?: number; append?: string } | { set: string };
-      details?: unknown;
-      diagnostics?: readonly unknown[];
-    }
-  | { type: "tool_execution_end"; toolCallId: string; toolName: string; entry?: WireEntry }
-  | { type: "inbox_update"; items: readonly WireQueued[] }
-  | { type: "submission"; record: { id: number; status: string } }
-  | { type: "auto_retry_start"; attempt: number; at: number; errorMessage: string }
-  | { type: "auto_retry_end"; attempt: number }
-  | { type: "deferred_poll"; pollAt: number }
-  | { type: "entry_appended"; entry: WireEntry }
-  | { type: "agent_changed"; agent: WireAgentState }
-  | { type: "usage_changed"; usage: WireUsageState }
-  | { type: "task_failed"; taskId: number; kind: string; message: string }
-  | { type: "compaction_start"; taskId: number; reason: string; blocking: boolean }
-  | { type: "compaction_end"; taskId: number; reason: string };
 
 /** A queued submission with its content, read from the conversation's `pi.inbox` document. */
 export interface InboxItem {
@@ -502,7 +457,6 @@ export type Frame =
   | { type: "usage"; usage: UsageTotals }
   // agent scope
   | { type: "snapshot"; snapshot: WireSnapshotEvent; inbox: InboxItem[] }
-  | { type: "batch"; events: readonly WireAgentEvent[] }
   | { type: "inbox"; items: InboxItem[] }
   // any scope that asked for documents
   | { type: "doc"; kind: string; value: unknown; revision?: number }

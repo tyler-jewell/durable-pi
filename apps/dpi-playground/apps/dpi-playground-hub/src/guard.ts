@@ -1,6 +1,5 @@
 import type { RequestHandler } from "express";
-
-const err = (code: string, message: string) => ({ error: { code, message } });
+import { err } from "./util.js";
 
 /**
  * The hub holds every device token and has no login of its own, so it only answers requests

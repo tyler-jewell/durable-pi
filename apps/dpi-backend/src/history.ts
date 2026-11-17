@@ -1,7 +1,7 @@
 // search_history: look back through an agent's whole stored history, including entries before a reset, handoff or
 // compaction that the model no longer sees. Pure over a list of entries, so it is testable without a harness.
 import type { WireAssistantMessage, WireEntry, WireMessage, WireToolResultMessage } from "../../dpi-sdk/src/api.js";
-import { messageText } from "../../dpi-sdk/src/transcript.js";
+import { clip, messageText } from "../../dpi-sdk/src/transcript.js";
 
 export type HistoryKind = "user" | "assistant" | "tool_call" | "tool_result" | "event";
 
@@ -51,8 +51,6 @@ interface Parsed {
   /** Searchable text: message text, tool names and arguments, result text. */
   text: string;
 }
-
-const clip = (s: string, n: number) => (s.length > n ? `${s.slice(0, n)}…` : s);
 
 function parse(entry: WireEntry): Parsed | undefined {
   const messages = (entry.model ?? []) as WireMessage[];

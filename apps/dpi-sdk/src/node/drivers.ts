@@ -8,7 +8,7 @@ import type { DeviceKind } from "../api.js";
 import { DpiClient } from "../client.js";
 import { syncConfigToRegistry, type NetDevice, type NetworkConfig } from "./config.js";
 import { NetworkRegistry } from "./registry.js";
-import { exeDev, q, remote, rsync, run, shPath, sleep } from "./ops.js";
+import { exeDev, remote, rsync, run, shPath, sleep } from "./ops.js";
 
 export interface DriverContext {
   config: NetworkConfig;
@@ -641,4 +641,3 @@ export const drivers: Record<DeviceKind, Driver> = {
 };
 
 export const defaultHome = () => homedir();
-export { q };

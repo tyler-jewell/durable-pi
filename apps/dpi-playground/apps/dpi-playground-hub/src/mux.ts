@@ -11,6 +11,7 @@ import { DpiError } from "../../../../dpi-sdk/src/errors.js";
 import type { MuxFrame } from "../../../../dpi-sdk/src/api.js";
 import type { NetworkRegistry } from "../../../../dpi-sdk/src/node/registry.js";
 import type { DeviceMonitor } from "./monitor.js";
+import { sleep } from "./util.js";
 
 interface BrowserStream {
   send(frame: MuxFrame): void;
@@ -37,13 +38,6 @@ export function parseSubKey(key: string) {
     };
   throw Error(`Invalid subscription key: ${key}`);
 }
-
-const sleep = (ms: number, signal: AbortSignal) =>
-  new Promise<void>((resolve) => {
-    if (signal.aborted) return resolve();
-    const timer = setTimeout(resolve, ms);
-    signal.addEventListener("abort", () => (clearTimeout(timer), resolve()), { once: true });
-  });
 
 export class StreamMux {
   private streams = new Map<string, BrowserStream>();

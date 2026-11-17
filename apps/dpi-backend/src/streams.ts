@@ -212,7 +212,7 @@ export async function agentStream(
   const docs = parseDocs(req.query.docs, AGENT_DOC_KINDS);
   const sse = openSse(res, { kind: "agent", sessionId: row.id, agentId: c.id as number });
 
-  /** Build a wire snapshot from the conversation's view and active context (the old watchEvents shapes). */
+  /** Build a wire snapshot from the conversation's view and its built-in documents. */
   const snapshotFor = async (): Promise<WireSnapshotEvent> => {
     const view = await c.context(ctx);
     const live = (await h.snapshot(LiveDoc, c.id, ctx)) as unknown as LiveState | undefined;

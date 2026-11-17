@@ -6,7 +6,6 @@ import type {
   WireEntry,
   WireMessage,
   WireToolResultMessage,
-  WireToolSlot,
   WireUsage,
   WireUsageState,
 } from "./api.js";
@@ -53,6 +52,9 @@ export interface LiveTool {
 
 const isAssistant = (m: WireMessage): m is WireAssistantMessage => m.role === "assistant";
 const isToolResult = (m: WireMessage): m is WireToolResultMessage => m.role === "toolResult";
+
+/** Truncate `s` to at most `n` characters, including the ellipsis. */
+export const clip = (s: string, n: number) => (s.length > n ? `${s.slice(0, n - 1)}…` : s);
 
 export function messageText(message: WireMessage): string {
   const content = (message as { content?: unknown }).content;
@@ -253,4 +255,3 @@ export function sumUsage(state?: Pick<WireUsageState, "models"> | { models: Reco
   return total;
 }
 
-export type { WireToolSlot };

@@ -5,6 +5,7 @@ import { BACKGROUND_CONTEXT as ctx } from "@earendil-works/chord/context";
 import {
   changeState,
   replaceState,
+  StateError,
   type AppState,
   type StateChange,
 } from "../../dpi-sdk/src/app-state.js";
@@ -69,7 +70,8 @@ export class SharedState {
       const data = await tx.doc(Data);
       const meta = await tx.doc(Meta);
       if (expectedRevision !== undefined && expectedRevision !== meta.revision)
-        throw Error(
+        throw new StateError(
+          "conflict",
           "App State changed while you were editing. Load the latest JSON before saving.",
         );
       const next = changeState(data, change);

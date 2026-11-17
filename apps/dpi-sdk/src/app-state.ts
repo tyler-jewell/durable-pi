@@ -12,29 +12,40 @@ export type StateChange = {
   value?: JsonValue;
 };
 
+/** A malformed state request (`invalid`) or a stale revision (`conflict`), mapped by the backend to 400/409. */
+export class StateError extends Error {
+  constructor(
+    readonly code: "invalid" | "conflict",
+    message: string,
+  ) {
+    super(message);
+    this.name = "StateError";
+  }
+}
+
 export function statePath(parent: string, key: string) {
   return `${parent}/${key.replaceAll("~", "~0").replaceAll("/", "~1")}`;
 }
 
 function parts(path: string) {
   if (path === "") return [];
-  if (!path.startsWith("/")) throw Error("Use a JSON Pointer path, such as /counter");
+  if (!path.startsWith("/")) throw new StateError("invalid", "Use a JSON Pointer path, such as /counter");
   return path
     .slice(1)
     .split("/")
     .map((part) => {
-      if (/~(?![01])/u.test(part)) throw Error("Invalid JSON Pointer escape");
+      if (/~(?![01])/u.test(part)) throw new StateError("invalid", "Invalid JSON Pointer escape");
       const key = part.replaceAll("~1", "/").replaceAll("~0", "~");
       if (["__proto__", "constructor", "prototype"].includes(key))
-        throw Error("Reserved field name");
+        throw new StateError("invalid", "Reserved field name");
       return key;
     });
 }
 
 function child(value: JsonValue, key: string): JsonValue {
   if (value === null || typeof value !== "object" || !Object.hasOwn(value, key))
-    throw Error(`Field does not exist: ${key}`);
-  if (Array.isArray(value) && !/^(0|[1-9]\d*)$/u.test(key)) throw Error("Invalid array index");
+    throw new StateError("invalid", `Field does not exist: ${key}`);
+  if (Array.isArray(value) && !/^(0|[1-9]\d*)$/u.test(key)) throw new StateError("invalid", "Invalid array index");
   return (value as AppState)[key]!;
 }
 
@@ -43,20 +54,20 @@ export function readState(state: AppState, path = ""): JsonValue {
 }
 
 function validate(value: unknown, depth = 0): asserts value is JsonValue {
-  if (depth > 24) throw Error("State is too deeply nested");
+  if (depth > 24) throw new StateError("invalid", "State is too deeply nested");
   if (value === null || typeof value === "string" || typeof value === "boolean") return;
   if (typeof value === "number" && Number.isFinite(value)) return;
-  if (typeof value !== "object" || value === null) throw Error("Value must be valid JSON");
+  if (typeof value !== "object" || value === null) throw new StateError("invalid", "Value must be valid JSON");
   for (const [key, item] of Object.entries(value)) {
-    if (["__proto__", "constructor", "prototype"].includes(key)) throw Error("Reserved field name");
+    if (["__proto__", "constructor", "prototype"].includes(key)) throw new StateError("invalid", "Reserved field name");
     validate(item, depth + 1);
   }
 }
 
 export function changeState(state: AppState, input: StateChange): AppState {
   if (!["create", "update", "delete", "increment"].includes(input.operation))
-    throw Error("Invalid state operation");
-  if (typeof input.path !== "string") throw Error("State path is required");
+    throw new StateError("invalid", "Invalid state operation");
+  if (typeof input.path !== "string") throw new StateError("invalid", "State path is required");
   const path = parts(input.path);
   const next: AppState = JSON.parse(JSON.stringify(state));
   if (!path.length) {
@@ -67,23 +78,23 @@ export function changeState(state: AppState, input: StateChange): AppState {
       Array.isArray(input.value) ||
       typeof input.value !== "object"
     )
-      throw Error("The state root must be a JSON object. Use update to replace it.");
+      throw new StateError("invalid", "The state root must be a JSON object. Use update to replace it.");
     validate(input.value);
     if (JSON.stringify(input.value).length > 100000)
-      throw Error("App State must be under 100,000 characters");
+      throw new StateError("invalid", "App State must be under 100,000 characters");
     return JSON.parse(JSON.stringify(input.value));
   }
   const key = path.pop()!;
   const parent = path.reduce<JsonValue>(child, next);
   if (parent === null || typeof parent !== "object")
-    throw Error("Parent must be an object or array");
+    throw new StateError("invalid", "Parent must be an object or array");
   const exists = Object.hasOwn(parent, key);
   const array = Array.isArray(parent);
   const append = array && (key === "-" || key === String(parent.length));
   if (array && !append && (!/^(0|[1-9]\d*)$/u.test(key) || Number(key) >= parent.length))
-    throw Error("Invalid array index");
-  if (input.operation === "create" && exists) throw Error("Field already exists. Use update.");
-  if (input.operation !== "create" && !exists) throw Error("Field does not exist. Use create.");
+    throw new StateError("invalid", "Invalid array index");
+  if (input.operation === "create" && exists) throw new StateError("invalid", "Field already exists. Use update.");
+  if (input.operation !== "create" && !exists) throw new StateError("invalid", "Field does not exist. Use create.");
   if (input.operation === "delete") {
     if (array) parent.splice(Number(key), 1);
     else delete parent[key];
@@ -92,7 +103,7 @@ export function changeState(state: AppState, input: StateChange): AppState {
     if (input.operation === "increment") {
       const current = (parent as AppState)[key];
       if (typeof current !== "number" || typeof value !== "number")
-        throw Error("Increment requires numbers");
+        throw new StateError("invalid", "Increment requires numbers");
       value = current + value;
     }
     validate(value);
@@ -101,7 +112,7 @@ export function changeState(state: AppState, input: StateChange): AppState {
   }
   validate(next);
   if (JSON.stringify(next).length > 100000)
-    throw Error("App State must be under 100,000 characters");
+    throw new StateError("invalid", "App State must be under 100,000 characters");
   return next;
 }
 
