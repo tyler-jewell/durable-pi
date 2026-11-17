@@ -238,6 +238,7 @@ Devices are data. `dpi-network.yaml` declares each one by kind, and no code or r
 | `local` | `just backend run` on this machine, or a service if you set `service:` | env file and registry entry (plus the service when set) |
 | `ssh` | a launchd LaunchAgent (macOS) or a systemd unit (Linux) | install Node 24 with nvm, rsync the code and `npm ci`, env, service, register, wait online |
 | `exe-dev` | systemd on an [exe.dev](https://exe.dev) VM behind its HTTPS proxy | create the named VM if missing, the `ssh` steps, expose port 4780 over HTTPS before register |
+| `apple-container` | a Linux arm64 container from the macOS [`container`](https://developer.apple.com/containers/) CLI, published on `127.0.0.1` | `container run` the image if missing, copy the code and `npm ci`, env, start the backend, register, wait online |
 | `url` | anything already running | register the URL and token only |
 
 ```bash
@@ -247,7 +248,7 @@ just net deploy <id>     # ssh and exe-dev: rsync code, npm ci and restart; data
 just net logs <id>       # tail the service log
 just net restart <id>    # restart the service
 just net rotate <id>     # new token on the device, then re-register
-just net destroy <id>    # exe-dev only; asks first; refuses VMs not in the YAML
+just net destroy <id>    # exe-dev and apple-container; asks first; refuses VMs not in the YAML
 ```
 
 Every line of a device's `~/.dpi/backend.env` traces to the YAML: `DPI_PORT`, `DPI_HOST` and `DPI_START_DIRS` from `port`, `host` and `start_dirs`, secrets named in `env_keys` (values read from your `.env`), plain settings from `env`, the device id as `DPI_DEVICE_NAME`, and a `DPI_TOKEN` generated on the first `up`. New sessions start in `start_dirs` (default `~/dpi-work`, created if missing), and any existing folder on the device works as a session's working directory. The hub classifies each device as `online`, `checking`, `offline`, `unauthorized`, `mismatch` (the URL now answers with a different device identity) or `incompatible`. An offline device keeps its last tree, dimmed, with the exact terminal fix for its kind.

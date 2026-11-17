@@ -8,7 +8,7 @@ import type { DeviceInfo, DeviceKind, DeviceStatus, DeviceTree, NetworkDevice } 
 
 export const dpiHome = () => process.env.DPI_HOME ?? join(homedir(), ".dpi");
 export const DEVICE_ID = /^[a-z0-9][a-z0-9-]{0,31}$/;
-export const DEVICE_KINDS: readonly DeviceKind[] = ["local", "ssh", "exe-dev", "url"];
+export const DEVICE_KINDS: readonly DeviceKind[] = ["local", "ssh", "exe-dev", "apple-container", "url"];
 
 export interface DeviceRow {
   id: string;
@@ -97,7 +97,7 @@ export class NetworkRegistry {
       CREATE TABLE IF NOT EXISTS devices(
         id TEXT PRIMARY KEY,
         name TEXT NOT NULL,
-        kind TEXT NOT NULL CHECK(kind IN ('local','ssh','exe-dev','url')),
+        kind TEXT NOT NULL,
         url TEXT NOT NULL,
         token TEXT,
         source TEXT NOT NULL DEFAULT 'ui' CHECK(source IN ('config','ui')),
@@ -111,6 +111,32 @@ export class NetworkRegistry {
         created_at INTEGER NOT NULL,
         updated_at INTEGER NOT NULL);
       CREATE TABLE IF NOT EXISTS ui_state(key TEXT PRIMARY KEY, value TEXT NOT NULL, updated_at INTEGER NOT NULL);`);
+    // Older registries pinned the device kinds with a CHECK constraint; drop it so a new
+    // kind never needs a schema migration (upsert() already validates kinds).
+    const devicesSql = (this.db.prepare(`SELECT sql FROM sqlite_master WHERE type='table' AND name='devices'`).get() as { sql: string } | undefined)?.sql ?? "";
+    if (devicesSql.includes("CHECK(kind IN")) {
+      this.db.exec(`BEGIN;
+        ALTER TABLE devices RENAME TO devices_old;
+        CREATE TABLE devices(
+          id TEXT PRIMARY KEY,
+          name TEXT NOT NULL,
+          kind TEXT NOT NULL,
+          url TEXT NOT NULL,
+          token TEXT,
+          source TEXT NOT NULL DEFAULT 'ui' CHECK(source IN ('config','ui')),
+          position INTEGER NOT NULL DEFAULT 0,
+          device_uid TEXT,
+          last_status TEXT NOT NULL DEFAULT 'checking',
+          last_error TEXT,
+          last_seen_at INTEGER,
+          last_info_json TEXT,
+          last_tree_json TEXT,
+          created_at INTEGER NOT NULL,
+          updated_at INTEGER NOT NULL);
+        INSERT INTO devices SELECT * FROM devices_old;
+        DROP TABLE devices_old;
+        COMMIT;`);
+    }
   }
 
   private row(raw: RawRow | undefined): DeviceRow | undefined {

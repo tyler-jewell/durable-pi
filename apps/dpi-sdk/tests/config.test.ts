@@ -45,6 +45,20 @@ test("validation rejects bad kinds, missing fields and bad ids; exe-dev derives 
   assert.throws(() => parseNetworkConfig("devices:\n  a:\n    kind: local\n    env_keys: [X]\n    env: { X: 1 }"), /also in env_keys/);
 });
 
+test("apple-container derives a loopback url and resource defaults", () => {
+  const c = parseNetworkConfig("devices:\n  box:\n    kind: apple-container\n    port: 4790");
+  assert.equal(c.devices.box.url, "http://127.0.0.1:4790");
+  assert.equal(c.devices.box.host, "0.0.0.0");
+  assert.equal(c.devices.box.image, "node:24.11.1-bookworm-slim");
+  assert.equal(c.devices.box.cpus, 2);
+  assert.equal(c.devices.box.memory, "2048M");
+  const custom = parseNetworkConfig("devices:\n  box:\n    kind: apple-container\n    image: node:24-alpine\n    cpus: 4\n    memory: 4096M");
+  assert.equal(custom.devices.box.image, "node:24-alpine");
+  assert.equal(custom.devices.box.cpus, 4);
+  assert.equal(custom.devices.box.memory, "4096M");
+  assert.throws(() => parseNetworkConfig("devices:\n  box:\n    kind: apple-container\n    cpus: 0"), /cpus must be a positive integer/);
+});
+
 test("sync upserts config devices, keeps UI devices and prunes removed config devices", async () => {
   const dir = await mkdtemp(join(tmpdir(), "dpi-cfg-"));
   const reg = new NetworkRegistry(join(dir, "n.sqlite"));

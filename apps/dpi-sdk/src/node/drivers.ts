@@ -1,6 +1,6 @@
 // One driver per device kind. Drivers know kinds and services, never machines:
 // every machine-specific fact comes from dpi-network.yaml.
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync, unlinkSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { createInterface } from "node:readline/promises";
@@ -38,13 +38,24 @@ export const SERVICE_LABEL = "dev.dpi.backend";
 export const SYSTEMD_UNIT = "dpi-backend";
 const NVM_INSTALL = "https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.3/install.sh";
 
-/** Run a script locally (kind local) or on the device over ssh. */
+/** Resolve a `~/…` path for inside an apple container (containers run as root). */
+function containerAbs(p: string) {
+  return p === "~" ? "/root" : p.startsWith("~/") ? `/root${p.slice(1)}` : p;
+}
+
+/** Run a POSIX shell script inside an apple container. */
+function containerExec(device: NetDevice, script: string, options: { echo?: boolean; timeoutMs?: number } = {}) {
+  return run("container", ["exec", device.id, "sh", "-c", script], options);
+}
+
+/** Run a script locally, in an apple container, or on the device over ssh. */
 function exec(device: NetDevice, script: string, options: { echo?: boolean; timeoutMs?: number } = {}) {
   if (device.kind === "local")
     return run("sh", ["-s"], {
       ...options,
       stdin: `set -e\nexport NVM_DIR="$HOME/.nvm"\n[ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh" >/dev/null 2>&1 || true\n${script}`,
     });
+  if (device.kind === "apple-container") return containerExec(device, script, options);
   return remote(device, script, options);
 }
 
@@ -375,6 +386,101 @@ const localDriver: Driver = {
   },
 };
 
+// ------------------------------------------------------------------ apple container (the macOS `container` CLI)
+
+async function containerCreate(device: NetDevice, ctx: DriverContext) {
+  const exists = await run("container", ["inspect", device.id], { allowFail: true });
+  if (exists.code === 0) {
+    let state = "";
+    try {
+      state = (JSON.parse(exists.stdout)[0] as { status?: { state?: string } }).status?.state ?? "";
+    } catch {}
+    if (state === "running") return ctx.log(`create ${device.id}: container already running`);
+    ctx.log(`create ${device.id}: container exists (${state || "stopped"}); starting it`);
+    await run("container", ["start", device.id]);
+    return;
+  }
+  ctx.log(`create ${device.id}: container run ${device.image ?? "node:24.11.1-bookworm-slim"}`);
+  await run(
+    "container",
+    [
+      "run", "-d", "--name", device.id,
+      "-p", `${device.port}:${device.port}`,
+      "-m", device.memory ?? "2048M",
+      "-c", String(device.cpus ?? 2),
+      device.image ?? "node:24.11.1-bookworm-slim",
+      "sleep", "infinity",
+    ],
+    { timeoutMs: 300_000 },
+  );
+}
+
+async function containerDeploy(device: NetDevice, ctx: DriverContext) {
+  const code = containerAbs(device.codeDir);
+  const tgz = `/tmp/dpi-apps-${device.id}.tgz`;
+  await containerExec(device, `mkdir -p "${code}/apps" "${containerAbs(device.homeDir)}" && chmod 700 "${containerAbs(device.homeDir)}"`);
+  ctx.log(`deploy ${device.id}: package apps/dpi-backend + apps/dpi-sdk`);
+  await run(
+    "tar",
+    ["-czf", tgz, "-C", "apps", "--exclude=node_modules", "--exclude=.data", "--exclude=.durable-pi", "--exclude=dist", "--exclude=*.log", "--exclude=.DS_Store", "dpi-backend", "dpi-sdk"],
+    { cwd: ctx.config.root, timeoutMs: 600_000 },
+  );
+  await run("container", ["cp", tgz, `${device.id}:/tmp/apps.tgz`], { timeoutMs: 600_000 });
+  ctx.log(`deploy ${device.id}: npm ci`);
+  await containerExec(
+    device,
+    `tar -xzf /tmp/apps.tgz -C "${code}/apps" && rm -f /tmp/apps.tgz && cd "${code}/apps/dpi-backend" && npm ci --no-audit --no-fund --loglevel=error`,
+    { timeoutMs: 900_000 },
+  );
+  try {
+    unlinkSync(tgz);
+  } catch {}
+}
+
+async function containerStart(device: NetDevice, ctx: DriverContext) {
+  const code = containerAbs(device.codeDir);
+  const log = `${containerAbs(device.homeDir)}/backend.log`;
+  await run("container", ["exec", "-d", device.id, "sh", "-c", `cd "${code}/apps/dpi-backend" && exec npm start >> "${log}" 2>&1`]);
+  ctx.log(`start ${device.id}: backend started`);
+}
+
+async function containerRestart(device: NetDevice, ctx: DriverContext) {
+  await run("container", ["stop", device.id]);
+  await run("container", ["start", device.id]);
+  await containerStart(device, ctx);
+  ctx.log(`restart ${device.id}: done`);
+}
+
+const appleContainerDriver: Driver = {
+  create: containerCreate,
+  deploy: containerDeploy,
+  env: (d, ctx) => writeEnv(d, ctx),
+  register,
+  rotate: async (d, ctx) => {
+    await writeEnv(d, ctx, true);
+    await containerRestart(d, ctx);
+    await register(d, ctx);
+  },
+  restart: containerRestart,
+  down: async (d, ctx) => {
+    await run("container", ["stop", d.id]);
+    ctx.log(`down ${d.id}: stopped`);
+  },
+  logs,
+  destroy: async (d, ctx) => {
+    await run("container", ["rm", "-f", d.id], { allowFail: true });
+    ctx.log(`destroy ${d.id}: removed`);
+  },
+  async up(d, ctx) {
+    await containerCreate(d, ctx);
+    await containerDeploy(d, ctx);
+    await writeEnv(d, ctx);
+    await containerStart(d, ctx);
+    await register(d, ctx);
+    await waitOnline(d, ctx);
+  },
+};
+
 const urlDriver: Driver = {
   async register(d, ctx) {
     syncConfigToRegistry(ctx.config, ctx.registry);
@@ -395,6 +501,7 @@ export const drivers: Record<DeviceKind, Driver> = {
   local: localDriver,
   ssh: sshDriver,
   "exe-dev": exeDevDriver,
+  "apple-container": appleContainerDriver,
   url: urlDriver,
 };
 

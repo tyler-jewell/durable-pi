@@ -32,6 +32,10 @@ export interface NetDevice {
   vm?: string;
   create?: { cpu?: number; memory?: string; disk?: string };
   tokenEnv?: string;
+  /** apple-container only: the OCI image and resource limits for `container run`. */
+  image?: string;
+  cpus?: number;
+  memory?: string;
 }
 
 export interface NetworkConfig {
@@ -115,6 +119,12 @@ export function parseNetworkConfig(text: string, file = NETWORK_FILE): NetworkCo
       ...(typeof d.token_env === "string" ? { tokenEnv: d.token_env } : {}),
     };
     device.env = envMap(defaults.env, (value as Raw).env, device.envKeys, where);
+    if (kind === "apple-container") {
+      device.image = typeof d.image === "string" && d.image.trim() ? d.image.trim() : "node:24.11.1-bookworm-slim";
+      device.cpus = d.cpus === undefined ? 2 : Number(d.cpus);
+      if (!Number.isInteger(device.cpus) || device.cpus < 1) throw Error(`${where}.cpus must be a positive integer`);
+      device.memory = typeof d.memory === "string" && d.memory.trim() ? d.memory.trim() : "2048M";
+    }
     if (d.service !== undefined) {
       if (d.service !== "launchd" && d.service !== "systemd") throw Error(`${where}.service must be launchd or systemd`);
       device.service = d.service;
@@ -134,7 +144,11 @@ export function parseNetworkConfig(text: string, file = NETWORK_FILE): NetworkCo
     }
     if ((kind === "ssh" || kind === "exe-dev") && !device.service) throw Error(`${where}.service is required for kind ${kind}`);
     const defaultUrl =
-      kind === "local" ? `http://127.0.0.1:${port}` : kind === "exe-dev" ? `https://${device.vm}.exe.xyz` : undefined;
+      kind === "local" || kind === "apple-container"
+        ? `http://127.0.0.1:${port}`
+        : kind === "exe-dev"
+          ? `https://${device.vm}.exe.xyz`
+          : undefined;
     const url = d.url ?? defaultUrl;
     device.url = normalizeUrl(str(url, `${where}.url`));
     devices[id] = device;

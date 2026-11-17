@@ -12,10 +12,12 @@
 #   just net destroy <id>   exe-dev only; refuses any VM not named in this file
 #
 # Kinds
-#   local    this machine; `just backend run` runs it in a terminal, or set `service: launchd|systemd`
-#   ssh      any host reachable with `ssh <ssh>`; nvm + rsync + launchd (macOS) or systemd (Linux)
-#   exe-dev  an exe.dev VM: the ssh driver at <vm>.exe.xyz plus VM create and HTTPS proxy exposure
-#   url      connect only (someone else runs the backend); `just net register <id> --token <t>`
+#   local            this machine; `just backend run` runs it in a terminal, or set `service: launchd|systemd`
+#   ssh              any host reachable with `ssh <ssh>`; nvm + rsync + launchd (macOS) or systemd (Linux)
+#   exe-dev          an exe.dev VM: the ssh driver at <vm>.exe.xyz plus VM create and HTTPS proxy exposure
+#   apple-container  a macOS `container` CLI container: the backend runs in a Linux arm64 OCI image,
+#                    published on the host's loopback (needs `container` installed: brew install container)
+#   url              connect only (someone else runs the backend); `just net register <id> --token <t>`
 #
 # Tokens never live here. Each device generates its own in <home_dir>/backend.env, and
 # `just net register <id>` copies it into ~/.dpi/network.sqlite on this machine.
@@ -53,6 +55,18 @@ devices:
   #   ssh: me@my-mac-mini.local
   #   service: launchd               # systemd on Linux (needs passwordless sudo)
   #   url: http://my-mac-mini.local:4780
+  #   start_dirs: ["~/dpi-work"]
+
+  # An Apple Container (the macOS `container` CLI): the backend runs in a Linux arm64
+  # container published on this Mac's loopback. `just net up apple-box` creates, deploys
+  # and starts it; `just net destroy apple-box` removes it.
+  # apple-box:
+  #   name: Apple container
+  #   kind: apple-container
+  #   port: 4782               # host port; the backend binds this port inside too
+  #   image: node:24.11.1-bookworm-slim
+  #   cpus: 2
+  #   memory: 2048M
   #   start_dirs: ["~/dpi-work"]
 
   # An exe.dev VM (https://exe.dev). `just net up` creates it if missing and exposes it over HTTPS.
