@@ -56,7 +56,7 @@ just hub start                                 # web UI on http://localhost:4781
 just tui attach local                          # or attach from the terminal (third terminal)
 ```
 
-The proactive demo has its own dependencies: `just proactive install`, `just proactive build`, then `just proactive take`.
+The proactive demo has its own dependencies: `just proactive install` (then `npm install-scripts approve esbuild fsevents @google/genai protobufjs` in `apps/proactive-dpi-demo`, as for the apps above), `just proactive build`, then `just proactive take`.
 
 ---
 
