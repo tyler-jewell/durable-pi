@@ -27,14 +27,30 @@ The command lives in [`.claude/commands/install.md`](.claude/commands/install.md
 
 ### Manual Install
 
-**Prereqs:** [Node.js 24](https://nodejs.org) (via [nvm](https://github.com/nvm-sh/nvm)), [`just`](https://github.com/casey/just), `zsh` (macOS ships it), an [OpenRouter](https://openrouter.ai) API key. Remote devices need passwordless `ssh`, and exe.dev VMs need an [exe.dev](https://exe.dev) account.
+**Prereqs:** [Node.js 24](https://nodejs.org) (via [nvm](https://github.com/nvm-sh/nvm)), [`just`](https://github.com/casey/just), `zsh` (macOS ships it), `tmux` (for the smoke and e2e test suites), an [OpenRouter](https://openrouter.ai) API key. Remote devices need passwordless `ssh`, and exe.dev VMs need an [exe.dev](https://exe.dev) account.
+
+```bash
+brew install just tmux                         # macOS; Linux: sudo apt install just tmux (or see just's install page)
+```
 
 ```bash
 cp .env.example .env                           # set OPENROUTER_API_KEY; copied into each device's backend.env, never sent to clients
 cp dpi-network.example.yaml dpi-network.yaml   # your devices; starts with only `local`
 just install                                   # npm install for dpi-sdk, dpi-backend, dpi-playground and dpi-tui
+```
+
+npm 11 blocks package install scripts until they are approved. Approve the ones the builds need (`esbuild`, `protobufjs`, and the optional `fsevents`); each approval is recorded in that app's `package.json`, so it only needs doing once per checkout:
+
+```bash
+for app in dpi-sdk dpi-backend dpi-playground dpi-tui; do (cd "apps/$app" && npm install-scripts approve esbuild fsevents); done
+cd apps/dpi-backend && npm install-scripts approve @google/genai protobufjs
+```
+
+```bash
 just net up local                              # write ~/.dpi/backend.env with a fresh token and register this machine
 just hub build                                 # build the web UI the hub serves (once, and after UI changes)
+just check                                     # type checks and unit tests for every app (free, no network)
+just test ui                                   # optional: 28-check web UI suite against faux devices (needs Chrome)
 just backend run                               # this machine's device server on :4780
 just hub start                                 # web UI on http://localhost:4781 (second terminal)
 just tui attach local                          # or attach from the terminal (third terminal)
