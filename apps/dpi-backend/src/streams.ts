@@ -178,17 +178,17 @@ export async function sessionStream(store: Store, row: SessionRow, res: Response
     Object.values(value.tasks).map((t) => store.taskNode(t));
   let tasks = await store.labelTasks(h, tasksOf(watch.value));
   sse.send({ type: "session", agents: await store.agents(row, tasks), tasks, usage: await store.usage(h) });
+  const push = coalesce(async () => {
+    if (sse.closed || !store.opened.has(row.id)) return;
+    sse.sendIfChanged("agents", { type: "agents", agents: await store.agents(row, tasks) });
+    sse.sendIfChanged("usage", { type: "usage", usage: await store.usage(h) });
+  }, 250);
   watch.start(async (call) => {
     if (sse.closed || call.kind !== "value") return;
     tasks = await store.labelTasks(h, tasksOf(call.value));
     sse.sendIfChanged("tasks", { type: "tasks", tasks });
     push();
   });
-  const push = coalesce(async () => {
-    if (sse.closed || !store.opened.has(row.id)) return;
-    sse.sendIfChanged("agents", { type: "agents", agents: await store.agents(row, tasks) });
-    sse.sendIfChanged("usage", { type: "usage", usage: await store.usage(h) });
-  }, 250);
   const commits = h.observeCommits({ advance: () => push(), end: () => {} });
   // Agent names live in the device catalog, not the harness: a rename only fires the store's change feed.
   const offCatalog = store.subscribe(() => push());
