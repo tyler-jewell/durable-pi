@@ -34,7 +34,7 @@ With the repo's network config, `just net up local && just backend run` does the
 | `OPENROUTER_API_KEY` | | model access when `DPI_PROVIDER=openrouter`. Without a key the device lists no models. Never sent to clients |
 | `DEEPSEEK_API_KEY` | | model access when `DPI_PROVIDER=deepseek` |
 | `CLOUDFLARE_API_KEY` / `CLOUDFLARE_ACCOUNT_ID` / `CLOUDFLARE_GATEWAY_ID` | | model access when `DPI_PROVIDER=cloudflare-ai-gateway` |
-| `TYPESAFE_API_KEY` | | optional: `jev-damage-control` asks Jev with it, else through OpenRouter |
+| `TYPESAFE_API_KEY` | | optional: `jev-damage-control` asks Jev with it, else through OpenRouter, then Cloudflare Workers AI (`CLOUDFLARE_API_KEY` + `CLOUDFLARE_ACCOUNT_ID`), or any System One endpoint via `JEV_BASE_URL` / `JEV_MODEL` / `JEV_API_KEY` |
 
 Flags `--port`, `--host`, `--name`, `--start-dirs`, `--data-dir` and `--env-file` override the env.
 
