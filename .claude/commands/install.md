@@ -20,8 +20,8 @@ APPS: `apps/dpi-sdk`, `apps/dpi-backend`, `apps/dpi-playground`, `apps/dpi-tui`
 
 ```text
 justfile                 # groups: net, backend, hub, tui, test, proactive (just/<group>/mod.just)
-dpi-network.example.yaml # template: defaults + the local device, commented ssh and exe-dev examples
-.env.example             # OPENROUTER_API_KEY (copied into each device's backend.env), optional TypeSafe and ElevenLabs settings
+dpi-network.example.yaml # template: defaults + the local device, commented ssh, exe-dev, apple-container and macos-vm examples
+.env.example             # provider keys (OpenRouter, DeepSeek, Cloudflare) + Jev and ElevenLabs settings
 apps/dpi-sdk/            # contract, client, models, registry, ops drivers (scripts/net.ts)
 apps/dpi-backend/        # the device server (port 4780)
 apps/dpi-playground/     # hub + Vue web UI (port 4781)
@@ -53,7 +53,7 @@ Critical, so stop and guide the user if any is missing:
 
 Optional, so report them and continue:
 
-6. `command -v ssh && command -v rsync`: needed only to deploy to remote `ssh` or `exe-dev` devices.
+6. `command -v ssh && command -v rsync`: needed only to deploy to `ssh`, `exe-dev` or `macos-vm` devices.
 7. `command -v tmux`: the TUI smoke test and the e2e scenario (`just test smoke`, `just test e2e`). `brew install tmux`.
 8. Google Chrome (`test -d "/Applications/Google Chrome.app"` on macOS, `command -v google-chrome` on Linux): the Playwright UI suites drive installed Chrome. https://www.google.com/chrome/
 9. `command -v curl && command -v sqlite3 && command -v openssl`: the one-request curl recipe and the smoke script.
@@ -79,7 +79,7 @@ Optional, so report them and continue:
 2. `just net ids`: the file parses and lists device ids. Confirm `local` is among them.
 3. `just net up local`: writes `~/.dpi/backend.env` with a fresh `DPI_TOKEN` (or keeps an existing one), copies the keys named in `env_keys` (the provider key(s) from `.env`), and registers the device in `~/.dpi/network.sqlite`. For DeepSeek set `env_keys: [DEEPSEEK_API_KEY]` in `dpi-network.yaml`; for Cloudflare AI Gateway set `env_keys: [CLOUDFLARE_API_KEY, CLOUDFLARE_ACCOUNT_ID, CLOUDFLARE_GATEWAY_ID]` and add `DPI_PROVIDER: cloudflare-ai-gateway` under the device's `env`. Then confirm `test -f ~/.dpi/backend.env && stat -f '%Lp' ~/.dpi/backend.env` (Linux: `stat -c '%a'`) shows `600`. Never print the file.
 4. `just hub build`: type-checks and builds the web UI that `just hub start` serves.
-5. Tell the user that new sessions start in `~/dpi-work` (created by `just net up local`) unless they set `start_dirs`, that any existing folder on the device works as a session cwd, and that remote machines are added by uncommenting the `ssh` or `exe-dev` example in `dpi-network.yaml` and running `just net up <id>`.
+5. Tell the user that new sessions start in `~/dpi-work` (created by `just net up local`) unless they set `start_dirs`, that any existing folder on the device works as a session cwd, and that other machines are added by uncommenting the `ssh`, `exe-dev`, `apple-container` or `macos-vm` example in `dpi-network.yaml` and running `just net up <id>`.
 
 ### Step 5 — Verify Readiness
 
@@ -98,6 +98,6 @@ just backend run              # this machine's device server on :4780
 just hub start                # web UI: http://localhost:4781
 just tui attach local         # terminal client on the same device
 just net status               # probe every device in dpi-network.yaml
-just net up <id>              # after uncommenting an ssh or exe-dev example in dpi-network.yaml
+just net up <id>              # after uncommenting an ssh, exe-dev, apple-container or macos-vm example in dpi-network.yaml
 just proactive take           # the proactive demo: prints the URL; the agent asks to deploy within about 30s
 ```

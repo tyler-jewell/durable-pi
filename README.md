@@ -180,7 +180,7 @@ Every model call and every tool call is its own durable task, so the agent's too
   <img src="images/13_hook_blocks_tool.svg" alt="A bash rm -rf call reaches the jev-damage-control beforeTool hook, which blocks it as irreversible and returns a blocked tool result to the agent" width="780">
 </p>
 
-pi-durable extensions bring your own tools, hooks, prompt sections and checkpointed tasks. The Extend tab turns two custom extensions on or off per agent. `system-prompts` is a checklist of built-in prompts, led by [`smart_ass_opus_fix.md`](apps/dpi-backend/prompts/smart_ass_opus_fix.md). `jev-damage-control` (off by default) sends every `bash` command to the Jev API before it runs and blocks destructive or irreversible ones in about 300 ms. Its verdict is a durable memo, so a restart never asks twice. If Jev is unreachable, the command runs.
+pi-durable extensions bring your own tools, hooks, prompt sections and checkpointed tasks. The Extend tab turns two custom extensions on or off per agent. `system-prompts` is a checklist of built-in prompts, led by [`smart_ass_opus_fix.md`](apps/dpi-backend/prompts/smart_ass_opus_fix.md). `jev-damage-control` (off by default) sends every `bash` command to Jev before it runs and blocks destructive or irreversible ones in about 300 ms. Jev resolves from the environment — TypeSafe, OpenRouter, Cloudflare Workers AI, or any System One endpoint via `JEV_BASE_URL`. Its verdict is a durable memo, so a restart never asks twice. If Jev is unreachable, the command runs.
 
 ### Fork at any entry
 
@@ -231,7 +231,7 @@ The [backend README](apps/dpi-backend/README.md#demo-runbook-hop-into-an-already
   <img src="images/17_devices_are_data.svg" alt="dpi-network.yaml lists local, mac-mini, linux-box and vm-1 by kind; just net up runs each kind's steps until every device is online" width="780">
 </p>
 
-Devices are data. `dpi-network.yaml` declares each one by kind, and no code or recipe names a machine. It is gitignored; create it from [`dpi-network.example.yaml`](dpi-network.example.yaml), which declares only `local` and has commented `ssh` and `exe-dev` examples. Tokens never live in the YAML: each device generates its own, and `just net register <id>` copies it into the hub registry.
+Devices are data. `dpi-network.yaml` declares each one by kind, and no code or recipe names a machine. It is gitignored; create it from [`dpi-network.example.yaml`](dpi-network.example.yaml), which declares only `local` and has commented `ssh`, `exe-dev`, `apple-container` and `macos-vm` examples. Tokens never live in the YAML: each device generates its own, and `just net register <id>` copies it into the hub registry.
 
 | Kind | How it runs | `just net up <id>` does |
 |---|---|---|
@@ -245,11 +245,11 @@ Devices are data. `dpi-network.yaml` declares each one by kind, and no code or r
 ```bash
 just net up <id>         # every step the device's kind supports, in order; idempotent
 just net status          # probe every device
-just net deploy <id>     # ssh and exe-dev: rsync code, npm ci and restart; data stays
+just net deploy <id>     # sync code, npm ci and restart; data stays
 just net logs <id>       # tail the service log
 just net restart <id>    # restart the service
 just net rotate <id>     # new token on the device, then re-register
-just net destroy <id>    # exe-dev and apple-container; asks first; refuses VMs not in the YAML
+just net destroy <id>    # exe-dev (asks first), apple-container and macos-vm (immediate)
 ```
 
 Every line of a device's `~/.dpi/backend.env` traces to the YAML: `DPI_PORT`, `DPI_HOST` and `DPI_START_DIRS` from `port`, `host` and `start_dirs`, secrets named in `env_keys` (values read from your `.env`), plain settings from `env`, the device id as `DPI_DEVICE_NAME`, and a `DPI_TOKEN` generated on the first `up`. New sessions start in `start_dirs` (default `~/dpi-work`, created if missing), and any existing folder on the device works as a session's working directory. The hub classifies each device as `online`, `checking`, `offline`, `unauthorized`, `mismatch` (the URL now answers with a different device identity) or `incompatible`. An offline device keeps its last tree, dimmed, with the exact terminal fix for its kind.
@@ -331,13 +331,14 @@ just proactive take        # reset and run the proactive demo
 
 | Check | Result |
 |---|---|
-| `just check`: SDK (14), backend (10), hub (1) and TUI (8) unit tests with strict types, the web build and lint, on the faux model | **pass** |
+| `just check`: SDK (16), backend (14), hub (1) and TUI (8) tests with strict types, the web build and lint, on the faux model | **pass** |
 | `just test ui`: 28 web checks against two faux devices, including offline recovery, bad tokens, read only, extensions, durable jobs, the context bar, slash commands, keyboard and mobile | **28 of 28** |
 | `just test device` on a cloud VM with a real model: the web UI, steer, dedupe, subagents, jobs, compaction, reset, and quitting the browser mid-tool | **18 of 18** |
 | `just test e2e` on an ssh Mac: TUI and web on one run, steer from the web, both clients closed, device restarted mid-tool, fork, TUI reattach | **pass**: 9 tool results, 1 interrupted by the restart, each prompt admitted once |
 | `just test smoke faux`: TUI streaming, steer, Esc, fork, exit and reattach by name | **pass** |
 | Proactive demo, end to end: incident opens at T+6 s, the deploy waits at T+27 to 30 s, the approved revision passes 3 guest checkouts with 0 errors | **pass** |
 | Every device: `/healthz` 200 and `/v1/*` without a token 401 (`just net probe <id>`) | **pass** |
+| `apple-container` and `macos-vm` devices: `just net up` from nothing, `/healthz` + tokenless 401, an agent round-trip, and the restart/down/up lifecycle | **pass** |
 
 ---
 

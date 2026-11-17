@@ -60,7 +60,7 @@ const cloudflare = (endpoint: string): JevTransport => ({
 });
 
 /** First provider whose credentials are present wins. */
-function resolveTransport(): JevTransport {
+export function resolveTransport(): JevTransport {
   const base = env("JEV_BASE_URL");
   if (base) {
     const model = env("JEV_MODEL") ?? "jev-latest";
