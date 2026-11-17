@@ -8,7 +8,7 @@ import type { DeviceInfo, DeviceKind, DeviceStatus, DeviceTree, NetworkDevice } 
 
 export const dpiHome = () => process.env.DPI_HOME ?? join(homedir(), ".dpi");
 export const DEVICE_ID = /^[a-z0-9][a-z0-9-]{0,31}$/;
-export const DEVICE_KINDS: readonly DeviceKind[] = ["local", "ssh", "exe-dev", "apple-container", "url"];
+export const DEVICE_KINDS: readonly DeviceKind[] = ["local", "ssh", "exe-dev", "apple-container", "macos-vm", "url"];
 
 export interface DeviceRow {
   id: string;

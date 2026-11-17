@@ -59,6 +59,21 @@ test("apple-container derives a loopback url and resource defaults", () => {
   assert.throws(() => parseNetworkConfig("devices:\n  box:\n    kind: apple-container\n    cpus: 0"), /cpus must be a positive integer/);
 });
 
+test("macos-vm derives a lima ssh target, launchd and resource defaults", () => {
+  const c = parseNetworkConfig("devices:\n  vm:\n    kind: macos-vm");
+  assert.equal(c.devices.vm.ssh, "lima-vm");
+  assert.equal(c.devices.vm.service, "launchd");
+  assert.equal(c.devices.vm.cpus, 2);
+  assert.equal(c.devices.vm.memory, "4GiB");
+  assert.equal(c.devices.vm.disk, 40);
+  assert.equal(c.devices.vm.url, "http://127.0.0.1:4780");
+  const custom = parseNetworkConfig("devices:\n  vm:\n    kind: macos-vm\n    cpus: 4\n    memory: 8GiB\n    disk: 80");
+  assert.equal(custom.devices.vm.cpus, 4);
+  assert.equal(custom.devices.vm.memory, "8GiB");
+  assert.equal(custom.devices.vm.disk, 80);
+  assert.throws(() => parseNetworkConfig("devices:\n  vm:\n    kind: macos-vm\n    disk: 10"), /at least 20/);
+});
+
 test("sync upserts config devices, keeps UI devices and prunes removed config devices", async () => {
   const dir = await mkdtemp(join(tmpdir(), "dpi-cfg-"));
   const reg = new NetworkRegistry(join(dir, "n.sqlite"));

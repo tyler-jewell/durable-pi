@@ -17,6 +17,8 @@
 #   exe-dev          an exe.dev VM: the ssh driver at <vm>.exe.xyz plus VM create and HTTPS proxy exposure
 #   apple-container  a macOS `container` CLI container: the backend runs in a Linux arm64 OCI image,
 #                    published on the host's loopback (needs `container` installed: brew install container)
+#   macos-vm         a headless macOS VM via Lima's vz driver: `just net up` creates it (limactl start,
+#                    first run downloads + installs macOS), then uses the ssh steps + launchd (needs `limactl`)
 #   url              connect only (someone else runs the backend); `just net register <id> --token <t>`
 #
 # Tokens never live here. Each device generates its own in <home_dir>/backend.env, and
@@ -67,6 +69,16 @@ devices:
   #   image: node:24.11.1-bookworm-slim
   #   cpus: 2
   #   memory: 2048M
+  #   start_dirs: ["~/dpi-work"]
+
+  # A headless macOS VM via Lima's vz driver (needs `brew install lima`). The first
+  # `just net up mac-box` downloads and installs macOS (slow); later ups are quick.
+  # mac-box:
+  #   name: macOS VM
+  #   kind: macos-vm
+  #   cpus: 2
+  #   memory: 4GiB
+  #   disk: 40                  # GiB
   #   start_dirs: ["~/dpi-work"]
 
   # An exe.dev VM (https://exe.dev). `just net up` creates it if missing and exposes it over HTTPS.

@@ -1,6 +1,8 @@
 // Process helpers for the network ops CLI: local commands, remote shell scripts over ssh
 // (scripts and secrets travel on stdin, never argv), rsync and the exe.dev control plane.
 import { spawn } from "node:child_process";
+import { homedir } from "node:os";
+import { join } from "node:path";
 import type { NetDevice } from "./config.js";
 
 export interface RunResult {
@@ -75,12 +77,17 @@ export function sshTarget(device: NetDevice) {
   return device.ssh;
 }
 
+/** `-F` flag for Lima instances: their ssh config is per-instance, not in ~/.ssh/config. */
+const sshConfigArgs = (device: NetDevice) =>
+  device.kind === "macos-vm" ? ["-F", join(homedir(), ".lima", device.id, "ssh.config")] : [];
+
 /** Run a POSIX shell script on the device. The script (and anything embedded in it) goes over stdin. */
 export function remote(device: NetDevice, script: string, options: Omit<RunOptions, "stdin"> = {}) {
-  return run("ssh", [...SSH_OPTS, sshTarget(device), "sh -s"], { ...options, stdin: PRELUDE + script });
+  return run("ssh", [...SSH_OPTS, ...sshConfigArgs(device), sshTarget(device), "sh -s"], { ...options, stdin: PRELUDE + script });
 }
 
 export function rsync(device: NetDevice, sources: string[], dest: string, cwd: string) {
+  const sshCmd = `ssh ${SSH_OPTS.join(" ")}${sshConfigArgs(device).length ? ` ${sshConfigArgs(device).join(" ")}` : ""}`;
   return run(
     "rsync",
     [
@@ -92,7 +99,7 @@ export function rsync(device: NetDevice, sources: string[], dest: string, cwd: s
       "--exclude", "dist",
       "--exclude", "*.log",
       "--exclude", ".DS_Store",
-      "-e", `ssh ${SSH_OPTS.join(" ")}`,
+      "-e", sshCmd,
       ...sources,
       `${sshTarget(device)}:${dest}`,
     ],

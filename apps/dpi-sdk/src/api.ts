@@ -9,7 +9,7 @@ import type { JobDef } from "./jobs.js";
 
 export const API_VERSION = 1 as const;
 
-export type DeviceKind = "local" | "ssh" | "exe-dev" | "apple-container" | "url";
+export type DeviceKind = "local" | "ssh" | "exe-dev" | "apple-container" | "macos-vm" | "url";
 export type DeviceStatus =
   | "checking"
   | "online"

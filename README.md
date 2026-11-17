@@ -239,6 +239,7 @@ Devices are data. `dpi-network.yaml` declares each one by kind, and no code or r
 | `ssh` | a launchd LaunchAgent (macOS) or a systemd unit (Linux) | install Node 24 with nvm, rsync the code and `npm ci`, env, service, register, wait online |
 | `exe-dev` | systemd on an [exe.dev](https://exe.dev) VM behind its HTTPS proxy | create the named VM if missing, the `ssh` steps, expose port 4780 over HTTPS before register |
 | `apple-container` | a Linux arm64 container from the macOS [`container`](https://developer.apple.com/containers/) CLI, published on `127.0.0.1` | `container run` the image if missing, copy the code and `npm ci`, env, start the backend, register, wait online |
+| `macos-vm` | a headless macOS VM from [Lima](https://lima-vm.io/)'s `vz` driver, reached over `ssh lima-<id>` | `limactl start` the VM (first run downloads + installs macOS), then the `ssh` steps: Node 24 with nvm, rsync + `npm ci`, env, launchd, register, wait online |
 | `url` | anything already running | register the URL and token only |
 
 ```bash

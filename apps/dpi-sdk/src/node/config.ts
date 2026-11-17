@@ -36,6 +36,8 @@ export interface NetDevice {
   image?: string;
   cpus?: number;
   memory?: string;
+  /** macos-vm only: the disk size in GiB for `limactl start`. */
+  disk?: number;
 }
 
 export interface NetworkConfig {
@@ -125,6 +127,15 @@ export function parseNetworkConfig(text: string, file = NETWORK_FILE): NetworkCo
       if (!Number.isInteger(device.cpus) || device.cpus < 1) throw Error(`${where}.cpus must be a positive integer`);
       device.memory = typeof d.memory === "string" && d.memory.trim() ? d.memory.trim() : "2048M";
     }
+    if (kind === "macos-vm") {
+      device.ssh = `lima-${id}`;
+      device.service ??= "launchd";
+      device.cpus = d.cpus === undefined ? 2 : Number(d.cpus);
+      if (!Number.isInteger(device.cpus) || device.cpus < 1) throw Error(`${where}.cpus must be a positive integer`);
+      device.memory = typeof d.memory === "string" && d.memory.trim() ? d.memory.trim() : "4GiB";
+      device.disk = d.disk === undefined ? 40 : Number(d.disk);
+      if (!Number.isInteger(device.disk) || device.disk < 20) throw Error(`${where}.disk must be at least 20 GiB`);
+    }
     if (d.service !== undefined) {
       if (d.service !== "launchd" && d.service !== "systemd") throw Error(`${where}.service must be launchd or systemd`);
       device.service = d.service;
@@ -144,7 +155,7 @@ export function parseNetworkConfig(text: string, file = NETWORK_FILE): NetworkCo
     }
     if ((kind === "ssh" || kind === "exe-dev") && !device.service) throw Error(`${where}.service is required for kind ${kind}`);
     const defaultUrl =
-      kind === "local" || kind === "apple-container"
+      kind === "local" || kind === "apple-container" || kind === "macos-vm"
         ? `http://127.0.0.1:${port}`
         : kind === "exe-dev"
           ? `https://${device.vm}.exe.xyz`

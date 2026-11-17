@@ -180,6 +180,8 @@ async function installService(device: NetDevice, ctx: DriverContext) {
   };
   const deployDir = join(ctx.config.root, "apps/dpi-backend/deploy");
   if (device.service === "launchd") {
+    // A headless VM has no Aqua session, so its LaunchAgent must live in the user domain, not gui/.
+    const domain = device.kind === "macos-vm" ? "user/$(id -u)" : "gui/$(id -u)";
     const plist = fill(readFileSync(join(deployDir, "dpi-backend.plist"), "utf8"), values);
     await exec(
       device,
@@ -188,9 +190,9 @@ mkdir -p "$HOME/Library/LaunchAgents"
 cat > "$P" <<'DPI_PLIST_EOF'
 ${plist}
 DPI_PLIST_EOF
-launchctl bootout gui/$(id -u)/${SERVICE_LABEL} 2>/dev/null || true
-for i in 1 2 3 4 5; do launchctl bootstrap gui/$(id -u) "$P" 2>/dev/null && break; sleep 1; done
-launchctl print gui/$(id -u)/${SERVICE_LABEL} >/dev/null && echo "launchd ok"`,
+launchctl bootout ${domain}/${SERVICE_LABEL} 2>/dev/null || true
+for i in 1 2 3 4 5; do launchctl bootstrap ${domain} "$P" 2>/dev/null && break; sleep 1; done
+launchctl print ${domain}/${SERVICE_LABEL} >/dev/null && echo "launchd ok"`,
     );
   } else {
     const unit = fill(readFileSync(join(deployDir, "dpi-backend.service"), "utf8"), values);
@@ -209,14 +211,15 @@ echo "systemd ok"`,
 }
 
 async function serviceCommand(device: NetDevice, action: "restart" | "down") {
-  if (device.service === "launchd")
+  if (device.service === "launchd") {
+    const domain = device.kind === "macos-vm" ? "user/$(id -u)" : "gui/$(id -u)";
     return exec(
       device,
       action === "restart"
-        ? `launchctl kickstart -k gui/$(id -u)/${SERVICE_LABEL}`
-        : `launchctl bootout gui/$(id -u)/${SERVICE_LABEL} 2>/dev/null || true`,
+        ? `launchctl kickstart -k ${domain}/${SERVICE_LABEL}`
+        : `launchctl bootout ${domain}/${SERVICE_LABEL} 2>/dev/null || true`,
     );
-  if (device.service === "systemd")
+  }
     return exec(device, `sudo -n systemctl ${action === "restart" ? "restart" : "stop"} ${SYSTEMD_UNIT}`);
   throw Error(`${device.id} has no service; it runs with \`just backend run\``);
 }
@@ -481,6 +484,128 @@ const appleContainerDriver: Driver = {
   },
 };
 
+// ------------------------------------------------------------------ headless macOS VM (Lima, vz driver)
+
+async function limaInstances() {
+  const r = await run("limactl", ["list", "--format", "json"], { allowFail: true });
+  if (r.code !== 0) return [];
+  try {
+    const parsed = JSON.parse(r.stdout || "[]");
+    return (Array.isArray(parsed) ? parsed : [parsed]) as { name: string; status: string }[];
+  } catch {
+    return [];
+  }
+}
+
+/** Install nvm + node without git: a fresh macOS VM has no Xcode CLT, and nvm's install.sh needs git. */
+async function macosProvision(device: NetDevice, ctx: DriverContext) {
+  ctx.log(`provision ${device.id}: nvm (curl tarball, no git) + node 24`);
+  const result = await exec(
+    device,
+    `if [ ! -s "$NVM_DIR/nvm.sh" ]; then
+  mkdir -p "$NVM_DIR"
+  curl -fsSL https://github.com/nvm-sh/nvm/archive/refs/tags/v0.40.3.tar.gz | tar -xz -C "$NVM_DIR" --strip-components=1
+fi
+. "$NVM_DIR/nvm.sh"
+nvm install 24 >/dev/null 2>&1
+echo "node: $(nvm which 24)"`,
+    { timeoutMs: 900_000 },
+  );
+  ctx.log(result.stdout.trim());
+}
+
+async function limaCreate(device: NetDevice, ctx: DriverContext) {
+  const existing = (await limaInstances()).find((i) => i.name === device.id);
+  if (!existing) {
+    ctx.log(`create ${device.id}: limactl start template://macos-27 (downloads + installs macOS; slow the first time)`);
+    await run(
+      "limactl",
+      [
+        "start", "--name", device.id,
+        "--cpus", String(device.cpus ?? 2),
+        "--memory", device.memory ?? "4GiB",
+        "--disk", String(device.disk ?? 40),
+        "--set", `.portForwards = [{"guestPort": ${device.port}, "hostPort": ${device.port}}]`,
+        "template://macos-27",
+      ],
+      { timeoutMs: 3_600_000 },
+    );
+  } else if (existing.status !== "Running") {
+    ctx.log(`create ${device.id}: starting existing VM`);
+    await run("limactl", ["start", device.id], { timeoutMs: 600_000 });
+  } else {
+    ctx.log(`create ${device.id}: VM already running`);
+  }
+}
+
+function limaSshConfig(device: NetDevice) {
+  return join(homedir(), ".lima", device.id, "ssh.config");
+}
+
+async function macosTunnel(device: NetDevice) {
+  await macosStopTunnel(device);
+  // Lima's vz portForwards do not publish for macOS guests, so forward over ssh.
+  await run("ssh", ["-F", limaSshConfig(device), "-f", "-N", "-L", `127.0.0.1:${device.port}:127.0.0.1:${device.port}`, `lima-${device.id}`]);
+}
+
+async function macosStopTunnel(device: NetDevice) {
+  await run("pkill", ["-f", `127.0.0.1:${device.port}:127.0.0.1:${device.port}`], { allowFail: true });
+}
+
+async function macosStart(device: NetDevice, ctx: DriverContext) {
+  await exec(
+    device,
+    `mkdir -p "${shPath(device.homeDir)}"
+nohup sh -c 'cd "${shPath(device.codeDir)}/apps/dpi-backend" && exec npm start' >> "${shPath(device.homeDir)}/backend.log" 2>&1 < /dev/null &`,
+  );
+  await macosTunnel(device);
+  ctx.log(`service ${device.id}: backend started + ssh tunnel to 127.0.0.1:${device.port} (headless VM has no Aqua session for launchd)`);
+}
+
+async function macosStop(device: NetDevice) {
+  await exec(device, `pkill -f 'src/main.ts' 2>/dev/null || true`);
+  await macosStopTunnel(device);
+}
+
+const macosVmDriver: Driver = {
+  create: limaCreate,
+  provision: macosProvision,
+  deploy,
+  env: (d, ctx) => writeEnv(d, ctx),
+  service: macosStart,
+  register,
+  rotate: async (d, ctx) => {
+    await writeEnv(d, ctx, true);
+    await macosStop(d);
+    await macosStart(d, ctx);
+    await register(d, ctx);
+  },
+  restart: async (d, ctx) => {
+    await macosStop(d);
+    await macosStart(d, ctx);
+    ctx.log(`restart ${d.id}: done`);
+  },
+  down: async (d, ctx) => {
+    await macosStop(d);
+    ctx.log(`down ${d.id}: stopped`);
+  },
+  logs,
+  destroy: async (d, ctx) => {
+    await macosStopTunnel(d);
+    await run("limactl", ["delete", "--force", d.id], { allowFail: true });
+    ctx.log(`destroy ${d.id}: removed`);
+  },
+  async up(d, ctx) {
+    await limaCreate(d, ctx);
+    await macosProvision(d, ctx);
+    await deploy(d, ctx);
+    await writeEnv(d, ctx);
+    await macosStart(d, ctx);
+    await register(d, ctx);
+    await waitOnline(d, ctx);
+  },
+};
+
 const urlDriver: Driver = {
   async register(d, ctx) {
     syncConfigToRegistry(ctx.config, ctx.registry);
@@ -502,6 +627,7 @@ export const drivers: Record<DeviceKind, Driver> = {
   ssh: sshDriver,
   "exe-dev": exeDevDriver,
   "apple-container": appleContainerDriver,
+  "macos-vm": macosVmDriver,
   url: urlDriver,
 };
 
