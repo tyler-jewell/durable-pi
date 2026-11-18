@@ -1,0 +1,21 @@
+{
+  "name": "@durable-pi/base-app",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "The canonical Durable Object app shell: left = generated view + approval, right = the DO streaming itself.",
+  "scripts": {
+    "check": "vue-tsc --noEmit -p ."
+  },
+  "dependencies": {
+    "vue": "3.5.43"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "@vitejs/plugin-vue": "latest",
+    "tsx": "latest",
+    "typescript": "5.9.3",
+    "vite": "8.3.2",
+    "vue-tsc": "latest"
+  }
+}
