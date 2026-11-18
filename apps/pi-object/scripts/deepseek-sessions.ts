@@ -15,6 +15,9 @@ const args = process.argv.slice(2);
 const arg = (name: string) => { const i = args.indexOf(name); return i >= 0 ? args[i + 1] : undefined; };
 const sinceMs = Date.parse(arg("--since") ?? "1970-01-01T00:00:00Z");
 const baseline = arg("--baseline") ? Number(arg("--baseline")) : undefined;
+const tolerance = Number(arg("--tolerance") ?? "0.01"); // USD; agreed accounting tolerance
+const extra = Number(arg("--extra") ?? "0"); // USD from runs outside pi sessions, e.g. scripts/deepseek-validate.ts
+const settle = args.includes("--settle"); // wait for billing to post before reading the balance
 const sessionsRoot = join(homedir(), ".pi/agent/sessions");
 
 type Row = { dir: string; model: string; tariff: TariffName; ts: number; miss: number; hit: number; out: number; usd: number; piUsd: number };
@@ -63,16 +66,35 @@ if (args.includes("--list")) {
     console.log(`${new Date(r.ts).toISOString()} ${r.tariff.padEnd(8)} ${r.model} miss=${r.miss} hit=${r.hit} out=${r.out} $${r.usd.toFixed(6)}`);
   }
 }
-const tariffTotal = rows.reduce((s, r) => s + r.usd, 0);
+const sessionTotal = rows.reduce((s, r) => s + r.usd, 0);
+const tariffTotal = sessionTotal + extra;
 const piTotal = rows.reduce((s, r) => s + r.piUsd, 0);
-console.log(`TOTAL tariff=$${tariffTotal.toFixed(6)}  pi-catalog=$${piTotal.toFixed(6)}`);
+console.log(`TOTAL sessions tariff=${sessionTotal.toFixed(6)} + extra=${extra.toFixed(6)}  (pi-catalog=${piTotal.toFixed(6)})`); console.log(`TOTAL tariff=${tariffTotal.toFixed(6)}  pi-catalog=$${piTotal.toFixed(6)}`);
 
 const key = JSON.parse(readFileSync(join(homedir(), ".pi/agent/auth.json"), "utf8")).deepseek?.key;
-const res = await fetch("https://api.deepseek.com/user/balance", { headers: { authorization: `Bearer ${key}` } });
-const bal = await res.json() as { balance_infos: Array<{ total_balance: string }> };
-const now = Number(bal.balance_infos[0].total_balance);
+const readBalance = async () => {
+  const res = await fetch("https://api.deepseek.com/user/balance", { headers: { authorization: `Bearer ${key}` } });
+  return Number((await res.json() as { balance_infos: Array<{ total_balance: string }> }).balance_infos[0].total_balance);
+};
+// Settled = two consecutive reads 60 s apart agree. Gives up after 20 min and says so.
+let now = await readBalance();
+if (settle) {
+  const started = Date.now();
+  let stableFor = 0;
+  while (stableFor < 2 && Date.now() - started < 20 * 60_000) {
+    await new Promise((r) => setTimeout(r, 60_000));
+    const next = await readBalance();
+    stableFor = next === now ? stableFor + 1 : 0;
+    now = next;
+  }
+  console.log(stableFor >= 2 ? `balance settled after ${Math.round((Date.now() - started) / 1000)}s` : "balance NOT settled after 20 min");
+}
 console.log(`balance now=$${now.toFixed(2)} (${new Date().toISOString()})`);
 if (baseline !== undefined) {
   const delta = baseline - now;
-  console.log(`balance delta since baseline=$${delta.toFixed(2)}  vs tariff total=$${tariffTotal.toFixed(6)}  diff=$${(delta - tariffTotal).toFixed(4)}  (balance rounds to cents, so +/-$0.005 per reading)`);
+  const diff = delta - tariffTotal;
+  const verdict = Math.abs(diff) <= tolerance ? "PASS" : "FAIL";
+  console.log(`balance delta=$${delta.toFixed(2)}  ledger tariff total=$${tariffTotal.toFixed(6)}  diff=$${diff.toFixed(4)}  tolerance=$${tolerance.toFixed(2)}  ${verdict}`);
+  console.log("note: balance is rounded to cents, so each reading can be off by up to $0.005");
+  if (verdict === "FAIL") process.exitCode = 1;
 }
