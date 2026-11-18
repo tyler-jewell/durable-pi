@@ -12,5 +12,5 @@
     "baseUrl": ".",
     "paths": { "@sdk/*": ["../dpi-sdk/src/*"] }
   },
-  "include": ["src/**/*.ts", "src/**/*.vue"]
+  "include": ["src/**/*.ts", "src/**/*.vue", "vite.config.ts"]
 }

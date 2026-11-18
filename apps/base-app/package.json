@@ -5,7 +5,9 @@
   "type": "module",
   "description": "The canonical Durable Object app shell: left = generated view + approval, right = the DO streaming itself.",
   "scripts": {
-    "check": "vue-tsc --noEmit -p ."
+    "check": "vue-tsc --noEmit -p .",
+    "dev": "vite",
+    "build": "vite build"
   },
   "dependencies": {
     "vue": "3.5.43"
