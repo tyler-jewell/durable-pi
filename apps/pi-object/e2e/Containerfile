@@ -6,7 +6,7 @@ RUN npm install -g wrangler@4.164.0 cf@1.0.0-rc.1 --no-audit --no-fund
 WORKDIR /opt/e2e
 COPY package.json package-lock.json ./
 RUN npm ci --omit=dev --no-audit --no-fund && ln -s /opt/e2e/node_modules/.bin/pi /usr/local/bin/pi
-COPY faux-agent.ts inside.sh ./
+COPY faux-agent.ts contract.ts inside.sh ./
 RUN chmod +x /opt/e2e/inside.sh
 ENV GIT_TERMINAL_PROMPT=0
 CMD ["/opt/e2e/inside.sh"]

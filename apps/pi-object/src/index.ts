@@ -14,8 +14,12 @@ import { DurableObject } from "cloudflare:workers";
 import { Workspace } from "@cloudflare/computer";
 import { CodemodeBackend } from "@cloudflare/computer/backends/codemode";
 import { createPiTools } from "@cloudflare/computer/tools/pi-ai";
-import { createModels, type Message } from "@earendil-works/pi-ai";
+import { createModels, type Message, type Model } from "@earendil-works/pi-ai";
 import { deepseekProvider } from "@earendil-works/pi-ai/providers/deepseek";
+import { fauxProvider, fauxAssistantMessage, fauxText, fauxToolCall } from "@earendil-works/pi-ai/providers/faux";
+import { createGitClient } from "@cloudflare/computer/git";
+import type { PiTool, PiToolCall, PiToolResult } from "@cloudflare/computer/tools/pi-ai";
+import * as E from "../e2e/contract.js";
 
 import { BUDGET, COST_CONFIG, COST_OBJECT_IDS, type CostObjectId } from "./cost/config.js";
 import { budgetDecision, BudgetExceeded, type BudgetDecision } from "./cost/budget.js";
@@ -55,6 +59,30 @@ const sha256Hex = async (text: string) => {
 };
 
 export type RunResult = { answer: string; toolCalls: number; turns: number } | { budget: BudgetDecision };
+
+/** Inputs of one agent loop: the DeepSeek run and the e2e run both go through it. */
+interface LoopParams {
+  task: string;
+  model: Model<string>;
+  models: ReturnType<typeof createModels>;
+  tools: PiTool[];
+  execute: (call: PiToolCall) => Promise<PiToolResult>;
+  env: Record<string, string>;
+  modelId: string;
+}
+
+export interface E2EResult {
+  runId: string;
+  seedSha: string;
+  headSha: string;
+  pushedSha: string;
+  answer: string;
+  toolCalls: number;
+  turns: number;
+  durationMs: number;
+  loopMs: number;
+  cost: CostReport;
+}
 
 export interface CostReport {
   asOf: number;
@@ -237,14 +265,126 @@ export class PiAgent extends DurableObject<Env> {
 
   private async runLoop(task: string): Promise<RunResult> {
     const { tools, execute } = createPiTools({ workspace: this.workspace });
-
     const models = createModels();
     models.setProvider(deepseekProvider());
-    const model = this.llmModel();
-
-    const messages: Message[] = [{ role: "user", content: task, timestamp: Date.now() }];
     // The key travels with each request as pi's per-request env; it is never stored in the DO.
-    const env = { DEEPSEEK_API_KEY: this.env.DEEPSEEK_API_KEY };
+    return this.loop({
+      task,
+      model: this.llmModel(),
+      models,
+      tools,
+      execute,
+      env: { DEEPSEEK_API_KEY: this.env.DEEPSEEK_API_KEY },
+      modelId: MODEL_ID,
+    });
+  }
+
+  /**
+   * The e2e scenario on Cloudflare: the same contract as the container run (e2e/contract.ts). A scripted model writes a
+   * file, commits it and pushes it to the Artifacts repo the host created, then finishes. Telemetry and the budget guard
+   * apply as on every run. The DO's storage is deleted at the end, so the run leaves nothing behind.
+   */
+  async e2eRun(input: { remote: string; token: string; runId: string }): Promise<E2EResult> {
+    try {
+      return await this.e2eScenario(input);
+    } finally {
+      // Net-zero: the run's files and state are removed from the DO, whether the scenario passed or failed.
+      await this.ctx.storage.deleteAll();
+    }
+  }
+
+  private async e2eScenario(input: { remote: string; token: string; runId: string }): Promise<E2EResult> {
+    const started = Date.now();
+    const repo = "/workspace/repo";
+    const git = createGitClient()({ ws: this.workspace, defaultIdentity: E.AUTHOR });
+    const auth = { headers: { authorization: `Bearer ${input.token}` } };
+
+    // Seed commit, pushed directly (the container does the same with git).
+    await this.workspace.fs.mkdir(repo, { recursive: true });
+    await this.workspace.fs.writeFile(`${repo}/README.md`, E.SEED_README);
+    await git.init({ dir: repo, defaultBranch: E.BRANCH });
+    await git.add({ dir: repo, paths: ["README.md"] });
+    await git.commit({ dir: repo, message: E.SEED_MESSAGE });
+    const seedSha = await git.revParse({ dir: repo, ref: "HEAD" });
+    await git.remoteAdd({ dir: repo, name: "origin", url: input.remote });
+    await git.push({ dir: repo, remote: "origin", ref: E.BRANCH, ...auth });
+
+    // The agent: pi's own tools for the write, plus a git tool for the commit and push.
+    const { tools: piTools, execute: piExecute } = createPiTools({ workspace: this.workspace });
+    let pushedSha = "";
+    const gitTool: PiTool = {
+      name: "git_commit_push",
+      description: "Stage every change in the repository, commit it, and push to origin.",
+      parameters: { type: "object", properties: { message: { type: "string" } }, required: ["message"] },
+    };
+    const commitAndPush = async (message: string): Promise<PiToolResult> => {
+      await git.add({ dir: repo, paths: ["."] });
+      await git.commit({ dir: repo, message });
+      await git.push({ dir: repo, remote: "origin", ref: E.BRANCH, ...auth });
+      pushedSha = await git.revParse({ dir: repo, ref: "HEAD" });
+      return { content: [{ type: "text", text: `PUSHED_SHA=${pushedSha}` }], isError: false };
+    };
+    const execute = (call: PiToolCall): Promise<PiToolResult> =>
+      call.name === gitTool.name
+        ? commitAndPush(String((call.arguments as { message?: unknown }).message ?? E.COMMIT_MESSAGE))
+        : piExecute(call);
+
+    // The scripted model: a faux provider. Every request gets the next turn of the shared scenario.
+    const faux = fauxProvider({
+      provider: "e2e-faux",
+      models: [{ id: "scripted", name: "Scripted", contextWindow: 128000, maxTokens: 8192 }],
+    });
+    const models = createModels();
+    models.setProvider(faux.provider);
+    const turn = (context: { messages: unknown[] }) => {
+      faux.appendResponses([turn]);
+      const last = context.messages.at(-1) as { role: string; toolName?: string } | undefined;
+      switch (E.nextStep(last)) {
+        case "push":
+          return fauxAssistantMessage([fauxText("Committing and pushing."), fauxToolCall("git_commit_push", { message: E.COMMIT_MESSAGE })], {
+            stopReason: "toolUse",
+          });
+        case "done":
+          return fauxAssistantMessage(fauxText(`${E.DONE_MARKER} ${E.E2E_FILE}`));
+        default:
+          return fauxAssistantMessage([fauxText("Writing the file."), fauxToolCall("write", { path: `${repo}/${E.E2E_FILE}`, content: E.E2E_CONTENT })], {
+            stopReason: "toolUse",
+          });
+      }
+    };
+    faux.setResponses([turn]);
+
+    const loopStarted = Date.now();
+    const result = await this.loop({
+      task: `Create ${E.E2E_FILE}, then commit and push it.`,
+      model: faux.getModel("scripted")!,
+      models,
+      tools: [...piTools, gitTool],
+      execute,
+      env: {},
+      modelId: "e2e-faux",
+    });
+    const headSha = await git.revParse({ dir: repo, ref: "HEAD" });
+    const cost = await this.costSnapshot();
+    const durationMs = Date.now() - started;
+    return {
+      runId: input.runId,
+      seedSha,
+      headSha,
+      pushedSha,
+      answer: "answer" in result ? result.answer : "",
+      toolCalls: "toolCalls" in result ? result.toolCalls : 0,
+      turns: "turns" in result ? result.turns : 0,
+      durationMs,
+      loopMs: Date.now() - loopStarted,
+      cost,
+    };
+  }
+
+  /** The agent loop: budget check, model call, telemetry, tool calls, until the model answers without a tool call. */
+  private async loop(p: LoopParams): Promise<RunResult> {
+    const { task, model, models, tools, execute, env, modelId } = p;
+    const messages: Message[] = [{ role: "user", content: task, timestamp: Date.now() }];
 
     let toolCalls = 0;
     for (let turn = 0; turn < MAX_TURNS; turn += 1) {
@@ -253,7 +393,7 @@ export class PiAgent extends DurableObject<Env> {
       const reply = await models.complete(model, { systemPrompt: SYSTEM_PROMPT, messages, tools }, { env });
       const callEnded = Date.now();
       messages.push(reply);
-      this.usage.record([...T.llmLines(MODEL_ID, reply.usage), T.llmWallLine(MODEL_ID, callEnded - callStarted)]);
+      this.usage.record([...T.llmLines(modelId, reply.usage), T.llmWallLine(modelId, callEnded - callStarted)]);
 
       // Track the largest call: the budget guard uses it as the expected cost of the next one.
     const callUsd = reply.usage.cost.total;
@@ -363,6 +503,14 @@ export default {
       } catch {
         return new Response("not found\n", { status: 404 });
       }
+    }
+
+    if (request.method === "POST" && url.pathname === "/v1/e2e") {
+      const body = (await request.json()) as { remote?: unknown; token?: unknown; runId?: unknown };
+      if (typeof body.remote !== "string" || typeof body.token !== "string" || typeof body.runId !== "string") {
+        return new Response("body needs {remote, token, runId}\n", { status: 400 });
+      }
+      return json(await agent.e2eRun({ remote: body.remote, token: body.token, runId: body.runId }));
     }
 
     if (request.method === "POST" && url.pathname === "/") {

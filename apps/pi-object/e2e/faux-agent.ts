@@ -1,21 +1,11 @@
-// Deterministic agent for the e2e run. The pi CLI and its real tools run unchanged; only the model is scripted,
-// so a run needs no network model and every step is the same on every run.
-//
-// Turns: (1) write a file, (2) commit and push it through pi's bash tool, (3) finish with a marker.
+// Container side of the e2e: pi's real CLI and tools, with the model scripted (see contract.ts). The push is a bash
+// `git` command, the container's equivalent of the Worker's git tool.
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { createFauxCore, fauxAssistantMessage, fauxText, fauxToolCall } from "@earendil-works/pi-ai/providers/faux";
+import { AUTHOR, BRANCH, COMMIT_MESSAGE, DONE_MARKER, E2E_CONTENT, E2E_FILE, nextStep } from "./contract.ts";
 
 export const PROVIDER = "e2e-faux";
-export const E2E_FILE = "e2e/hello.txt";
-export const E2E_CONTENT = "hello from the pi agent in a container\n";
-export const COMMIT_MESSAGE = "e2e: agent change";
-export const DONE_MARKER = "E2E_AGENT_DONE";
-const PUSH = `git add -A && git -c user.name=dpi-e2e -c user.email=e2e@dpi.invalid commit -q -m "${COMMIT_MESSAGE}" && git push -q origin HEAD:main && echo "PUSHED_SHA=$(git rev-parse HEAD)"`;
-
-interface Msg {
-  role: string;
-  toolName?: string;
-}
+const PUSH = `git add -A && git -c user.name=${AUTHOR.name} -c user.email=${AUTHOR.email} commit -q -m "${COMMIT_MESSAGE}" && git push -q origin HEAD:${BRANCH} && echo "PUSHED_SHA=$(git rev-parse HEAD)"`;
 
 export default function (pi: ExtensionAPI) {
   const core = createFauxCore({
@@ -25,14 +15,17 @@ export default function (pi: ExtensionAPI) {
   // A factory re-queues itself, so every request gets the next scripted turn (same pattern as the backend's faux).
   const turn = (context: { messages: unknown[] }) => {
     core.appendResponses([turn]);
-    const last = (context.messages as Msg[]).at(-1);
-    if (last?.role === "toolResult" && last.toolName === "write")
-      return fauxAssistantMessage([fauxText("Committing and pushing."), fauxToolCall("bash", { command: PUSH })], { stopReason: "toolUse" });
-    if (last?.role === "toolResult" && last.toolName === "bash")
-      return fauxAssistantMessage(fauxText(`${DONE_MARKER} ${E2E_FILE}`));
-    return fauxAssistantMessage([fauxText("Writing the file."), fauxToolCall("write", { path: E2E_FILE, content: E2E_CONTENT })], {
-      stopReason: "toolUse",
-    });
+    const last = context.messages.at(-1) as { role: string; toolName?: string } | undefined;
+    switch (nextStep(last)) {
+      case "push":
+        return fauxAssistantMessage([fauxText("Committing and pushing."), fauxToolCall("bash", { command: PUSH })], { stopReason: "toolUse" });
+      case "done":
+        return fauxAssistantMessage(fauxText(`${DONE_MARKER} ${E2E_FILE}`));
+      default:
+        return fauxAssistantMessage([fauxText("Writing the file."), fauxToolCall("write", { path: E2E_FILE, content: E2E_CONTENT })], {
+          stopReason: "toolUse",
+        });
+    }
   };
   core.setResponses([turn]);
 

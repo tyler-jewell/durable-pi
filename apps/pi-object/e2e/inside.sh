@@ -22,6 +22,10 @@ pi -ne -e /opt/e2e/faux-agent.ts --provider e2e-faux --model scripted --session-
    -p "Create e2e/hello.txt, then commit and push it." </dev/null
 AGENT_EXIT=$?
 set -e
+# Counts from pi's own session record: tool results and assistant turns.
+COUNTS=$(node -e 'const fs=require("fs");let t=0,r=0;for(const f of fs.readdirSync("/work/session")){for(const l of fs.readFileSync("/work/session/"+f,"utf8").split("\n")){if(!l.trim())continue;const m=JSON.parse(l).message;if(!m)continue;if(m.role==="assistant")t++;if(m.role==="toolResult")r++}}console.log(t+" "+r)')
+echo "TURNS=$(echo "$COUNTS" | cut -d" " -f1)"
+echo "TOOL_CALLS=$(echo "$COUNTS" | cut -d" " -f2)"
 echo "AGENT_EXIT=$AGENT_EXIT"
 echo "CONTAINER_HEAD=$(git rev-parse HEAD)"
 echo "REMOTE_HEAD=$(git ls-remote origin refs/heads/main | cut -f1)"

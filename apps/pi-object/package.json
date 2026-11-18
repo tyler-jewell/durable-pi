@@ -11,17 +11,20 @@
     "test": "tsx --test test/*.test.ts",
     "spend-limits": "node scripts/ensure-spend-limits.mjs",
     "spend-limits:check": "node scripts/ensure-spend-limits.mjs --dry-run",
-    "e2e": "tsx e2e/e2e.mts"
+    "e2e": "tsx e2e/e2e.mts",
+    "e2e:remote": "tsx e2e/e2e.mts --target=remote",
+    "e2e:compare": "tsx e2e/compare.mts"
   },
   "dependencies": {
     "@cloudflare/computer": "0.11.3",
     "@earendil-works/pi-ai": "1.5.2",
+    "@platformatic/vfs": "0.5.0",
     "just-bash": "^3.6.0",
     "zod": "^4.6.6"
   },
   "devDependencies": {
+    "tsx": "4.22.0",
     "typescript": "^6.0.3",
-    "wrangler": "4.164.0",
-    "tsx": "4.22.0"
+    "wrangler": "4.164.0"
   }
 }
