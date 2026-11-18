@@ -1,183 +1,97 @@
-// Pure metering arithmetic. No I/O: the Durable Object feeds it counters and it returns priced ledger lines,
-// so every rule here runs under plain Node tests.
-
-import { PRICES } from "./prices.js";
-
-/**
- * How a quantity was obtained. "exact": provider-reported counts at a published price.
- * "measured": counted in-band by this app. "estimated": an upper bound (wall-clock stands in for CPU time).
- */
-export type Precision = "exact" | "measured" | "estimated";
-
-export type Service =
-  | "llm"
-  | "durable_objects"
-  | "workers"
-  | "dynamic_workers"
-  | "storage"
-  | "secrets"
-  | "tools";
-
-export interface Line {
-  service: Service;
-  /** Stable key: service.resource.unit, e.g. "llm.deepseek.deepseek-flash.output". */
-  sku: string;
-  unit: string;
-  quantity: number;
-  usd: number;
-  precision: Precision;
-  /** Set for LLM lines, so the stream can break cost down by model. */
-  model?: string;
-}
-
-export interface LlmUsage {
-  /** Uncached prompt tokens (pi-ai's `input`). */
-  input: number;
-  /** Cache-hit prompt tokens (pi-ai's `cacheRead`). */
-  cacheRead: number;
-  /** Completion tokens, reasoning included (pi-ai's `output` already contains reasoning). */
-  output: number;
-}
+// Telemetry: exact counts and durations, with no price attached. Pi supplies the token counts and this app supplies the
+// tool calls and clock readings. Cost objects (objects.ts) turn these quantities into dollars, so a rate or a
+// balance rule can change without rewriting what was measured.
+//
+// "pi" lines are copied from pi's own usage record. "measured" lines are counted or timed here.
 
 import type { Usage as PiUsage } from "@earendil-works/pi-ai";
 
-const perMillion = (quantity: number, rate: number) => (quantity / 1_000_000) * rate;
+export type Source = "pi" | "measured";
+
+export type Service = "llm" | "tools" | "durable_objects" | "workers" | "dynamic_workers" | "storage" | "secrets";
+
+export interface Line {
+  service: Service;
+  /** Stable key: service.resource.unit, e.g. "llm.deepseek-flash.output". */
+  sku: string;
+  unit: string;
+  quantity: number;
+  source: Source;
+  /** Set for LLM lines, so totals can be broken down by model. */
+  model?: string;
+}
 
 /**
- * LLM spend, read straight from pi: `usage.cost` on an assistant message is set by pi-ai's calculateCost, using
- * the rate table of the model that answered (the tariff in force for that request). We never recompute it here,
- * so pi stays the single source of truth for LLM cost.
+ * Token counts exactly as pi reports them for one assistant message. `output` already includes reasoning tokens;
+ * `output_reasoning` is the part of it that was reasoning, reported for information and never added again.
+ * `estimate` is pi's own cost figure from its catalog. It is an estimate, not a bill, and nothing bills from it.
  */
 export function llmLines(modelId: string, usage: PiUsage): Line[] {
-  const id = `llm.${modelId}`;
-  const row = (kind: string, unit: string, quantity: number, usd: number): Line => ({
-    service: "llm", sku: `${id}.${kind}`, unit, quantity, usd, precision: "exact", model: modelId,
+  const base = `llm.${modelId}`;
+  const row = (kind: string, unit: string, quantity: number): Line => ({
+    service: "llm", sku: `${base}.${kind}`, unit, quantity, source: "pi", model: modelId,
   });
+  const reasoning = (usage as { reasoning?: number }).reasoning ?? 0;
   return [
-    row("input_miss", "tokens", usage.input, usage.cost.input),
-    row("input_hit", "tokens", usage.cacheRead, usage.cost.cacheRead),
-    row("cache_write", "tokens", usage.cacheWrite, usage.cost.cacheWrite),
-    row("output", "tokens", usage.output, usage.cost.output),
+    row("input_miss", "tokens", usage.input),
+    row("input_hit", "tokens", usage.cacheRead),
+    row("cache_write", "tokens", usage.cacheWrite),
+    row("output", "tokens", usage.output),
+    row("output_reasoning", "tokens", reasoning),
+    row("estimate", "usd", usage.cost.total),
   ];
 }
 
-/** The line that charges one Durable Object request. */
-export function doRequestLine(count: number): Line {
-  return {
-    service: "durable_objects",
-    sku: "durable_objects.requests",
-    unit: "requests",
-    quantity: count,
-    usd: perMillion(count, PRICES.durableObjects.requestsPerMillion),
-    precision: "measured",
-  };
+/** Wall-clock time of one model call, measured here around `models.complete`. */
+export function llmWallLine(modelId: string, ms: number): Line {
+  return { service: "llm", sku: `llm.${modelId}.wall_ms`, unit: "ms", quantity: ms, source: "measured", model: modelId };
 }
 
-export function gbSecondsLine(gbSeconds: number, precision: Precision): Line {
-  return {
-    service: "durable_objects",
-    sku: "durable_objects.duration",
-    unit: "GB-s",
-    quantity: gbSeconds,
-    usd: perMillion(gbSeconds, PRICES.durableObjects.gbSecondsPerMillion),
-    precision,
-  };
+/** One tool call and its wall-clock time. */
+export function toolLines(name: string, ms: number): Line[] {
+  return [
+    { service: "tools", sku: `tools.${name}.calls`, unit: "calls", quantity: 1, source: "measured" },
+    { service: "tools", sku: `tools.${name}.wall_ms`, unit: "ms", quantity: ms, source: "measured" },
+  ];
+}
+
+export function doRequestLine(count: number): Line {
+  return { service: "durable_objects", sku: "durable_objects.requests", unit: "requests", quantity: count, source: "measured" };
+}
+
+/** Active duration: wall-clock ms while at least one request is in flight (see ActiveTimer). */
+export function doDurationLine(ms: number): Line {
+  return { service: "durable_objects", sku: "durable_objects.duration", unit: "ms", quantity: ms, source: "measured" };
 }
 
 export function sqlRowLines(rowsRead: number, rowsWritten: number): Line[] {
   return [
-    {
-      service: "durable_objects",
-      sku: "durable_objects.rows_read",
-      unit: "rows",
-      quantity: rowsRead,
-      usd: perMillion(rowsRead, PRICES.durableObjects.rowsReadPerMillion),
-      precision: "measured",
-    },
-    {
-      service: "durable_objects",
-      sku: "durable_objects.rows_written",
-      unit: "rows",
-      quantity: rowsWritten,
-      usd: perMillion(rowsWritten, PRICES.durableObjects.rowsWrittenPerMillion),
-      precision: "measured",
-    },
+    { service: "durable_objects", sku: "durable_objects.rows_read", unit: "rows", quantity: rowsRead, source: "measured" },
+    { service: "durable_objects", sku: "durable_objects.rows_written", unit: "rows", quantity: rowsWritten, source: "measured" },
   ];
 }
 
-/** Storage is billed per GB-month; one sample of `bytes` held for `minutes` costs this much. */
+/** Storage as byte-minutes: `bytes` held for `minutes`. Converts to GB-months in the cost object. */
 export function storageLine(bytes: number, minutes: number): Line {
-  const gbMinutes = (bytes / 1024 ** 3) * minutes;
-  return {
-    service: "storage",
-    sku: "storage.sqlite",
-    unit: "GB-min",
-    quantity: gbMinutes,
-    usd: (gbMinutes / (30 * 24 * 60)) * PRICES.durableObjects.storageGbMonth,
-    precision: "measured",
-  };
+  return { service: "storage", sku: "storage.sqlite", unit: "byte-min", quantity: bytes * minutes, source: "measured" };
 }
 
 export function workersRequestLine(count: number): Line {
-  return {
-    service: "workers",
-    sku: "workers.requests",
-    unit: "requests",
-    quantity: count,
-    usd: perMillion(count, PRICES.workers.requestsPerMillion),
-    precision: "measured",
-  };
+  return { service: "workers", sku: "workers.requests", unit: "requests", quantity: count, source: "measured" };
 }
 
-export function workersCpuLine(cpuMs: number): Line {
-  return {
-    service: "workers",
-    sku: "workers.cpu_ms",
-    unit: "ms",
-    quantity: cpuMs,
-    usd: perMillion(cpuMs, PRICES.workers.cpuMsPerMillion),
-    precision: "estimated",
-  };
-}
-
-export function dynamicWorkerLines(created: number, requests: number, cpuMs: number): Line[] {
+/** Dynamic Workers: created (once per unique code per UTC day), requests, and wall-clock ms as a CPU upper bound. */
+export function dynamicWorkerLines(created: number, requests: number, wallMs: number): Line[] {
   return [
-    {
-      service: "dynamic_workers",
-      sku: "dynamic_workers.created",
-      unit: "workers",
-      quantity: created,
-      usd: created * PRICES.dynamicWorkers.createdPerWorkerPerDay,
-      precision: "measured",
-    },
-    {
-      service: "dynamic_workers",
-      sku: "dynamic_workers.requests",
-      unit: "requests",
-      quantity: requests,
-      usd: perMillion(requests, PRICES.dynamicWorkers.requestsPerMillion),
-      precision: "measured",
-    },
-    {
-      service: "dynamic_workers",
-      sku: "dynamic_workers.cpu_ms",
-      unit: "ms",
-      quantity: cpuMs,
-      usd: perMillion(cpuMs, PRICES.dynamicWorkers.cpuMsPerMillion),
-      precision: "estimated",
-    },
+    { service: "dynamic_workers", sku: "dynamic_workers.created", unit: "workers", quantity: created, source: "measured" },
+    { service: "dynamic_workers", sku: "dynamic_workers.requests", unit: "requests", quantity: requests, source: "measured" },
+    { service: "dynamic_workers", sku: "dynamic_workers.wall_ms", unit: "ms", quantity: wallMs, source: "measured" },
   ];
 }
 
+/** Live footprint, shown in the snapshot and never stored. */
 export function secretsLine(count: number): Line {
-  return {
-    service: "secrets",
-    sku: "secrets.count",
-    unit: "secrets",
-    quantity: count,
-    usd: count * PRICES.secrets.perSecret,
-    precision: "measured",
-  };
+  return { service: "secrets", sku: "secrets.count", unit: "secrets", quantity: count, source: "measured" };
 }
 
 /**
@@ -210,13 +124,7 @@ export class ActiveTimer {
     }
     return ms;
   }
-
-  get active(): boolean {
-    return this.depth > 0;
-  }
 }
-
-export const msToGbSeconds = (ms: number) => (ms / 1000) * PRICES.durableObjects.memoryGb;
 
 /** UTC day key used for "unique Dynamic Workers per day". */
 export const utcDay = (atMs: number) => new Date(atMs).toISOString().slice(0, 10);

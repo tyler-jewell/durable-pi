@@ -1,10 +1,13 @@
 // The durable pi object: one PiAgent Durable Object per agent. It owns a Workspace (SQLite files plus a codemode
-// `exec` backend), runs the pi-ai agent loop against DeepSeek, and meters every priced thing it does into a
-// cost ledger. Derived from cloudflare/computer examples/pi-ai.
+// `exec` backend), runs the pi-ai agent loop against DeepSeek, and records telemetry (tokens, tool calls, time).
+// Cost is computed by cost objects from telemetry and provider balances, never from a rate table.
 //
 //   client ──► Worker ──► PiAgent DO ──► Workspace (files, exec = ECMAScript in a Dynamic Worker)
 //                              ├──► DeepSeek (deepseek-flash)        key: DEEPSEEK_API_KEY, per request
-//                              └──► cost ledger ──► GET /v1/cost, SSE /v1/cost/stream (every 10 s)
+//                              ├──► DeepSeek balance (≤ 1 per minute) ──► cost object "deepseek"
+//                              └──► telemetry ──► GET /v1/cost, SSE /v1/cost/stream (every 60 s)
+//
+// Derived from cloudflare/computer examples/pi-ai.
 
 import { DurableObject } from "cloudflare:workers";
 
@@ -14,10 +17,12 @@ import { createPiTools } from "@cloudflare/computer/tools/pi-ai";
 import { createModels, type Message } from "@earendil-works/pi-ai";
 import { deepseekProvider } from "@earendil-works/pi-ai/providers/deepseek";
 
-import { deepseekModelAt } from "./tariff.js";
-import * as M from "./cost/meter.js";
+import { COST_CONFIG, COST_OBJECT_IDS, type CostObjectId } from "./cost/config.js";
+import { readDeepseekBalance } from "./cost/deepseek.js";
 import { meterStorage } from "./cost/metered-storage.js";
-import { CostStore, type Snapshot } from "./cost/store.js";
+import * as T from "./cost/meter.js";
+import { deepseekView, type CostObjectView } from "./cost/objects.js";
+import { UsageStore, type UsageSnapshot } from "./cost/store.js";
 
 const MODEL_ID = "deepseek-flash";
 /** Bound the spend if the model fails to converge. */
@@ -25,6 +30,12 @@ const MAX_TURNS = 10;
 /** Secrets the Worker needs. Listed in the cost stream so their footprint is visible (they are not billed). */
 const SECRETS_REQUIRED = ["DEEPSEEK_API_KEY", "DPI_TOKEN"] as const;
 const PRUNE_EVERY_MS = 60 * 60_000;
+/** The balance is refreshed at most this often, however many clients are watching. */
+const BALANCE_MAX_AGE_MS = 60_000;
+/** The rate window: consumption between a reading now and one at least this long ago. */
+const BURN_WINDOW_MS = 5 * 60_000;
+/** The live cost stream pushes once a minute. */
+const STREAM_EVERY_MS = 60_000;
 
 const SYSTEM_PROMPT =
   "You are working in a directory at /workspace. Use the tools to do what the user asks, then say what you did. " +
@@ -35,15 +46,23 @@ const sha256Hex = async (text: string) => {
   return [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, "0")).join("");
 };
 
+export interface CostReport {
+  asOf: number;
+  /** One entry per cost object. Each has its own free-tier toggle (off by default). */
+  objects: CostObjectView[];
+  /** Telemetry: exact counts and durations from pi and from this app's clock. */
+  usage: UsageSnapshot;
+}
+
 export class PiAgent extends DurableObject<Env> {
-  /** Rows read/written by SQLite since the last ledger flush. */
+  /** Rows read/written by SQLite since the last flush. */
   private rows = { read: 0, written: 0 };
   private readonly storage = meterStorage(this.ctx.storage, (read, written) => {
     this.rows.read += read;
     this.rows.written += written;
   });
-  private readonly cost = new CostStore(this.storage.sql);
-  private readonly active = new M.ActiveTimer();
+  private readonly usage = new UsageStore(this.storage.sql);
+  private readonly active = new T.ActiveTimer();
   private pending = { doRequests: 0, workersRequests: 0 };
   private lastStorageSampleMs = Date.now();
   private lastPruneMs = 0;
@@ -53,8 +72,8 @@ export class PiAgent extends DurableObject<Env> {
     backends: [new CodemodeBackend({ loader: this.env.LOADER })],
   });
 
-  /** Run one DO entry point with metering: request count, active duration, and a ledger flush at the end. */
-  private async tracked<T>(fn: () => Promise<T>): Promise<T> {
+  /** Run one DO entry point with metering: request count, active duration, and a telemetry flush at the end. */
+  private async tracked<R>(fn: () => Promise<R>): Promise<R> {
     this.active.enter(Date.now());
     this.pending.doRequests += 1;
     this.pending.workersRequests += 1;
@@ -66,24 +85,24 @@ export class PiAgent extends DurableObject<Env> {
     }
   }
 
-  /** Write everything metered since the last flush to the ledger. */
+  /** Write everything metered since the last flush to the telemetry store. */
   private flush(atMs: number): void {
-    const lines: M.Line[] = [];
-    if (this.pending.doRequests) lines.push(M.doRequestLine(this.pending.doRequests));
-    if (this.pending.workersRequests) lines.push(M.workersRequestLine(this.pending.workersRequests));
-    const gbSeconds = M.msToGbSeconds(this.active.drain(atMs));
-    if (gbSeconds > 0) lines.push(M.gbSecondsLine(gbSeconds, "measured"));
-    if (this.rows.read || this.rows.written) lines.push(...M.sqlRowLines(this.rows.read, this.rows.written));
+    const lines: T.Line[] = [];
+    if (this.pending.doRequests) lines.push(T.doRequestLine(this.pending.doRequests));
+    if (this.pending.workersRequests) lines.push(T.workersRequestLine(this.pending.workersRequests));
+    const activeMs = this.active.drain(atMs);
+    if (activeMs > 0) lines.push(T.doDurationLine(activeMs));
+    if (this.rows.read || this.rows.written) lines.push(...T.sqlRowLines(this.rows.read, this.rows.written));
     const minutes = (atMs - this.lastStorageSampleMs) / 60_000;
     if (minutes > 0) {
-      lines.push(M.storageLine(this.ctx.storage.sql.databaseSize, minutes));
+      lines.push(T.storageLine(this.ctx.storage.sql.databaseSize, minutes));
       this.lastStorageSampleMs = atMs;
     }
     this.pending = { doRequests: 0, workersRequests: 0 };
     this.rows = { read: 0, written: 0 };
-    this.cost.record(lines, atMs);
+    this.usage.record(lines);
     if (atMs - this.lastPruneMs > PRUNE_EVERY_MS) {
-      this.cost.prune(atMs);
+      this.usage.prune(atMs);
       this.lastPruneMs = atMs;
     }
   }
@@ -93,12 +112,25 @@ export class PiAgent extends DurableObject<Env> {
     return this.tracked(() => this.workspace.fs.readFile(path, "utf8"));
   }
 
-  /** Live cost of this agent: lifetime totals by service, SKU, model and minute. Flushes first, so it is current. */
-  async costSnapshot(): Promise<Snapshot> {
+  /** Live cost and telemetry. The balance is re-read only if the last reading is over a minute old. */
+  async costSnapshot(): Promise<CostReport> {
     return this.tracked(async () => {
       const now = Date.now();
       this.flush(now);
-      return this.cost.snapshot(now, [M.secretsLine(SECRETS_REQUIRED.length)]);
+      const deepseek = await this.deepseekObject(now);
+      return {
+        asOf: now,
+        objects: [deepseek],
+        usage: this.usage.snapshot([T.secretsLine(SECRETS_REQUIRED.length)]),
+      };
+    });
+  }
+
+  /** Turn one cost object's free-tier toggle on or off. Off is the default. */
+  async setFreeTier(id: CostObjectId, enabled: boolean): Promise<{ id: CostObjectId; freeTier: boolean }> {
+    return this.tracked(async () => {
+      await this.ctx.storage.put(freeTierKey(id), enabled);
+      return { id, freeTier: enabled };
     });
   }
 
@@ -106,11 +138,38 @@ export class PiAgent extends DurableObject<Env> {
     return this.tracked(() => this.runLoop(task));
   }
 
+  private async deepseekObject(now: number): Promise<CostObjectView> {
+    const cfg = COST_CONFIG.deepseek;
+    const freeTier = (await this.ctx.storage.get<boolean>(freeTierKey("deepseek"))) === true;
+
+    let note: string | undefined;
+    let latest = this.usage.latestBalance();
+    if (!latest || now - latest.at >= BALANCE_MAX_AGE_MS) {
+      try {
+        const fresh = await readDeepseekBalance(this.env.DEEPSEEK_API_KEY, fetch, now);
+        this.usage.recordBalance(fresh);
+        latest = fresh;
+      } catch (error) {
+        // Keep the last good reading, and say that it is stale.
+        note = `balance refresh failed: ${error instanceof Error ? error.message : String(error)}`;
+      }
+    }
+    const prior = latest ? this.usage.balanceAtOrBefore(latest.at - BURN_WINDOW_MS) : null;
+    return deepseekView({ id: "deepseek", label: cfg.label, config: cfg, balance: latest, prior, freeTier, note });
+  }
+
+  private llmModel() {
+    const model = deepseekProvider().getModels().find((m) => m.id === MODEL_ID);
+    if (!model) throw new Error(`pi-ai has no DeepSeek model ${MODEL_ID}`);
+    return model;
+  }
+
   private async runLoop(task: string): Promise<{ answer: string; toolCalls: number; turns: number }> {
     const { tools, execute } = createPiTools({ workspace: this.workspace });
 
     const models = createModels();
     models.setProvider(deepseekProvider());
+    const model = this.llmModel();
 
     const messages: Message[] = [{ role: "user", content: task, timestamp: Date.now() }];
     // The key travels with each request as pi's per-request env; it is never stored in the DO.
@@ -118,10 +177,11 @@ export class PiAgent extends DurableObject<Env> {
 
     let toolCalls = 0;
     for (let turn = 0; turn < MAX_TURNS; turn += 1) {
-      // The tariff in force now (peak or off-peak), priced by pi-ai; the same rule the host extension uses.
-      const reply = await models.complete(deepseekModelAt(MODEL_ID, Date.now()), { systemPrompt: SYSTEM_PROMPT, messages, tools }, { env });
+      const callStarted = Date.now();
+      const reply = await models.complete(model, { systemPrompt: SYSTEM_PROMPT, messages, tools }, { env });
+      const callEnded = Date.now();
       messages.push(reply);
-      this.cost.record(M.llmLines(MODEL_ID, reply.usage), Date.now());
+      this.usage.record([...T.llmLines(MODEL_ID, reply.usage), T.llmWallLine(MODEL_ID, callEnded - callStarted)]);
 
       const calls = reply.content.filter((block) => block.type === "toolCall");
       if (calls.length === 0) {
@@ -137,16 +197,14 @@ export class PiAgent extends DurableObject<Env> {
         const started = Date.now();
         const { content, isError } = await execute(call);
         const now = Date.now();
-        const lines: M.Line[] = [
-          { service: "tools", sku: `tools.${call.name}`, unit: "calls", quantity: 1, usd: 0, precision: "measured" },
-        ];
+        const lines: T.Line[] = T.toolLines(call.name, now - started);
         if (call.name === "exec") {
           const source = String((call.arguments as { command?: unknown }).command ?? "");
-          const created = this.cost.markDynamicWorker(M.utcDay(started), await sha256Hex(source)) ? 1 : 0;
-          // Wall-clock time bounds the module's CPU time from above, so this line is an estimate.
-          lines.push(...M.dynamicWorkerLines(created, 1, now - started));
+          const created = this.usage.markDynamicWorker(T.utcDay(started), await sha256Hex(source)) ? 1 : 0;
+          // Wall-clock time bounds the module's CPU time from above.
+          lines.push(...T.dynamicWorkerLines(created, 1, now - started));
         }
-        this.cost.record(lines, now);
+        this.usage.record(lines);
 
         messages.push({
           role: "toolResult",
@@ -163,10 +221,12 @@ export class PiAgent extends DurableObject<Env> {
   }
 }
 
+const freeTierKey = (id: string) => `free-tier:${id}`;
+
 const json = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body, null, 2) + "\n", { status, headers: { "content-type": "application/json" } });
 
-/** Server-Sent Events: a cost snapshot now, then one every 10 seconds until the client disconnects. */
+/** Server-Sent Events: a cost report now, then one every minute until the client disconnects. */
 function costStream(agent: DurableObjectStub<PiAgent>): Response {
   const encoder = new TextEncoder();
   let timer: ReturnType<typeof setInterval> | undefined;
@@ -176,14 +236,14 @@ function costStream(agent: DurableObjectStub<PiAgent>): Response {
       const send = async () => {
         if (closed) return;
         try {
-          const snapshot = await agent.costSnapshot();
-          controller.enqueue(encoder.encode(`event: cost\ndata: ${JSON.stringify(snapshot)}\n\n`));
+          const report = await agent.costSnapshot();
+          controller.enqueue(encoder.encode(`event: cost\ndata: ${JSON.stringify(report)}\n\n`));
         } catch (error) {
           controller.enqueue(encoder.encode(`event: error\ndata: ${JSON.stringify({ message: String(error) })}\n\n`));
         }
       };
       await send();
-      timer = setInterval(send, 10_000);
+      timer = setInterval(send, STREAM_EVERY_MS);
     },
     cancel() {
       closed = true;
@@ -210,6 +270,15 @@ export default {
     if (request.method === "GET" && url.pathname === "/v1/cost") return json(await agent.costSnapshot());
     if (request.method === "GET" && url.pathname === "/v1/cost/stream") return costStream(agent);
 
+    const toggle = url.pathname.match(/^\/v1\/cost\/objects\/([a-z-]+)\/free-tier$/);
+    if (request.method === "POST" && toggle) {
+      const id = toggle[1] as CostObjectId;
+      if (!(COST_OBJECT_IDS as readonly string[]).includes(id)) return new Response("no such cost object\n", { status: 404 });
+      const { enabled } = (await request.json()) as { enabled?: unknown };
+      if (typeof enabled !== "boolean") return new Response("body needs {\"enabled\": true|false}\n", { status: 400 });
+      return json(await agent.setFreeTier(id, enabled));
+    }
+
     if (request.method === "GET" && url.pathname === "/file") {
       const path = url.searchParams.get("path");
       if (!path) return new Response("path is required\n", { status: 400 });
@@ -227,7 +296,8 @@ export default {
     }
 
     return new Response(
-      'POST {"task": "..."} to run; GET /file?path=/workspace/x; GET /v1/cost; GET /v1/cost/stream (SSE, 10 s)\n',
+      'POST {"task": "..."} to run; GET /file?path=/workspace/x; GET /v1/cost; GET /v1/cost/stream (SSE, 60 s); ' +
+        'POST /v1/cost/objects/<id>/free-tier {"enabled": bool}\n',
       { status: 405 },
     );
   },

@@ -1,56 +1,58 @@
 # pi-object
 
 One Durable Object per agent. The agent runs a pi-ai loop against DeepSeek, works in a Workspace (SQLite files plus a
-codemode `exec` backend), and meters every priced thing it does into a cost ledger.
+codemode `exec` backend), and records telemetry. Cost is computed separately, by cost objects, from the provider's
+balance and our own counts.
 
 ```sh
 npm install
-npm test            # cost and tariff validation, no network
+npm test            # telemetry and cost-object validation, no network
 npm run dev         # wrangler dev (workerd, local Durable Object storage)
-npm run dev:verify  # end-to-end: agent writes and reads a file, dev server restarts, file survives
-npm run validate:deepseek -- --calls 120   # live: spends real money, reconciles against DeepSeek's balance
+npm run dev:verify  # end-to-end: agent runs, telemetry reaches /v1/cost, file survives a restart
 ```
 
 ## Layout
 
 | Path | What |
 |---|---|
-| `src/index.ts` | `PiAgent` Durable Object (agent loop, metering) and the Worker routes |
-| `src/tariff.ts` | DeepSeek tariff: schedule rule and the pi-ai model for the tariff in force at a time |
-| `pricing/deepseek.json` | The one DeepSeek tariff file (rates from the DeepSeek pricing docs) |
-| `pi/extensions/deepseek-tariff.ts` | Host pi extension: tariff providers and a tariff-aware virtual model |
-| `src/cost/` | Ledger: price book (Cloudflare), meter arithmetic, SQLite store, metered storage |
-| `test/cost.test.ts` | Validation tests |
-| `scripts/deepseek-validate.ts` | Live reconciliation against DeepSeek's billing balance |
+| `src/index.ts` | `PiAgent` Durable Object (agent loop, telemetry flush) and the Worker routes |
+| `src/cost/meter.ts` | Telemetry: pi's token counts, tool calls, measured wall-clock time. No prices |
+| `src/cost/store.ts` | SQLite: lifetime telemetry totals, balance samples, Dynamic Worker daily keys |
+| `src/cost/objects.ts` | Cost objects and the free-tier rule (pure functions) |
+| `src/cost/deepseek.ts` | DeepSeek balance reader (official `GET /user/balance`, USD only) |
+| `src/cost/config.ts` | Per-project cost inputs that the provider does not report (top-ups, granted credit) |
+| `src/cost/prices.ts` | Cloudflare price book. Used by the next cost object (Durable Object), not yet wired |
+| `src/cost/metered-storage.ts` | Counts SQLite rows read and written |
+| `test/` | `usage.test.ts` (telemetry), `cost-objects.test.ts` (cost math, toggle, balance reader) |
 
 ## How cost is decided
 
-- **LLM spend is pi's metric.** Each assistant message's `usage.cost` is set by pi-ai's `calculateCost`, using the
-  model that answered. The ledger records those components as they are. It never recomputes them.
-- **The tariff is chosen per request by the clock.** DeepSeek charges peak rates 01:00–04:00 and 06:00–10:00 UTC,
-  Monday to Friday, and half that otherwise. `deepseekModelAt(model, now)` returns the model with the tariff in force.
-- **Host pi does the same routing with a virtual model.** `deepseek-tariff/deepseek-flash` routes each request to
-  `deepseek-peak` or `deepseek-offpeak`. Enable the extension in `~/.pi/agent/settings.json` under `extensions`.
-- **Cloudflare services** are priced from the price book in `src/cost/prices.ts`. Secrets are listed with a $0 cost.
+- **Telemetry is exact and carries no price.** Token counts are copied from pi's usage record for each model call.
+  Tool calls and wall-clock time are measured in this app. Reasoning tokens are part of output and are reported as a
+  subset, never added twice.
+- **Cost objects turn telemetry into dollars.** Each billed service is one object with a `listUsd` and an `actualUsd`.
+- **DeepSeek is derived from the balance.** `list = topUpUsd + grantedUsd − balance` and `actual = topUpUsd − toppedUpBalance`.
+  No token rates are used. Set `topUpUsd` in `src/cost/config.ts` after every top-up. Until it is set, the object reports
+  `unconfigured` and shows no dollars.
+- **Free-tier toggle, off by default, on every object.** Off shows `listUsd`, as if no free allowance applied. On shows
+  `actualUsd` and is labelled "free-tier assumed". Set with `POST /v1/cost/objects/<id>/free-tier {"enabled": true}`.
+- **Pi's `usage.cost` is an estimate only.** It is priced from pi's catalog, which is the peak rate. It is recorded as
+  `llm.<model>.estimate` and never billed from.
+- **Freshness.** The balance is re-read at most once a minute. `GET /v1/cost/stream` pushes a report every minute.
+  Balances are cent-precision, so each reading is within ±$0.005.
 
 ## Status
 
-- Ledger, tariff, and the host extension are covered by `npm test` (15 tests).
-- The live DeepSeek reconciliation has not been run against a metered batch. Billing settles several minutes after a
-  call, so the check has to wait for settlement.
-- The deployed Worker (`durable-pi-object.flagseeker.workers.dev`) is an older build: file tools only, no cost ledger.
-  It is not redeployed. The personal account is set in `.env`, which Wrangler reads automatically.
+- `npm test`: 19 tests, all pass. `npm run dev:verify`: the agent runs, the telemetry checks pass, the file survives.
+- The toggle, its error paths (400, 404, 401) and the stream were exercised on a live `wrangler dev`.
+- The DeepSeek object is `unconfigured` until `topUpUsd` is set.
+- The Cloudflare cost object is not built yet. It is the second cost object.
+- The deployed Worker is an older build with no telemetry or cost objects. It is not redeployed.
 
 ## Known issues
 
-- DeepSeek has no usage or cost endpoint and no machine-readable price list. The tariff comes from the docs and is
-  checked by reconciliation.
-- Balance is account-wide. A per-agent reconciliation holds only when that agent is the only user of the key.
-- Chinese public holidays are peak per DeepSeek's page. They are not in the schedule.
-- Cloudflare CPU time cannot be measured in-band. Wall-clock is an upper bound, labeled `estimated`.
-- Ledger SKUs changed from `llm.deepseek.deepseek-flash.*` to `llm.deepseek-flash.*`. Local dev state still holds rows
-  under the old names.
-- The DeepSeek key command (`pi auth print-api-key`) is documented to run once per pi process and be cached. That is not
-  observed in this setup yet.
-
-Design and triage are tracked in the repository's issues: #2 (cost model) and #1 (LSP triage).
+- Balance is account-wide. A per-agent figure holds only when that agent is the only user of the key. Other sessions on the
+  same key (such as the host pi sessions) show up in the balance, not in this object.
+- Cent precision: each reading is within ±$0.005, so cost is accurate to about a cent at any moment.
+- Cloudflare CPU time cannot be measured in-band. Wall-clock is an upper bound.
+- Settlement lags a call by minutes, so the balance trails the telemetry briefly.
