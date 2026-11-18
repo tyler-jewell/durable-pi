@@ -1,5 +1,6 @@
 {
   "name": "@durable-pi/pi-object",
+  "type": "module",
   "description": "Spike: one-shot pi agent in a Durable Object (vendored from cloudflare/computer examples/pi-ai).",
   "scripts": {
     "dev": "wrangler dev --port 8788",
@@ -8,7 +9,8 @@
     "typecheck": "tsc --noEmit",
     "build:types": "wrangler types",
     "real": "node --import ./local-shim.mjs run-real.mjs",
-    "dev:verify": "bash scripts/verify-do.sh"
+    "dev:verify": "bash scripts/verify-do.sh",
+    "test": "tsx --test test/*.test.ts"
   },
   "dependencies": {
     "@cloudflare/computer": "^0.11.3",
@@ -20,6 +22,7 @@
     "typescript": "^6.0.3",
     "wrangler": "^4.148.0",
     "@cloudflare/dofs": "file:./vendor/dofs",
-    "@earendil-works/pi-coding-agent": "1.5.2"
+    "@earendil-works/pi-coding-agent": "1.5.2",
+    "tsx": "latest"
   }
 }

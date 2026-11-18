@@ -7,6 +7,11 @@
   "main": "src/index.ts",
   "compatibility_date": "2026-05-26",
   "compatibility_flags": ["nodejs_compat"],
+
+  // Dynamic Workers: the codemode backend mints a fresh Worker per exec through this loader.
+  "worker_loaders": [{ "binding": "LOADER" }],
+  // Declared so `wrangler types` and deploys know exactly which secrets the Worker needs (see .dev.vars.example).
+  "secrets": { "required": ["DEEPSEEK_API_KEY", "DPI_TOKEN"] },
   "workers_dev": true,
   "preview_urls": false,
 
