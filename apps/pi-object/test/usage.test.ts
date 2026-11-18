@@ -129,7 +129,6 @@ test("metered storage counts rows read and written for every consumption path", 
   assert.deepEqual(reports, [[3, 1], [3, 1], [3, 1]]);
 });
 
-// prices.ts is the Cloudflare price book for the DO cost object (the next step); it is the only rate table allowed.
 test("the cost code has no tariff or rate table left in it", () => {
   const roots = ["src", "test"].map((d) => join(process.cwd(), d));
   const files: string[] = [];
@@ -137,7 +136,7 @@ test("the cost code has no tariff or rate table left in it", () => {
     for (const name of readdirSync(dir)) {
       const p = join(dir, name);
       if (statSync(p).isDirectory()) walk(p);
-      else if (p.endsWith(".ts") && !p.endsWith("usage.test.ts") && !p.endsWith("prices.ts")) files.push(p);
+      else if (p.endsWith(".ts") && !p.endsWith("usage.test.ts")) files.push(p);
     }
   };
   roots.forEach(walk);
