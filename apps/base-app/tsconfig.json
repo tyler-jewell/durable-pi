@@ -9,7 +9,6 @@
     "types": ["vite/client"],
     "allowImportingTsExtensions": true,
     "noEmit": true,
-    "baseUrl": ".",
     "paths": { "@sdk/*": ["../dpi-sdk/src/*"] }
   },
   "include": ["src/**/*.ts", "src/**/*.vue", "vite.config.ts"]

@@ -2,7 +2,9 @@
   "name": "dpi-tui",
   "private": true,
   "type": "module",
-  "bin": { "dpi-tui": "./bin/dpi-tui.mjs" },
+  "bin": {
+    "dpi-tui": "./bin/dpi-tui.mjs"
+  },
   "scripts": {
     "start": "tsx src/main.ts",
     "check": "tsc --noEmit -p .",
@@ -15,7 +17,7 @@
   },
   "devDependencies": {
     "@types/node": "^24.0.0",
-    "typescript": "5.9.3"
+    "typescript": "7.0.2"
   },
   "allowScripts": {
     "esbuild@0.28.2": true,
