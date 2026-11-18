@@ -304,10 +304,11 @@ durable-pi/
 │   │   ├── apps/dpi-playground-fe/    # Vue 3: network tree, agent view, inspector tabs
 │   │   └── tests/                     # hub test, faux-device UI suite, per-device suites, e2e scenario
 │   ├── dpi-tui/                       # pi-like terminal client on @earendil-works/pi-tui
+│   ├── base-app/                      # shared Vue shell: left = views + approvals, right = system stream
+│   ├── pi-object/                     # pi agent in a Durable Object: telemetry, cost objects, budget guard
 │   └── proactive-dpi-demo/            # the hook: Jev log watcher, incident agents, durable deploy approval
 ├── images/                            # README diagrams, numbered in reading order
-├── .claude/                           # commands/ (prime, install), skills/agent-sandboxes-exe-dev/ (device ops)
-└── ai_docs/                           # pi and pi-durable documentation snapshots
+└── .claude/                           # commands/ (prime, install), skills/agent-sandboxes-exe-dev/ (device ops)
 ```
 
 ### Commands
@@ -331,7 +332,7 @@ just proactive take        # reset and run the proactive demo
 
 | Check | Result |
 |---|---|
-| `just check`: SDK (16), backend (14), hub (1) and TUI (8) tests with strict types, the web build and lint, on the faux model | **pass** |
+| `just check` (`just test unit`): SDK (23), backend (14), hub (1), TUI (8) and pi-object (40) tests with strict types; base-app type check and build; web build and lint | **pass** |
 | `just test ui`: 28 web checks against two faux devices, including offline recovery, bad tokens, read only, extensions, durable jobs, the context bar, slash commands, keyboard and mobile | **28 of 28** |
 | `just test device` on a cloud VM with a real model: the web UI, steer, dedupe, subagents, jobs, compaction, reset, and quitting the browser mid-tool | **18 of 18** |
 | `just test e2e` on an ssh Mac: TUI and web on one run, steer from the web, both clients closed, device restarted mid-tool, fork, TUI reattach | **pass**: 9 tool results, 1 interrupted by the restart, each prompt admitted once |
@@ -370,14 +371,14 @@ Every node is proved the same way: **test in a container → review code (remove
 
 **Public-safety model (decided):** the public app is safe to expose because the blast radius is tiny, not because of paranoia.
 - Per DO project: **free-tier Cloudflare AI Gateway models only** (`@cf/*`), so no paid credits are at risk.
-- A **$5/day spend limit** caps the worst case: a hacker spams models and we are out $5.
+- **Spend caps** bound the worst case: $5 per Durable Object per billing period, enforced in code (`apps/pi-object`), and $10 hard caps on the account for `durable_objects` and `workers` (`scripts/ensure-spend-limits.mjs`). Cloudflare does not guarantee an invoice maximum, so the in-code guard is the tighter bound.
 - **No valuable secrets live in the public app** — only the free-tier token, which the cap already bounds.
 - **Observability is the feature**: the right panel streams everything the DO does, so abuse (what a bot asked and did) is visible live.
 - Redaction (`redact()`) scrubs the token + obvious patterns from logs/streams as hygiene, not as the guarantee.
 
 ### Public-safety standards
 - [ ] Free-tier `@cf/*` models only for public DO projects (a config standard, enforced at deploy).
-- [ ] $5/day spend limit on the Cloudflare account/resource.
+- [x] Spend caps: $5 per DO per billing period (in code) and $10 account hard caps (update path verified live). The account caps are not an invoice guarantee.
 - [ ] `redact()` over known secret values + patterns (`cfat_*`, `sk-*`, `Bearer …`, private keys) on logs + streamed tool output.
 - [ ] Structured UI events stay safe-by-construction (typed, no free-form values).
 - [ ] A test asserting no configured secret value appears in any streamed/logged frame.
@@ -400,7 +401,8 @@ Every node is proved the same way: **test in a container → review code (remove
 - [x] `dpi-backend` (store/harness/jobs/extensions/streams/shared-state/addons/providers/jev/history/idempotency/auth/errors + REST/SSE) — 14/14 tests green in the container.
 - [x] `dpi-playground` hub (guard/proxy/monitor/mux/seed) — 1/1 hub test green in the container.
 - [x] `dpi-playground` FE (generative UI) — `npm run build` green in the container (Playwright e2e still to run).
-- [ ] Base-app shell — render tests green in a container (Phase 1).
+- [x] `apps/pi-object` (Durable Object agent, cost objects, budget guard, Cloudflare rate card) — 40/40 tests in `just test unit`; deployed and checked live.
+- [ ] Base-app shell — render tests green in a container (Phase 1). Today it has a type check and a build, and no tests.
 - [x] AI Gateway inference — live smoke test in the container on free `@cf/*` models (`GATEWAY_OK`).
 
 ### Phase 3 — Cloudflare / Artifacts / DO integration (new)
@@ -419,7 +421,7 @@ Every node is proved the same way: **test in a container → review code (remove
 - [ ] Acceptance: same app local vs deployed — left generated/approval parity, right stream parity.
 
 ### Phase 5 — Cleanup & docs
-- [ ] Remove non-critical areas (trim `ai_docs/`, `migrate-playground.ts`, exe-dev skill) once approved.
+- [ ] Remove non-critical areas once approved: `migrate-playground.ts` and the exe-dev skill. (`ai_docs/` and the pi-object spike harnesses are already gone.)
 - [ ] Trim/update README + app READMEs to the base-app + Cloudflare model.
 - [ ] Keep [Known issues](#known-issues) current.
 
@@ -427,7 +429,7 @@ Every node is proved the same way: **test in a container → review code (remove
 
 - **Artifacts needs the Workers Paid plan** (not Free); 1 GB/repo for repos created after 2026-09-29.
 - **`cf` is beta** (`1.0.0-rc.1`); commands/config/Build Output may change before stable.
-- **`wrangler` is below the Artifacts-local-dev minimum** (4.159 vs 4.163+); upgrade to 4.164.0.
+- **Cloudflare spend limits are account-level, not per project.** Each product has one hard cap per account, and a cap is not an invoice guarantee. Details: [pi-object Known issues](apps/pi-object/README.md#known-issues).
 - **Jev via Workers AI and third-party models need AI Gateway prepaid credits or BYOK** (error 2021 on Free).
 - **No Durable Object storage adapter for pi-durable yet** — today it is `openNodeSqliteStorage`; the DO target needs an adapter.
 - **`macos-vm` Lima vz portForwards don't publish for macOS guests** — the port is forwarded over SSH (`-L`).
