@@ -1,2 +1,4 @@
 DEEPSEEK_API_KEY=
 DPI_TOKEN=
+CLOUDFLARE_API_TOKEN=<placeholder: billing read, see .env>
+CLOUDFLARE_ACCOUNT_ID=<placeholder: see .env>

@@ -11,5 +11,5 @@ export const COST_CONFIG: { deepseek: DeepseekConfig & { label: string } } = {
   deepseek: { label: "DeepSeek", topUpUsd: null, grantedUsd: 0 },
 };
 
-export const COST_OBJECT_IDS = ["deepseek"] as const;
+export const COST_OBJECT_IDS = ["deepseek", "cloudflare-do"] as const;
 export type CostObjectId = (typeof COST_OBJECT_IDS)[number];

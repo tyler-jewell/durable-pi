@@ -19,6 +19,8 @@ import { deepseekProvider } from "@earendil-works/pi-ai/providers/deepseek";
 
 import { COST_CONFIG, COST_OBJECT_IDS, type CostObjectId } from "./cost/config.js";
 import { readDeepseekBalance } from "./cost/deepseek.js";
+import { fetchRateCard, type RateCard } from "./cost/cloudflare-rate-card.js";
+import { cloudflareDoView, doQuantities, type CloudflareDoView } from "./cost/cloudflare-do.js";
 import { meterStorage } from "./cost/metered-storage.js";
 import * as T from "./cost/meter.js";
 import { deepseekView, type CostObjectView } from "./cost/objects.js";
@@ -36,6 +38,9 @@ const BALANCE_MAX_AGE_MS = 60_000;
 const BURN_WINDOW_MS = 5 * 60_000;
 /** The live cost stream pushes once a minute. */
 const STREAM_EVERY_MS = 60_000;
+/** The rate card changes rarely; it is re-read from the account at most this often, on demand (no scheduled job). */
+const RATE_CARD_TTL_MS = 24 * 60 * 60_000;
+const RATE_CARD_KEY = "rate-card";
 
 const SYSTEM_PROMPT =
   "You are working in a directory at /workspace. Use the tools to do what the user asks, then say what you did. " +
@@ -49,7 +54,7 @@ const sha256Hex = async (text: string) => {
 export interface CostReport {
   asOf: number;
   /** One entry per cost object. Each has its own free-tier toggle (off by default). */
-  objects: CostObjectView[];
+  objects: Array<CostObjectView | CloudflareDoView>;
   /** Telemetry: exact counts and durations from pi and from this app's clock. */
   usage: UsageSnapshot;
 }
@@ -118,9 +123,10 @@ export class PiAgent extends DurableObject<Env> {
       const now = Date.now();
       this.flush(now);
       const deepseek = await this.deepseekObject(now);
+      const cloudflare = await this.cloudflareObject(now);
       return {
         asOf: now,
-        objects: [deepseek],
+        objects: [deepseek, cloudflare],
         usage: this.usage.snapshot([T.secretsLine(SECRETS_REQUIRED.length)]),
       };
     });
@@ -156,6 +162,28 @@ export class PiAgent extends DurableObject<Env> {
     }
     const prior = latest ? this.usage.balanceAtOrBefore(latest.at - BURN_WINDOW_MS) : null;
     return deepseekView({ id: "deepseek", label: cfg.label, config: cfg, balance: latest, prior, freeTier, note });
+  }
+
+  /** Cloudflare Durable Object cost: this period's telemetry at the account's rate card. */
+  private async cloudflareObject(now: number): Promise<CloudflareDoView> {
+    const freeTier = (await this.ctx.storage.get<boolean>(freeTierKey("cloudflare-do"))) === true;
+    const cached = await this.ctx.storage.get<{ fetchedAt: number; card: RateCard }>(RATE_CARD_KEY);
+    let card: RateCard | null = cached?.card ?? null;
+    let note: string | undefined;
+    if (!this.env.CLOUDFLARE_API_TOKEN || !this.env.CLOUDFLARE_ACCOUNT_ID) {
+      note = "set the CLOUDFLARE_API_TOKEN and CLOUDFLARE_ACCOUNT_ID secrets (billing read)";
+    } else if (!cached || now - cached.fetchedAt >= RATE_CARD_TTL_MS) {
+      try {
+        card = await fetchRateCard(this.env.CLOUDFLARE_ACCOUNT_ID, this.env.CLOUDFLARE_API_TOKEN);
+        await this.ctx.storage.put(RATE_CARD_KEY, { fetchedAt: now, card });
+      } catch (error) {
+        note = `rate card refresh failed: ${error instanceof Error ? error.message : String(error)}`;
+      }
+    }
+    // Allowances reset per UTC month (Dynamic Workers per day), so only the current period is priced.
+    const iso = new Date(now).toISOString();
+    const totals = { ...this.usage.periodTotals(iso.slice(0, 7)), ...this.usage.periodTotals(iso.slice(0, 10)) };
+    return cloudflareDoView({ card, quantities: doQuantities(totals), freeTier, asOf: now, note });
   }
 
   private llmModel() {

@@ -10,6 +10,10 @@ export interface SqlLike {
 
 const RETAIN_MS = 48 * 60 * 60_000;
 
+/** UTC month for most services; UTC day for Dynamic Workers, whose included allowance is per day. */
+export const periodFor = (sku: string, atMs: number): string =>
+  sku.startsWith("dynamic_workers.") ? new Date(atMs).toISOString().slice(0, 10) : new Date(atMs).toISOString().slice(0, 7);
+
 export interface UsageRow {
   sku: string;
   service: Service;
@@ -38,21 +42,37 @@ export class UsageStore {
     sql.exec(`CREATE TABLE IF NOT EXISTS usage_totals (
       sku TEXT PRIMARY KEY, service TEXT NOT NULL, unit TEXT NOT NULL, source TEXT NOT NULL,
       model TEXT, quantity REAL NOT NULL DEFAULT 0)`);
+    // Totals per billing period: a calendar month (UTC) for most services, a day for Dynamic Workers. Included
+    // allowances reset on those boundaries, so the cost object needs the period, not the lifetime total.
+    sql.exec(`CREATE TABLE IF NOT EXISTS usage_period (
+      period TEXT NOT NULL, sku TEXT NOT NULL, quantity REAL NOT NULL DEFAULT 0, PRIMARY KEY (period, sku))`);
     sql.exec(`CREATE TABLE IF NOT EXISTS dw_created (day TEXT NOT NULL, hash TEXT NOT NULL, PRIMARY KEY (day, hash))`);
     sql.exec(`CREATE TABLE IF NOT EXISTS balance_samples (
       at INTEGER PRIMARY KEY, total REAL NOT NULL, granted REAL NOT NULL, topped_up REAL NOT NULL)`);
   }
 
   /** Add quantities to the lifetime totals. Zero-quantity lines are skipped. */
-  record(lines: readonly Line[]): void {
+  record(lines: readonly Line[], atMs: number = Date.now()): void {
     for (const line of lines) {
       if (line.quantity === 0) continue;
+      const period = periodFor(line.sku, atMs);
+      this.sql.exec(
+        `INSERT INTO usage_period (period, sku, quantity) VALUES (?, ?, ?)
+         ON CONFLICT (period, sku) DO UPDATE SET quantity = quantity + excluded.quantity`,
+        period, line.sku, line.quantity,
+      );
       this.sql.exec(
         `INSERT INTO usage_totals (sku, service, unit, source, model, quantity) VALUES (?, ?, ?, ?, ?, ?)
          ON CONFLICT (sku) DO UPDATE SET quantity = quantity + excluded.quantity`,
         line.sku, line.service, line.unit, line.source, line.model ?? null, line.quantity,
       );
     }
+  }
+
+  /** Totals for one period ("2026-11" or "2026-11-18"), keyed by SKU. */
+  periodTotals(period: string): Record<string, number> {
+    const rows = this.sql.exec("SELECT sku, quantity FROM usage_period WHERE period = ?", period).toArray();
+    return Object.fromEntries(rows.map((r) => [String(r.sku), Number(r.quantity)]));
   }
 
   /** True the first time a Dynamic Worker (identified by its code hash) is seen in this UTC day. */
