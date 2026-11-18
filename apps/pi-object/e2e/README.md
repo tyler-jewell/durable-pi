@@ -11,8 +11,9 @@ file to a fresh Cloudflare Artifacts repo, and the host verifies the remote itse
 
 ```sh
 npm run e2e                 # local: Apple container
-npm run e2e:remote          # remote: the deployed Worker (must be deployed first: npx wrangler deploy)
+npm run e2e:remote          # remote: the deployed Worker (deploy first: npm run deploy)
 npm run e2e:compare         # the table below, from the newest runs
+npm run artifacts:inventory # read-only: namespaces, jurisdictions, repo counts on the account
 ```
 
 Local image, once: `container build -t dpi-artifacts-dev:local -f e2e/Containerfile e2e`, then
@@ -66,7 +67,7 @@ Local image, once: `container build -t dpi-artifacts-dev:local -f e2e/Containerf
   environments; a deterministic run uses `container run --rm`.
 - **Local flags.** `--init` (signal forwarding and reaping, pi spawns children), `--cpus 2 --memory 1G` (a VM does not
   return freed memory), stdin for the remote and token, and `container builder stop` after builds.
-- **Artifacts**: a namespace can be pinned to the US or EU (`jurisdiction` on create). The e2e namespace is unpinned, as it is test data. Billing for operations and storage starts 19 Nov 2026.
+- **Artifacts**: the e2e namespace is pinned to `us` on create (`jurisdiction` is set once and cannot change; the run checks it). Operations and storage billing starts 19 Nov 2026. Repo-count billing is not dated yet, so each run checks that the account's repo count returns to its baseline, and `npm run artifacts:inventory` prints namespaces, jurisdictions and repo counts (counts only, no prices).
 - **Offline option (not built):** `wrangler dev` runs Artifacts locally by default (16 Nov 2026), so the same scenario could run with no network. The remote-repo runs above test the real service.
 - **Remote needs** `@platformatic/vfs` (optional peer of `@cloudflare/computer/git`, pinned 0.5.0).
 - **Net-zero on Cloudflare:** the Durable Object deletes its storage whether the scenario passes or fails, and the

@@ -19,12 +19,12 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { BRANCH, DONE_MARKER, E2E_CONTENT, E2E_FILE, COMMIT_MESSAGE } from "./contract.ts";
+import { api, JURISDICTION, NAMESPACE, repoCount } from "./artifacts-api.mts";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(here, "..");
 const IMAGE = "dpi-artifacts-dev:local";
 const WORKER = "https://durable-pi-object.tyler-jewell.workers.dev";
-const NAMESPACE = "dpi-e2e";
 const BUDGET_MS = 30_000;
 const AGENT_TIMEOUT_MS = 120_000;
 
@@ -43,37 +43,6 @@ function log(msg: string): void {
   const line = `${new Date().toISOString()} ${msg}`;
   appendFileSync(logFile, line + "\n");
   console.log(line);
-}
-
-function loadEnv(): Record<string, string> {
-  const out: Record<string, string> = {};
-  for (const line of readFileSync(join(ROOT, ".env"), "utf8").split("\n")) {
-    const m = line.match(/^([A-Z_]+)=(.*)$/);
-    if (m) out[m[1]] = m[2].replace(/^"|"$/g, "");
-  }
-  return out;
-}
-
-const env = loadEnv();
-const accountId = env.CLOUDFLARE_ACCOUNT_ID;
-const apiToken = env.CLOUDFLARE_API_TOKEN;
-if (!accountId || !apiToken) throw new Error(".env needs CLOUDFLARE_ACCOUNT_ID and CLOUDFLARE_API_TOKEN");
-const artifactsBase = `https://api.cloudflare.com/client/v4/accounts/${accountId}/artifacts/namespaces`;
-
-async function api(method: string, path: string, body?: unknown): Promise<{ status: number; json: any }> {
-  const res = await fetch(artifactsBase + path, {
-    method,
-    headers: { authorization: `Bearer ${apiToken}`, "content-type": "application/json" },
-    body: body === undefined ? undefined : JSON.stringify(body),
-  });
-  const text = await res.text();
-  let json: any;
-  try {
-    json = JSON.parse(text);
-  } catch {
-    json = { raw: text.slice(0, 200) };
-  }
-  return { status: res.status, json };
 }
 
 interface Proc {
@@ -232,17 +201,23 @@ async function main(): Promise<number> {
   let remote = "";
   let repoToken = "";
   let cloneDir: string | undefined;
+  let reposBefore = -1;
   let agent: AgentRun | undefined;
   const result: Record<string, unknown> = { runId, target, namespace: NAMESPACE };
 
   try {
+    // Account repo count before the run, to prove the run leaves none behind.
+    reposBefore = await repoCount();
+    result.reposBefore = reposBefore;
+
     // 1. Namespace (created only if missing; removed at the end only if this run created it).
     let t = Date.now();
     const ns = await api("GET", `/${NAMESPACE}`);
     if (ns.status === 404) {
-      const created = await api("POST", "", { namespace: NAMESPACE });
+      const created = await api("POST", "", { namespace: NAMESPACE, jurisdiction: JURISDICTION });
       createdNamespace = created.status === 200 || created.status === 201;
       check("namespace created", createdNamespace, `HTTP ${created.status}`);
+      check("namespace jurisdiction is " + JURISDICTION, created.json?.result?.jurisdiction === JURISDICTION, JSON.stringify(created.json?.result?.jurisdiction ?? null));
     } else {
       check("namespace present", ns.status === 200, `HTTP ${ns.status}`);
     }
@@ -325,6 +300,21 @@ async function main(): Promise<number> {
         check("token no longer accepted", rejected, `${lastErr || "accepted"}, after ${waited}s`);
         result.tokenRevokeSeconds = Number(waited);
       }
+    }
+    // Repo deletes are asynchronous, so the count is polled back to the baseline and the wait is recorded.
+    try {
+      const waitStart = Date.now();
+      let reposAfter = -1;
+      while (Date.now() - waitStart < 15_000) {
+        reposAfter = await repoCount();
+        if (reposAfter === reposBefore) break;
+        await new Promise((r) => setTimeout(r, 250));
+      }
+      const waited = ((Date.now() - waitStart) / 1000).toFixed(2);
+      check("account repo count back to baseline", reposAfter === reposBefore, `${reposBefore} before, ${reposAfter} after, after ${waited}s`);
+      result.repoCountSettleSeconds = Number(waited);
+    } catch (e) {
+      check("account repo count back to baseline", false, (e as Error).message);
     }
     if (createdNamespace) {
       const delNs = await api("DELETE", `/${NAMESPACE}`);

@@ -481,7 +481,10 @@ export default {
 
     const url = new URL(request.url);
     // One agent per name; the demo uses a single agent. Use ?agent=<name> to address another.
-    const agent = env.PiAgent.get(env.PiAgent.idFromName(url.searchParams.get("agent") ?? "demo"));
+    // cloudflare.config.ts binds this by Worker name, so the generated type is a bare stub. The class is this module's
+    // own export, so the cast is exact.
+    const ns = env.PiAgent as unknown as DurableObjectNamespace<PiAgent>;
+    const agent = ns.get(ns.idFromName(url.searchParams.get("agent") ?? "demo"));
 
     if (request.method === "GET" && url.pathname === "/v1/cost") return json(await agent.costSnapshot());
     if (request.method === "GET" && url.pathname === "/v1/cost/stream") return costStream(agent);

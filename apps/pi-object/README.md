@@ -6,19 +6,20 @@ from the provider's own data.
 
 ```sh
 npm install
-npm test                # 40 tests: telemetry, cost math, budget guard, Cloudflare rate card. No network.
-npm run typecheck
-npm run dev             # wrangler dev (workerd, local Durable Object storage)
+npm test                # 46 tests: telemetry, cost math, budget guard, rate card, e2e contract. No network.
+npm run typecheck       # TypeScript 7
+npm run build           # cf build: typed Env in .cloudflare/types, from cloudflare.config.ts
+npm run dev             # cf dev (workerd, local Durable Object storage)
 npm run dev:verify      # end to end: the agent writes and reads a file, telemetry reaches /v1/cost, the file survives a restart
-npm run deploy          # wrangler deploy (the account in .env; wrangler 4.165.0)
-npx cf observability tail --worker durable-pi-object   # live logs (replaces wrangler tail)
+npm run deploy          # cf deploy (the account in .env; the Wrangler bundler, wrangler 4.165.0)
+npx cf observability tail --worker durable-pi-object   # live logs
 npm run e2e                  # end-to-end: Apple container pushes to Artifacts (e2e/README.md)
 npm run e2e:remote           # the same scenario on the deployed Durable Object
 npm run spend-limits:check   # preview the account spend limits (no writes)
 npm run spend-limits         # apply them (needs Billing Edit)
 ```
 
-Secrets live in `.env` (Cloudflare, gitignored) and `.dev.vars` (local), and in Wrangler secrets once deployed. The
+Secrets live in `.env` (Cloudflare, gitignored) and `.dev.vars` (local), and in Worker secrets once deployed. The
 device token is `~/.dpi/pi-object.token`. Each route requires `Authorization: Bearer <token>` and fails closed.
 
 ## Layout
@@ -62,7 +63,7 @@ device token is `~/.dpi/pi-object.token`. Each route requires `Authorization: Be
   adds Cloudflare spend (rate card) and LLM spend (pi's estimate) for the period. If the next call could pass the cap,
   it refuses with HTTP 402 and the decision. Without a rate card it refuses everything. The most a DO can overshoot is
   one call, and the response reports that bound.
-- **Per-invocation limits** (`wrangler.jsonc`, `limits`): `cpuMs: 30000`, `subrequests: 500`.
+- **Per-invocation limits** (`cloudflare.config.ts`, `worker.limits`): `cpuMs: 30000`, `subrequests: 500`.
 - **Account limits** (`scripts/spend-limits.json`, applied by `ensure-spend-limits.mjs`): one enabled `usage_block` per
   product, `durable_objects` and `workers`, each $10. Cloudflare allows no per-DO or per-project spend limit, and it
   does not guarantee a maximum invoice. The per-DO budget is therefore the tighter bound.
@@ -108,4 +109,4 @@ device token is `~/.dpi/pi-object.token`. Each route requires `Authorization: Be
 - **`--dry-run` only previews.** `ensure-spend-limits.mjs --dry-run` builds the request locally and does not contact
   Cloudflare. Only the apply path is live-tested.
 - **Host key copy.** The DeepSeek key is stored in plaintext in `~/.pi/agent/auth.json` for host pi sessions, and as a
-  Wrangler secret for the Worker. Rotate both.
+  Worker secret. Rotate both.

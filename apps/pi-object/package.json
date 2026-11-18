@@ -3,17 +3,18 @@
   "type": "module",
   "description": "Durable Object agent: a pi-ai loop in a Durable Object, with a Workspace, DeepSeek and cost telemetry.",
   "scripts": {
-    "dev": "wrangler dev --port 8788",
-    "deploy": "wrangler deploy",
+    "dev": "cf dev --port 8788",
+    "build": "cf build",
+    "deploy": "cf deploy",
     "typecheck": "tsc --noEmit",
-    "build:types": "wrangler types",
     "dev:verify": "bash scripts/verify-do.sh",
     "test": "tsx --test test/*.test.ts",
-    "spend-limits": "node scripts/ensure-spend-limits.mjs",
-    "spend-limits:check": "node scripts/ensure-spend-limits.mjs --dry-run",
     "e2e": "tsx e2e/e2e.mts",
     "e2e:remote": "tsx e2e/e2e.mts --target=remote",
-    "e2e:compare": "tsx e2e/compare.mts"
+    "e2e:compare": "tsx e2e/compare.mts",
+    "spend-limits": "node scripts/ensure-spend-limits.mjs",
+    "spend-limits:check": "node scripts/ensure-spend-limits.mjs --dry-run",
+    "artifacts:inventory": "tsx e2e/inventory.mts"
   },
   "dependencies": {
     "@cloudflare/computer": "0.11.3",
@@ -23,6 +24,7 @@
     "zod": "^4.6.6"
   },
   "devDependencies": {
+    "cf": "1.0.0-rc.1",
     "tsx": "4.22.0",
     "typescript": "7.0.2",
     "wrangler": "4.165.0"

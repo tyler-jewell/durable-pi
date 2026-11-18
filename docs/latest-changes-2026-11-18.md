@@ -42,18 +42,44 @@ announcement for the Cloudflare CLI `cf` 1.0 (17 Nov 2026, posted by @MattieTK).
 - `cf` is installed at 1.0.0-rc.1 (the release candidate). Node 26 meets its support statement (latest LTS and latest
   active).
 
-## Deferred (decided, with reasons)
+## Follow-up pass: the deferred items, closed
 
-- **Compatibility date** (`wrangler.jsonc`, `2026-05-26`). The Artifacts docs suggest today's date for new features, but
-  a date change alters runtime behaviour. Left as is until the Worker is tested on a newer date.
-- **Moving the Worker from wrangler config to `cloudflare.config.ts` and `cf deploy`.** `cf` 1.0 supports existing
-  wrangler projects (`cf migrate`), and the config format is now stable. The Worker is deployed and tested on
-  wrangler, so the move waits for its own change.
-- **TypeScript 7.0.2.** It's a major version, and the project pins `^6.0.3`. Adopting it needs its own test run.
-- **Offline Artifacts e2e** using `wrangler dev` (local simulator by default). Worth building as a third leg; it is not
-  needed for the remote-repo proof.
-- **Artifacts jurisdiction.** Test namespaces are unpinned. Pin to US or EU for any real data.
-- **Artifacts repo-count billing.** Not started on 19 Nov. Cloudflare will announce it. Track on the pricing page.
+Each item was researched in the official docs, changed on its own, and checked before the next one.
+
+- **Move to `cloudflare.config.ts` and `cf deploy`: done.** `cf migrate` converted the config with no follow-up items.
+  The Durable Object became `exports.durableObject({ storage: "sqlite" })`, matching the class's existing SQLite
+  storage, and its `migrations` history was dropped as the migration doc describes. Secrets, limits, `workersDev`,
+  `previewUrls`, the Worker Loader and the compatibility flags carried over. `wrangler.jsonc` and the old generated
+  types are removed; `cf build` writes `.cloudflare/types`, which is gitignored. Scripts now call `cf dev`, `cf build`
+  and `cf deploy`. The Wrangler bundler still runs under `cf`, so `wrangler` stays as a devDependency.
+  Evidence: `cf deploy --dry-run` shows the same bindings as the live Worker; `dev:verify` passes on `cf dev`; live
+  checks pass (401 without a token, cost report 200); the remote e2e passes.
+  - One binding type stays a cast. A Durable Object bound by Worker name is typed as a bare stub, so `fetch` casts the
+    namespace once, with a comment. A typed reference would be circular, because the Worker defines the class it binds.
+  - The upload is 3.4 MB. The increase over the earlier 2.7 MB came from the e2e's Cloudflare git client and
+    `@platformatic/vfs`, not from `cf` (same size on both paths, measured).
+- **TypeScript 7.0.2: done for four apps.** `pi-object`, `dpi-sdk`, `dpi-backend`, `dpi-tui` compile and test on 7.0.2
+  (46, 23, 14 and 8 tests). `base-app`, `dpi-playground` and the proactive demo stay on 5.9.3: `vue-tsc` 3.3.14, the
+  latest, still imports `typescript/lib/tsc`, which TS 7 no longer exports. They move when `vue-tsc` supports 7.
+  `base-app` dropped the removed `baseUrl` option; its check passes on 5.9.3 too.
+- **Compatibility date: done (`2026-05-26` to `2026-11-18`).** Reviewed each change between the two dates on the flags
+  page. Changes that touch this Worker: Node.js v2 defaults (4 Aug), the new module registry (17 Nov, validated import
+  attributes and `require()` rules), and the request abort signal (17 Nov, unused). The Durable Object eviction change
+  (1 Oct) only helps. Evidence: `cf build`, tests, `dev:verify`, deploy, and the remote e2e all pass on the new date.
+- **Artifacts namespace jurisdiction: done (`us`).** The e2e namespace is created with `jurisdiction: "us"`; the run
+  checks the namespace reports it. The value cannot change after creation, so each run's fresh namespace is the right
+  scope. Supported values are `eu` and `us` (Artifacts data localization guide).
+- **Artifacts repo-count billing: monitored, not priced.** Cloudflare has not dated repo charges, and the pricing page
+  says it will notify first. Until then the e2e checks that the account's repo count returns to its baseline after
+  teardown (it settles in about 3 seconds, polled, not assumed). `npm run artifacts:inventory` prints namespaces,
+  jurisdictions and repo counts. It prints counts only, so no price table enters the code. Operations and storage
+  billing starts 19 Nov 2026.
+
+Still open after this pass:
+
+- `vue-tsc` on TypeScript 7 (the three Vue apps), waiting on the `vue-tsc` release.
+- An offline Artifacts e2e leg using `wrangler dev`'s local simulator. Not needed for the remote-repo proof.
+- Repo-count charges: date and rate to be taken from the pricing page when Cloudflare announces them.
 
 ## Permissions and accounts (learned during the audit)
 
