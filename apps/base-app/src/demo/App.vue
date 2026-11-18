@@ -1,8 +1,23 @@
 <script setup lang="ts">
 import { onBeforeUnmount, ref } from "vue";
 import { AppShell } from "../index";
+import StateEditor from "../left/StateEditor.vue";
 import SystemStream from "../stream/SystemStream.vue";
+import { changeState, type AppState, type StateChange } from "@sdk/app-state";
 import { emptySystemStream, reduceSystemStream, type SystemStreamView } from "@sdk/system-stream";
+
+const state = ref<AppState>({
+  goal: "Explore durable agents",
+  counter: 3,
+  settings: { enabled: true, tags: ["a", "b"] },
+});
+function apply(change: StateChange) {
+  try {
+    state.value = changeState(state.value, change);
+  } catch (e) {
+    console.warn(e);
+  }
+}
 
 const view = ref<SystemStreamView>(emptySystemStream());
 view.value = reduceSystemStream(view.value, {
@@ -38,17 +53,10 @@ onBeforeUnmount(() => clearInterval(timer));
 <template>
   <AppShell title="Base app" app-id="demo" status="live" model="@cf/meta/llama-3.3">
     <template #left>
-      <div class="placeholder">Generated view + approval flow (left)</div>
+      <StateEditor :value="state" @change="apply" />
     </template>
     <template #right>
       <SystemStream :view="view" />
     </template>
   </AppShell>
 </template>
-
-<style scoped>
-.placeholder {
-  padding: 16px;
-  color: #9ca3af;
-}
-</style>

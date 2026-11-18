@@ -4,6 +4,7 @@
 // live in @sdk so the backend and the UI agree on them.
 export { default as AppShell } from "./shell/AppShell.vue";
 export { default as SystemStream } from "./stream/SystemStream.vue";
+export { default as StateEditor } from "./left/StateEditor.vue";
 export { redact, REDACTED } from "@sdk/redact";
 export {
   emptySystemStream,
