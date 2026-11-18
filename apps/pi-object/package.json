@@ -1,28 +1,26 @@
 {
   "name": "@durable-pi/pi-object",
   "type": "module",
-  "description": "Spike: one-shot pi agent in a Durable Object (vendored from cloudflare/computer examples/pi-ai).",
+  "description": "Durable Object agent: a pi-ai loop in a Durable Object, with a Workspace, DeepSeek and cost telemetry.",
   "scripts": {
     "dev": "wrangler dev --port 8788",
-    "local": "node --import ./local-shim.mjs run-local.mjs",
     "deploy": "wrangler deploy",
     "typecheck": "tsc --noEmit",
     "build:types": "wrangler types",
-    "real": "node --import ./local-shim.mjs run-real.mjs",
     "dev:verify": "bash scripts/verify-do.sh",
-    "test": "tsx --test test/*.test.ts"
+    "test": "tsx --test test/*.test.ts",
+    "spend-limits": "node scripts/ensure-spend-limits.mjs",
+    "spend-limits:check": "node scripts/ensure-spend-limits.mjs --dry-run"
   },
   "dependencies": {
-    "@cloudflare/computer": "^0.11.3",
+    "@cloudflare/computer": "0.11.3",
     "@earendil-works/pi-ai": "1.5.2",
     "just-bash": "^3.6.0",
     "zod": "^4.6.6"
   },
   "devDependencies": {
     "typescript": "^6.0.3",
-    "wrangler": "^4.148.0",
-    "@cloudflare/dofs": "file:./vendor/dofs",
-    "@earendil-works/pi-coding-agent": "1.5.2",
-    "tsx": "latest"
+    "wrangler": "4.164.0",
+    "tsx": "4.22.0"
   }
 }

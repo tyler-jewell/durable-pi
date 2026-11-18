@@ -8,7 +8,10 @@
 import type { DeepseekConfig } from "./objects.js";
 
 export const COST_CONFIG: { deepseek: DeepseekConfig & { label: string } } = {
-  deepseek: { label: "DeepSeek", topUpUsd: null, grantedUsd: 0 },
+  // Derived, not typed in: the DeepSeek export (2026-10-20 to 2026-11-18) records $75.454438, all from the paid wallet,
+  // and the live balance is $19.54 with $0.00 granted. 75.454438 + 19.54 = 94.99 to the cent, and $95.00 is also within
+  // the balance rounding. Assumes no spend before the export window; confirm against the top-up history.
+  deepseek: { label: "DeepSeek", topUpUsd: 95.0, grantedUsd: 0 },
 };
 
 /**
