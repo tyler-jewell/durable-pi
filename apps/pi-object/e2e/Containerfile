@@ -1,0 +1,12 @@
+# Dev image for the Artifacts e2e: Node 26, git, latest CLIs, and pi 1.5.2 with the deterministic extension.
+FROM docker.io/library/node:26-bookworm-slim
+RUN apt-get update && apt-get install -y --no-install-recommends git ca-certificates \
+ && rm -rf /var/lib/apt/lists/*
+RUN npm install -g wrangler@4.164.0 cf@1.0.0-rc.1 --no-audit --no-fund
+WORKDIR /opt/e2e
+COPY package.json package-lock.json ./
+RUN npm ci --omit=dev --no-audit --no-fund && ln -s /opt/e2e/node_modules/.bin/pi /usr/local/bin/pi
+COPY faux-agent.ts inside.sh ./
+RUN chmod +x /opt/e2e/inside.sh
+ENV GIT_TERMINAL_PROMPT=0
+CMD ["/opt/e2e/inside.sh"]
