@@ -1,0 +1,7 @@
+{
+  "$comment": "Account-wide spend limits, one per product (Cloudflare allows one enabled limit per product per account). Thresholds in US cents. Applied by scripts/ensure-spend-limits.sh.",
+  "limits": [
+    { "product": "durable_objects", "name": "Durable Objects hard cap", "thresholdCents": 1000 },
+    { "product": "workers", "name": "Workers hard cap", "thresholdCents": 1000 }
+  ]
+}

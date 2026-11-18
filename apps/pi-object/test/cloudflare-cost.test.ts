@@ -6,8 +6,8 @@ import assert from "node:assert/strict";
 import { DatabaseSync } from "node:sqlite";
 
 import { DO_COMPONENT, fetchRateCard, parseRateCard, ROUNDING_USD_PER_UNIT, type RawPlan } from "../src/cost/cloudflare-rate-card.js";
-import { cloudflareDoView, doQuantities, DO_MEMORY_GB, type DoQuantities } from "../src/cost/cloudflare-do.js";
-import { periodFor, UsageStore, type SqlLike } from "../src/cost/store.js";
+import { cloudflareDoView, doPeriodUsage, DO_MEMORY_GB, type DoPeriodUsage } from "../src/cost/cloudflare-do.js";
+import { dayOf, UsageStore, type SqlLike } from "../src/cost/store.js";
 import * as T from "../src/cost/meter.js";
 
 const close = (a: number | null | undefined, b: number, eps = 1e-9) => assert.ok(a != null && Math.abs(a - b) <= eps, `${a} != ${b}`);
@@ -29,9 +29,14 @@ const synthetic = (): RawPlan => ({
 });
 const card = () => parseRateCard(synthetic());
 
-const usage = (over: Partial<DoQuantities> = {}): DoQuantities => ({
-  requests: 0, duration: 0, rowsRead: 0, rowsWritten: 0, storedData: 0, dynamicWorkers: 0, ...over,
-});
+const usage = (over: Partial<DoPeriodUsage["quantities"]> & { dynamicDaily?: number[] } = {}): DoPeriodUsage => {
+  const { dynamicDaily = [], ...q } = over;
+  return {
+    quantities: { requests: 0, duration: 0, rowsRead: 0, rowsWritten: 0, storedData: 0, dynamicWorkers: 0, ...q },
+    dynamicDaily,
+  };
+};
+const period = { start: "2026-10-30T00:00:00Z", end: "2026-11-30T00:00:00Z" };
 
 test("the card's first billable unit becomes the included allowance (one less)", () => {
   const c = card();
@@ -57,45 +62,45 @@ test("a plan in another currency or with a tier layout we do not price is refuse
 
 test("list cost prices every unit; actual cost prices only what is above the allowance", () => {
   const q = usage({ requests: 1_500_000 });
-  const v = cloudflareDoView({ card: card(), quantities: q, freeTier: false, asOf: 0 });
+  const v = cloudflareDoView({ card: card(), period, usage: q, freeTier: false, asOf: 0 });
   const req = v.lines.find((l) => l.component === "requests")!;
   close(req.listUsd, 1.5);
   close(req.actualUsd, 0.5);
   close(v.usd, 1.5, 1e-9); // free tier off shows list
-  const on = cloudflareDoView({ card: card(), quantities: q, freeTier: true, asOf: 0 });
+  const on = cloudflareDoView({ card: card(), period, usage: q, freeTier: true, asOf: 0 });
   close(on.usd, 0.5, 1e-9); // free tier on shows actual
 });
 
 test("duration is priced in GB-s after the 128 MB memory conversion", () => {
   // 1,000,000 ms of active time is 1,000 s, which is 1,000 × 0.128 = 128 GB-s, inside the 400,000 allowance.
-  const q = doQuantities({ "durable_objects.duration": 1_000_000 });
-  close(q.duration, 1000 * DO_MEMORY_GB, 1e-9);
-  close(q.duration, 128, 1e-9);
-  const v = cloudflareDoView({ card: card(), quantities: usage({ duration: q.duration }), freeTier: true, asOf: 0 });
+  const q = doPeriodUsage([{ day: "2026-11-18", sku: "durable_objects.duration", quantity: 1_000_000 }], "2026-10-30", "2026-11-30");
+  close(q.quantities.duration, 1000 * DO_MEMORY_GB, 1e-9);
+  close(q.quantities.duration, 128, 1e-9);
+  const v = cloudflareDoView({ card: card(), period, usage: usage({ duration: q.quantities.duration }), freeTier: true, asOf: 0 });
   close(v.lines.find((l) => l.component === "duration")!.actualUsd, 0);
 });
 
 test("stored data is GB-months from byte-minutes (decimal GB, 30-day month)", () => {
   const oneGbForAMonth = 1e9 * 30 * 24 * 60;
-  close(doQuantities({ "storage.sqlite": oneGbForAMonth }).storedData, 1, 1e-12);
+  close(doPeriodUsage([{ day: "2026-11-18", sku: "storage.sqlite", quantity: oneGbForAMonth }], "2026-10-30", "2026-11-30").quantities.storedData, 1, 1e-12);
 });
 
 test("each line carries the rounding band: the most the six-decimal card can be off", () => {
-  const off = cloudflareDoView({ card: card(), quantities: usage({ requests: 1_500_000 }), freeTier: false, asOf: 0 });
+  const off = cloudflareDoView({ card: card(), period, usage: usage({ requests: 1_500_000 }), freeTier: false, asOf: 0 });
   close(off.bandUsd, 1_500_000 * ROUNDING_USD_PER_UNIT, 1e-12);
-  const on = cloudflareDoView({ card: card(), quantities: usage({ requests: 1_500_000 }), freeTier: true, asOf: 0 });
+  const on = cloudflareDoView({ card: card(), period, usage: usage({ requests: 1_500_000 }), freeTier: true, asOf: 0 });
   close(on.bandUsd, 500_000 * ROUNDING_USD_PER_UNIT, 1e-12);
 });
 
 test("with no rate card the object is unavailable and shows no dollars", () => {
-  const v = cloudflareDoView({ card: null, quantities: usage(), freeTier: false, asOf: 0, note: "fetch failed" });
+  const v = cloudflareDoView({ card: null, period: null, usage: usage(), freeTier: false, asOf: 0, note: "fetch failed" });
   assert.equal(v.status, "unavailable");
   assert.equal(v.usd, null);
   assert.equal(v.note, "fetch failed");
 });
 
 test("a card that cannot be refreshed is kept, and the object says it is stale", () => {
-  const v = cloudflareDoView({ card: card(), quantities: usage({ requests: 1_500_000 }), freeTier: false, asOf: 0, note: "refresh failed: timeout" });
+  const v = cloudflareDoView({ card: card(), period, usage: usage({ requests: 1_500_000 }), freeTier: false, asOf: 0, note: "refresh failed: timeout" });
   assert.equal(v.status, "stale");
   close(v.usd, 1.5, 1e-9);
 });
@@ -106,14 +111,15 @@ test("the rate card is read from the account's subscriptions, skipping plans wit
     const u = String(url);
     calls.push({ url: u, auth: new Headers(init?.headers).get("authorization") });
     const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status });
-    if (u.endsWith("/accounts/acc-1/subscriptions")) return json({ success: true, result: [{ rate_plan: { id: "images" } }, { rate_plan: { id: "synthetic" } }] });
+    if (u.endsWith("/accounts/acc-1/subscriptions")) return json({ success: true, result: [{ rate_plan: { id: "images" } }, { rate_plan: { id: "synthetic" }, current_period_start: "2026-10-30T00:00:00Z", current_period_end: "2026-11-30T00:00:00Z" }] });
     if (u.endsWith("/billing/rate_plans/images")) return json({ success: true, result: { id: "images", currency: "USD", components: [comp("images_storage", 1)] } });
     if (u.endsWith("/billing/rate_plans/synthetic")) return json({ success: true, result: synthetic() });
     return json({ success: false, errors: [{ message: "unexpected" }] }, 404);
   }) as typeof fetch;
 
-  const c = await fetchRateCard("acc-1", "tok", fake);
+  const { card: c, period: p } = await fetchRateCard("acc-1", "tok", fake);
   assert.equal(c.planId, "synthetic");
+  assert.deepEqual(p, { start: "2026-10-30T00:00:00Z", end: "2026-11-30T00:00:00Z" });
   assert.ok(calls.every((x) => x.auth === "Bearer tok"));
   assert.equal(calls.length, 3);
 });
@@ -132,7 +138,7 @@ test("no subscription carries the Durable Objects card: the fetch says so", asyn
   await assert.rejects(fetchRateCard("acc-1", "tok", none), /no subscription on this account carries/);
 });
 
-// --- telemetry periods: allowances reset per month, and Dynamic Workers per day ---
+// --- billing periods: allowances reset on the subscription period; Dynamic Workers per day ---
 
 function sqlite(): SqlLike {
   const db = new DatabaseSync(":memory:");
@@ -145,24 +151,29 @@ function sqlite(): SqlLike {
   };
 }
 
-test("usage is totalled per UTC month, so each month gets its own allowance", () => {
+test("usage is kept per UTC day and summed across the billing period, not the calendar month", () => {
   const store = new UsageStore(sqlite());
-  const nov = Date.UTC(2026, 10, 15);
-  const dec = Date.UTC(2026, 11, 2);
-  store.record([{ service: "durable_objects", sku: "durable_objects.requests", unit: "requests", quantity: 900_000, source: "measured" }], nov);
-  store.record([{ service: "durable_objects", sku: "durable_objects.requests", unit: "requests", quantity: 200_000, source: "measured" }], dec);
-  assert.equal(store.periodTotals(periodFor("x", nov))["durable_objects.requests"], 900_000);
-  assert.equal(store.periodTotals(periodFor("x", dec))["durable_objects.requests"], 200_000);
-  // Lifetime totals still add both months, for the telemetry view.
-  assert.equal(store.snapshot().rows.find((r) => r.sku === "durable_objects.requests")!.quantity, 1_100_000);
+  const oct31 = Date.UTC(2026, 9, 31, 12);
+  const nov15 = Date.UTC(2026, 10, 15, 12);
+  const dec2 = Date.UTC(2026, 11, 2, 12);
+  const req = (quantity: number, at: number) =>
+    store.record([{ service: "durable_objects", sku: "durable_objects.requests", unit: "requests", quantity, source: "measured" }], at);
+  req(100_000, oct31); // before this billing period (starts 30 Oct) is still inside it
+  req(900_000, nov15);
+  req(200_000, dec2); // after the period ends on 30 Nov is excluded below
+  const inside = store.dailyRows("2026-10-30", "2026-11-30");
+  assert.equal(doPeriodUsage(inside, "2026-10-30", "2026-11-30").quantities.requests, 1_000_000);
+  assert.equal(dayOf(oct31), "2026-10-31");
 });
 
-test("Dynamic Workers are totalled per UTC day, not per month", () => {
-  const store = new UsageStore(sqlite());
-  const d1 = Date.UTC(2026, 10, 18, 10);
-  const d2 = Date.UTC(2026, 10, 19, 10);
-  store.record(T.dynamicWorkerLines(1, 1, 5), d1);
-  store.record(T.dynamicWorkerLines(1, 1, 5), d2);
-  assert.equal(store.periodTotals("2026-11-18")["dynamic_workers.created"], 1);
-  assert.equal(store.periodTotals("2026-11-19")["dynamic_workers.created"], 1);
+test("Dynamic Workers: the included count applies to each day, not once to the period", () => {
+  const rows = [
+    { day: "2026-11-18", sku: "dynamic_workers.created", quantity: 1500 },
+    { day: "2026-11-19", sku: "dynamic_workers.created", quantity: 1500 },
+  ];
+  const u = doPeriodUsage(rows, "2026-10-30", "2026-11-30");
+  assert.equal(u.quantities.dynamicWorkers, 3000);
+  const lines = cloudflareDoView({ card: card(), period, usage: u, freeTier: true, asOf: 0 }).lines;
+  // Included is 1000 per day: 500 + 500 billable, at 0.002 per worker (synthetic price).
+  close(lines.find((l) => l.component === "dynamicWorkers")!.actualUsd, 1000 * 0.002, 1e-12);
 });

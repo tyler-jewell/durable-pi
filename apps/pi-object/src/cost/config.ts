@@ -11,5 +11,11 @@ export const COST_CONFIG: { deepseek: DeepseekConfig & { label: string } } = {
   deepseek: { label: "DeepSeek", topUpUsd: null, grantedUsd: 0 },
 };
 
+/**
+ * The budget guard, per Durable Object per billing period. The account-wide limit (cf billing spend-policies)
+ * is the backstop; this cap is what stops one agent from using the whole account budget. Set it below the limit.
+ */
+export const BUDGET = { perDoUsdPerPeriod: 5 } as const;
+
 export const COST_OBJECT_IDS = ["deepseek", "cloudflare-do"] as const;
 export type CostObjectId = (typeof COST_OBJECT_IDS)[number];

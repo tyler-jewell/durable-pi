@@ -12,6 +12,9 @@
   "worker_loaders": [{ "binding": "LOADER" }],
   // Declared so `wrangler types` and deploys know exactly which secrets the Worker needs (see .dev.vars.example).
   "secrets": { "required": ["DEEPSEEK_API_KEY", "DPI_TOKEN", "CLOUDFLARE_API_TOKEN", "CLOUDFLARE_ACCOUNT_ID"] },
+  // Per-invocation guards, so a runaway loop stops whatever the billing state. CPU time is the Worker's own compute
+  // (LLM waits are not CPU). Subrequests are outbound fetches per invocation: one per model call plus tool I/O.
+  "limits": { "cpuMs": 30000, "subrequests": 500 },
   "workers_dev": true,
   "preview_urls": false,
 

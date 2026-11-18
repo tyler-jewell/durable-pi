@@ -75,11 +75,18 @@ export function parseRateCard(plan: RawPlan): RateCard {
  * Finds the rate plan that carries the Durable Objects components among this account's subscriptions, and parses it.
  * `fetchFn` is injected so tests run without the network.
  */
+/** The subscription's billing period: allowances reset here, not on the calendar month. */
+export interface BillingPeriod {
+  /** ISO date-time of the period start, from the subscription. */
+  start: string;
+  end: string;
+}
+
 export async function fetchRateCard(
   accountId: string,
   token: string,
   fetchFn: typeof fetch = fetch,
-): Promise<RateCard> {
+): Promise<{ card: RateCard; period: BillingPeriod }> {
   const get = async <T>(path: string): Promise<T> => {
     const res = await fetchFn(`${CF_API}${path}`, { headers: { authorization: `Bearer ${token}` } });
     const body = (await res.json().catch(() => ({}))) as { success?: boolean; result?: T; errors?: Array<{ message: string }> };
@@ -89,12 +96,19 @@ export async function fetchRateCard(
     return body.result as T;
   };
 
-  const subscriptions = await get<Array<{ rate_plan?: { id?: string } }>>(`/accounts/${accountId}/subscriptions`);
+  const subscriptions = await get<Array<{ rate_plan?: { id?: string }; current_period_start?: string; current_period_end?: string }>>(
+    `/accounts/${accountId}/subscriptions`,
+  );
   for (const sub of subscriptions) {
     const planId = sub.rate_plan?.id;
     if (!planId) continue;
     const plan = await get<RawPlan>(`/billing/rate_plans/${encodeURIComponent(planId)}`);
-    if (plan.components?.some((c) => c.name === DO_COMPONENT.duration)) return parseRateCard(plan);
+    if (!plan.components?.some((c) => c.name === DO_COMPONENT.duration)) continue;
+    if (!sub.current_period_start || !sub.current_period_end) throw new Error(`subscription ${planId} has no billing period`);
+    return {
+      card: parseRateCard(plan),
+      period: { start: sub.current_period_start, end: sub.current_period_end },
+    };
   }
   throw new Error("no subscription on this account carries the Durable Objects rate card");
 }

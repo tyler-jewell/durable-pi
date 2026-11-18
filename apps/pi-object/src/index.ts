@@ -17,14 +17,15 @@ import { createPiTools } from "@cloudflare/computer/tools/pi-ai";
 import { createModels, type Message } from "@earendil-works/pi-ai";
 import { deepseekProvider } from "@earendil-works/pi-ai/providers/deepseek";
 
-import { COST_CONFIG, COST_OBJECT_IDS, type CostObjectId } from "./cost/config.js";
+import { BUDGET, COST_CONFIG, COST_OBJECT_IDS, type CostObjectId } from "./cost/config.js";
+import { budgetDecision, BudgetExceeded, type BudgetDecision } from "./cost/budget.js";
 import { readDeepseekBalance } from "./cost/deepseek.js";
-import { fetchRateCard, type RateCard } from "./cost/cloudflare-rate-card.js";
-import { cloudflareDoView, doQuantities, type CloudflareDoView } from "./cost/cloudflare-do.js";
+import { fetchRateCard, type BillingPeriod, type RateCard } from "./cost/cloudflare-rate-card.js";
+import { cloudflareDoView, doPeriodUsage, type CloudflareDoView } from "./cost/cloudflare-do.js";
 import { meterStorage } from "./cost/metered-storage.js";
 import * as T from "./cost/meter.js";
 import { deepseekView, type CostObjectView } from "./cost/objects.js";
-import { UsageStore, type UsageSnapshot } from "./cost/store.js";
+import { dayOf, UsageStore, type UsageSnapshot } from "./cost/store.js";
 
 const MODEL_ID = "deepseek-flash";
 /** Bound the spend if the model fails to converge. */
@@ -41,6 +42,8 @@ const STREAM_EVERY_MS = 60_000;
 /** The rate card changes rarely; it is re-read from the account at most this often, on demand (no scheduled job). */
 const RATE_CARD_TTL_MS = 24 * 60 * 60_000;
 const RATE_CARD_KEY = "rate-card";
+/** The largest single model call seen so far: the most the next call can be expected to cost. */
+const MAX_CALL_KEY = "max-call-usd";
 
 const SYSTEM_PROMPT =
   "You are working in a directory at /workspace. Use the tools to do what the user asks, then say what you did. " +
@@ -51,10 +54,14 @@ const sha256Hex = async (text: string) => {
   return [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, "0")).join("");
 };
 
+export type RunResult = { answer: string; toolCalls: number; turns: number } | { budget: BudgetDecision };
+
 export interface CostReport {
   asOf: number;
   /** One entry per cost object. Each has its own free-tier toggle (off by default). */
   objects: Array<CostObjectView | CloudflareDoView>;
+  /** The per-DO budget guard: whether new work is allowed, and what is left. */
+  budget: BudgetDecision;
   /** Telemetry: exact counts and durations from pi and from this app's clock. */
   usage: UsageSnapshot;
 }
@@ -123,10 +130,11 @@ export class PiAgent extends DurableObject<Env> {
       const now = Date.now();
       this.flush(now);
       const deepseek = await this.deepseekObject(now);
-      const cloudflare = await this.cloudflareObject(now);
+      const { cloudflare, decision } = await this.budgetState(now);
       return {
         asOf: now,
         objects: [deepseek, cloudflare],
+        budget: decision,
         usage: this.usage.snapshot([T.secretsLine(SECRETS_REQUIRED.length)]),
       };
     });
@@ -140,8 +148,39 @@ export class PiAgent extends DurableObject<Env> {
     });
   }
 
-  async run(task: string): Promise<{ answer: string; toolCalls: number; turns: number }> {
-    return this.tracked(() => this.runLoop(task));
+  /** Runs a task. Refused by the budget guard, it returns the decision instead of starting any work. */
+  async run(task: string): Promise<RunResult> {
+    return this.tracked(async () => {
+      try {
+        return await this.runLoop(task);
+      } catch (error) {
+        if (error instanceof BudgetExceeded) return { budget: error.decision };
+        throw error;
+      }
+    });
+  }
+
+  /** Cloudflare, LLM and the largest call, against the cap. Read fresh each time: spend moves between calls. */
+  private async budgetState(now: number): Promise<{ cloudflare: CloudflareDoView; decision: BudgetDecision }> {
+    const cloudflare = await this.cloudflareObject(now);
+    const fromDay = cloudflare.period ? dayOf(Date.parse(cloudflare.period.start)) : dayOf(now);
+    const llmUsd = this.usage
+      .dailyRows(fromDay, dayOf(now))
+      .filter((r) => r.sku.startsWith("llm.") && r.sku.endsWith(".estimate"))
+      .reduce((sum, r) => sum + r.quantity, 0);
+    const maxCallUsd = (await this.ctx.storage.get<number>(MAX_CALL_KEY)) ?? 0;
+    const decision = budgetDecision({
+      capUsd: BUDGET.perDoUsdPerPeriod,
+      cloudflareUsd: cloudflare.actualUsd,
+      llmUsd,
+      maxCallUsd,
+    });
+    return { cloudflare, decision };
+  }
+
+  private async assertBudget(): Promise<void> {
+    const { decision } = await this.budgetState(Date.now());
+    if (!decision.allowed) throw new BudgetExceeded(decision);
   }
 
   private async deepseekObject(now: number): Promise<CostObjectView> {
@@ -167,23 +206,27 @@ export class PiAgent extends DurableObject<Env> {
   /** Cloudflare Durable Object cost: this period's telemetry at the account's rate card. */
   private async cloudflareObject(now: number): Promise<CloudflareDoView> {
     const freeTier = (await this.ctx.storage.get<boolean>(freeTierKey("cloudflare-do"))) === true;
-    const cached = await this.ctx.storage.get<{ fetchedAt: number; card: RateCard }>(RATE_CARD_KEY);
+    const cached = await this.ctx.storage.get<{ fetchedAt: number; card: RateCard; period: BillingPeriod }>(RATE_CARD_KEY);
     let card: RateCard | null = cached?.card ?? null;
+    let period: BillingPeriod | null = cached?.period ?? null;
     let note: string | undefined;
     if (!this.env.CLOUDFLARE_API_TOKEN || !this.env.CLOUDFLARE_ACCOUNT_ID) {
       note = "set the CLOUDFLARE_API_TOKEN and CLOUDFLARE_ACCOUNT_ID secrets (billing read)";
-    } else if (!cached || now - cached.fetchedAt >= RATE_CARD_TTL_MS) {
+    } else if (!cached || !cached.period || now - cached.fetchedAt >= RATE_CARD_TTL_MS) {
+      // An entry cached before periods were stored has no period: re-read it, so allowances are not priced over one day.
       try {
-        card = await fetchRateCard(this.env.CLOUDFLARE_ACCOUNT_ID, this.env.CLOUDFLARE_API_TOKEN);
-        await this.ctx.storage.put(RATE_CARD_KEY, { fetchedAt: now, card });
+        const fetched = await fetchRateCard(this.env.CLOUDFLARE_ACCOUNT_ID, this.env.CLOUDFLARE_API_TOKEN);
+        card = fetched.card;
+        period = fetched.period;
+        await this.ctx.storage.put(RATE_CARD_KEY, { fetchedAt: now, card, period });
       } catch (error) {
         note = `rate card refresh failed: ${error instanceof Error ? error.message : String(error)}`;
       }
     }
-    // Allowances reset per UTC month (Dynamic Workers per day), so only the current period is priced.
-    const iso = new Date(now).toISOString();
-    const totals = { ...this.usage.periodTotals(iso.slice(0, 7)), ...this.usage.periodTotals(iso.slice(0, 10)) };
-    return cloudflareDoView({ card, quantities: doQuantities(totals), freeTier, asOf: now, note });
+    // Priced over the billing period: from the subscription's period start, through today.
+    const fromDay = period ? dayOf(Date.parse(period.start)) : dayOf(now);
+    const usage = doPeriodUsage(this.usage.dailyRows(fromDay, dayOf(now)), fromDay, dayOf(now));
+    return cloudflareDoView({ card, period, usage, freeTier, asOf: now, note });
   }
 
   private llmModel() {
@@ -192,7 +235,7 @@ export class PiAgent extends DurableObject<Env> {
     return model;
   }
 
-  private async runLoop(task: string): Promise<{ answer: string; toolCalls: number; turns: number }> {
+  private async runLoop(task: string): Promise<RunResult> {
     const { tools, execute } = createPiTools({ workspace: this.workspace });
 
     const models = createModels();
@@ -205,13 +248,18 @@ export class PiAgent extends DurableObject<Env> {
 
     let toolCalls = 0;
     for (let turn = 0; turn < MAX_TURNS; turn += 1) {
+      await this.assertBudget();
       const callStarted = Date.now();
       const reply = await models.complete(model, { systemPrompt: SYSTEM_PROMPT, messages, tools }, { env });
       const callEnded = Date.now();
       messages.push(reply);
       this.usage.record([...T.llmLines(MODEL_ID, reply.usage), T.llmWallLine(MODEL_ID, callEnded - callStarted)]);
 
-      const calls = reply.content.filter((block) => block.type === "toolCall");
+      // Track the largest call: the budget guard uses it as the expected cost of the next one.
+    const callUsd = reply.usage.cost.total;
+    if (callUsd > ((await this.ctx.storage.get<number>(MAX_CALL_KEY)) ?? 0)) await this.ctx.storage.put(MAX_CALL_KEY, callUsd);
+
+    const calls = reply.content.filter((block) => block.type === "toolCall");
       if (calls.length === 0) {
         const answer = reply.content
           .filter((block) => block.type === "text")
@@ -320,7 +368,8 @@ export default {
     if (request.method === "POST" && url.pathname === "/") {
       const { task } = (await request.json()) as { task?: string };
       if (!task) return new Response("body needs a task\n", { status: 400 });
-      return json(await agent.run(task));
+      const result = await agent.run(task);
+      return json(result, "budget" in result ? 402 : 200);
     }
 
     return new Response(
