@@ -2,12 +2,13 @@
   "name": "@durable-pi/pi-object",
   "description": "Spike: one-shot pi agent in a Durable Object (vendored from cloudflare/computer examples/pi-ai).",
   "scripts": {
-    "dev": "wrangler dev",
+    "dev": "wrangler dev --port 8788",
     "local": "node --import ./local-shim.mjs run-local.mjs",
     "deploy": "wrangler deploy",
     "typecheck": "tsc --noEmit",
     "build:types": "wrangler types",
-    "real": "node --import ./local-shim.mjs run-real.mjs"
+    "real": "node --import ./local-shim.mjs run-real.mjs",
+    "dev:verify": "bash scripts/verify-do.sh"
   },
   "dependencies": {
     "@cloudflare/computer": "^0.11.3",

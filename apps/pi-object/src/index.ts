@@ -1,9 +1,9 @@
-// A one-shot agent on pi, working in a durable Workspace. pi leaves
-// the agent loop to the caller, so `run` below is that whole loop.
+// The durable pi object: one PiAgent Durable Object per agent. It owns a Workspace (SQLite
+// filesystem + a worker shell), runs the pi-ai agent loop against Anthropic, and keeps its
+// files across requests and restarts. Derived from cloudflare/computer examples/pi-ai.
 //
-//   client ──► Worker / ──► PiAgent DO ──► Workspace (files + shell)
-//                                  │
-//                                  └──► Workers AI, through env.AI
+//   client ──► Worker fetch ──► PiAgent DO ──► Workspace (files + shell)
+//                                    └──► Anthropic (claude-haiku-5-5), key from a secret
 
 import { DurableObject } from "cloudflare:workers";
 
@@ -11,17 +11,18 @@ import { Workspace, WorkspaceServiceProxy, type WorkspaceStub } from "@cloudflar
 import { WorkerShellBackend } from "@cloudflare/computer/backends/worker-shell";
 import { createPiTools } from "@cloudflare/computer/tools/pi-ai";
 import { createModels, type Message } from "@earendil-works/pi-ai";
+import { anthropicProvider } from "@earendil-works/pi-ai/providers/anthropic";
 
-import { WORKERS_AI_PROVIDER, workersAI } from "./workers-ai";
-
-// The worker-shell backend reaches back into this durable object by
-// binding name and id, so the shell shares the agent's filesystem.
+// The worker-shell backend reaches back into this durable object by binding name and id, so
+// the shell shares the agent's filesystem.
 export { WorkspaceServiceProxy };
 
-const MODEL = "@cf/meta/llama-3.3-70b-instruct-fp8-fast";
-
+const MODEL_ID = "claude-haiku-5-5";
 // Bound the spend if the model fails to converge.
 const MAX_TURNS = 10;
+
+const SYSTEM_PROMPT =
+  "You are working in a directory at /workspace. Use the tools to do what the user asks, then say what you did.";
 
 export class PiAgent extends DurableObject<Env> {
   workspace = new Workspace({
@@ -42,36 +43,39 @@ export class PiAgent extends DurableObject<Env> {
     return this.workspace.stub();
   }
 
-  async run(task: string): Promise<string> {
-    // `exec` offers every backend the Workspace has; here that is the
-    // one worker shell, so the model never names a backend.
+  /** Read a file from this agent's workspace (for inspection and tests). */
+  async read(path: string): Promise<string> {
+    return this.workspace.fs.readFile(path, "utf8");
+  }
+
+  async run(task: string): Promise<{ answer: string; toolCalls: number; turns: number }> {
     const { tools, execute } = createPiTools({ workspace: this.workspace });
 
     const models = createModels();
-    models.setProvider(workersAI(this.env.AI, MODEL));
-    const model = models.getModel(WORKERS_AI_PROVIDER, MODEL);
-    if (!model) throw new Error(`model ${MODEL} is not registered`);
+    models.setProvider(anthropicProvider());
+    const model = models.getModel("anthropic", MODEL_ID);
+    if (!model) throw new Error(`model ${MODEL_ID} is not registered`);
 
     const messages: Message[] = [{ role: "user", content: task, timestamp: Date.now() }];
+    // The key travels with each request as pi's per-request env; it is never stored in the DO.
+    const env = { ANTHROPIC_OAUTH_TOKEN: this.env.ANTHROPIC_OAUTH_TOKEN };
 
+    let toolCalls = 0;
     for (let turn = 0; turn < MAX_TURNS; turn += 1) {
-      const reply = await models.complete(model, {
-        systemPrompt:
-          "You are working in a directory at /workspace. Use the tools to do what the user asks, then say what you did.",
-        messages,
-        tools,
-      });
+      const reply = await models.complete(model, { systemPrompt: SYSTEM_PROMPT, messages, tools }, { env });
       messages.push(reply);
 
       const calls = reply.content.filter((block) => block.type === "toolCall");
       if (calls.length === 0) {
-        return reply.content
+        const answer = reply.content
           .filter((block) => block.type === "text")
           .map((block) => block.text)
           .join("");
+        return { answer, toolCalls, turns: turn + 1 };
       }
 
       for (const call of calls) {
+        toolCalls += 1;
         const { content, isError } = await execute(call);
         messages.push({
           role: "toolResult",
@@ -84,20 +88,32 @@ export class PiAgent extends DurableObject<Env> {
       }
     }
 
-    return `Gave up after ${MAX_TURNS} turns.`;
+    return { answer: `Gave up after ${MAX_TURNS} turns.`, toolCalls, turns: MAX_TURNS };
   }
 }
 
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
-    if (request.method !== "POST") {
-      return new Response('POST a task, e.g. {"task":"write hello.txt"}\n', { status: 405 });
+    const url = new URL(request.url);
+    // One agent per name; the demo uses a single agent. Use ?agent=<name> to address another.
+    const agent = env.PiAgent.get(env.PiAgent.idFromName(url.searchParams.get("agent") ?? "demo"));
+
+    if (request.method === "GET" && url.pathname === "/file") {
+      const path = url.searchParams.get("path");
+      if (!path) return new Response("path is required\n", { status: 400 });
+      try {
+        return new Response(await agent.read(path));
+      } catch {
+        return new Response("not found\n", { status: 404 });
+      }
     }
 
-    const { task } = (await request.json()) as { task?: string };
-    if (!task) return new Response("body needs a task\n", { status: 400 });
+    if (request.method === "POST") {
+      const { task } = (await request.json()) as { task?: string };
+      if (!task) return new Response("body needs a task\n", { status: 400 });
+      return Response.json(await agent.run(task));
+    }
 
-    const agent = env.PiAgent.get(env.PiAgent.idFromName("demo"));
-    return new Response(`${await agent.run(task)}\n`);
+    return new Response('POST {"task": "..."} to run, GET /file?path=/workspace/x to read\n', { status: 405 });
   },
 } satisfies ExportedHandler<Env>;

@@ -1,19 +1,13 @@
 {
-  // Example: a one-shot pi agent in a Durable Object.
+  // Durable pi object: a PiAgent Durable Object with a Workspace and a pi-ai agent loop.
   //
-  // The DO holds a Workspace whose shell is a Dynamic Worker, and
-  // talks to Workers AI through the AI binding, so the example needs
-  // no API key.
+  // The model is Anthropic; its credential is the ANTHROPIC_OAUTH_TOKEN secret (see .dev.vars.example).
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "durable-pi-object",
   "main": "src/index.ts",
   "compatibility_date": "2026-05-26",
   "compatibility_flags": ["nodejs_compat", "experimental"],
 
-  // Workers AI. Running this uses your account's Workers AI quota.
-  "ai": {
-    "binding": "AI"
-  },
 
   // The workspace shell runs in a Dynamic Worker minted through this.
   "worker_loaders": [

@@ -22,6 +22,22 @@ npm run dev         # wrangler dev (needs Workers AI access)
   from npm does not ship that export.
 - `@cloudflare/computer@^0.11.3` and `@earendil-works/pi-ai@1.5.2` come from npm.
 
+## The Durable Object (`src/index.ts`)
+
+`PiAgent` is one Durable Object per agent name. It owns a `Workspace` (SQLite-backed files plus a worker
+shell) and runs the agent loop against Anthropic. Routes:
+
+- `POST /` with `{"task": "..."}` runs the loop and returns `{answer, toolCalls, turns}`.
+- `GET /file?path=/workspace/x` reads a file from the agent's workspace (404 if missing).
+- `?agent=<name>` addresses another agent. The default is `demo`.
+
+`npm run dev` starts it under `wrangler dev` (workerd, the real Durable Object runtime, local storage).
+`npm run dev:verify` runs the end-to-end proof: the agent writes and reads a haiku, the dev server restarts,
+and the file is unchanged. Verified on the host and in `apple-box`.
+
+Secrets: `.dev.vars` (gitignored) holds `ANTHROPIC_OAUTH_TOKEN`. See `.dev.vars.example`. The Durable Object never
+stores the key: it passes it per request through pi-ai's `env` option.
+
 ## Model
 
 `run-real.mjs` uses pi's `ModelRuntime`, so it reads the same login `pi` uses (`~/.pi/agent/auth.json`).
@@ -31,6 +47,10 @@ The default is `anthropic/claude-haiku-5-5`, chosen because the DeepSeek rate li
 ## Known issues
 
 - DeepSeek rate limit exhausted. Default moved to Haiku 5.5.
+- The credential is a Claude subscription OAuth token (`sk-ant-oat…`, expires; pi refreshes it). Before any deploy, use an
+  Anthropic API key or AI Gateway BYOK instead, and check the terms for using a subscription token in a server.
+- The DO is not deployed yet. The `dev` path uses local DO storage, and `wrangler deploy` is untested.
+- The shell backend (`exec`) is wired but the verification only exercises `write`/`read`.
 - `run-real.mjs` uses pi's SDK on the host. A Durable Object must use pi-ai with its own key or the AI Gateway instead.
 
 - `module.register()` in `local-shim.mjs` prints a Node deprecation warning (`registerHooks`
