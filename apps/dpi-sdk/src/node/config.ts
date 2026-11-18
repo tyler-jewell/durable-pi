@@ -11,6 +11,9 @@ export type ServiceKind = "launchd" | "systemd";
 /** Where new sessions start when a device sets no start_dirs (created by `just net up`). */
 export const DEFAULT_START_DIR = "~/dpi-work";
 
+/** Default OCI image for `apple-container` devices. */
+export const DEFAULT_CONTAINER_IMAGE = "node:26-bookworm-slim";
+
 export interface NetDevice {
   id: string;
   name: string;
@@ -122,7 +125,7 @@ export function parseNetworkConfig(text: string, file = NETWORK_FILE): NetworkCo
     };
     device.env = envMap(defaults.env, (value as Raw).env, device.envKeys, where);
     if (kind === "apple-container") {
-      device.image = typeof d.image === "string" && d.image.trim() ? d.image.trim() : "node:24.11.1-bookworm-slim";
+      device.image = typeof d.image === "string" && d.image.trim() ? d.image.trim() : DEFAULT_CONTAINER_IMAGE;
       device.cpus = d.cpus === undefined ? 2 : Number(d.cpus);
       if (!Number.isInteger(device.cpus) || device.cpus < 1) throw Error(`${where}.cpus must be a positive integer`);
       device.memory = typeof d.memory === "string" && d.memory.trim() ? d.memory.trim() : "2048M";

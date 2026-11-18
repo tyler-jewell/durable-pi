@@ -23,11 +23,11 @@ Open the repository in Claude Code (or Pi, or your favorite agentic coding tool)
 /install
 ```
 
-The command lives in [`.claude/commands/install.md`](.claude/commands/install.md). It checks Node 24, npm, just and zsh, confirms a model-provider key in `.env` without printing it, runs `just install`, writes this machine's device config with `just net up local`, builds the web UI, offers to set up the proactive demo and finishes with `just check`. It never starts a server and never touches a device other than `local`. Run `/prime` afterwards to load the project context into your agent.
+The command lives in [`.claude/commands/install.md`](.claude/commands/install.md). It checks Node 26, npm, just and zsh, confirms a model-provider key in `.env` without printing it, runs `just install`, writes this machine's device config with `just net up local`, builds the web UI, offers to set up the proactive demo and finishes with `just check`. It never starts a server and never touches a device other than `local`. Run `/prime` afterwards to load the project context into your agent.
 
 ### Manual Install
 
-**Prereqs:** [Node.js 24](https://nodejs.org) (via [nvm](https://github.com/nvm-sh/nvm)), [`just`](https://github.com/casey/just), `zsh` (macOS ships it), `tmux` (for the smoke and e2e test suites), an [OpenRouter](https://openrouter.ai) API key. Remote devices need passwordless `ssh`, and exe.dev VMs need an [exe.dev](https://exe.dev) account.
+**Prereqs:** [Node.js 26](https://nodejs.org) (via [nvm](https://github.com/nvm-sh/nvm)), [`just`](https://github.com/casey/just), `zsh` (macOS ships it), `tmux` (for the smoke and e2e test suites), an [OpenRouter](https://openrouter.ai) API key. Remote devices need passwordless `ssh`, and exe.dev VMs need an [exe.dev](https://exe.dev) account.
 
 ```bash
 brew install just tmux                         # macOS; Linux: sudo apt install just tmux (or see just's install page)
@@ -236,10 +236,10 @@ Devices are data. `dpi-network.yaml` declares each one by kind, and no code or r
 | Kind | How it runs | `just net up <id>` does |
 |---|---|---|
 | `local` | `just backend run` on this machine, or a service if you set `service:` | env file and registry entry (plus the service when set) |
-| `ssh` | a launchd LaunchAgent (macOS) or a systemd unit (Linux) | install Node 24 with nvm, rsync the code and `npm ci`, env, service, register, wait online |
+| `ssh` | a launchd LaunchAgent (macOS) or a systemd unit (Linux) | install Node 26 with nvm, rsync the code and `npm ci`, env, service, register, wait online |
 | `exe-dev` | systemd on an [exe.dev](https://exe.dev) VM behind its HTTPS proxy | create the named VM if missing, the `ssh` steps, expose port 4780 over HTTPS before register |
 | `apple-container` | a Linux arm64 container from the macOS [`container`](https://developer.apple.com/containers/) CLI, published on `127.0.0.1` | `container run` the image if missing, copy the code and `npm ci`, env, start the backend, register, wait online |
-| `macos-vm` | a headless macOS VM from [Lima](https://lima-vm.io/)'s `vz` driver, reached over `ssh lima-<id>` | `limactl start` the VM (first run downloads + installs macOS), then the `ssh` steps: Node 24 with nvm, rsync + `npm ci`, env, launchd, register, wait online |
+| `macos-vm` | a headless macOS VM from [Lima](https://lima-vm.io/)'s `vz` driver, reached over `ssh lima-<id>` | `limactl start` the VM (first run downloads + installs macOS), then the `ssh` steps: Node 26 with nvm, rsync + `npm ci`, env, launchd, register, wait online |
 | `url` | anything already running | register the URL and token only |
 
 ```bash
@@ -367,9 +367,9 @@ Target: the **durable pi object** runs as **one Cloudflare Durable Object per ap
 Every node is proved the same way: **test in a container → review code (remove junk) → review tests (must actually catch failures) → review docs (trim, don't add)**. Non-blocking findings go to [Known issues](#known-issues).
 
 ### Phase 0 — Baseline at latest versions
-- [ ] Pin latest: `cf@1.0.0-rc.1`, `wrangler@4.164.0`, `pi-*@1.5.2`, `@cloudflare/vite-plugin@2.0.0-rc.0`, `@cloudflare/vitest-plugin@1.8.4`, Node 26 LTS.
-- [ ] Rebuild the test container on `node:26` and bump the YAML `node` default 24 → 26.
-- [ ] Confirm the container has Git 2.32+ (Artifacts local-simulator requirement).
+- [x] Pin latest: `cf@1.0.0-rc.1`, `wrangler@4.164.0`, `pi-*@1.5.2`, Node 26 LTS (`@cloudflare/vite-plugin@2.0.0-rc.0` and `@cloudflare/vitest-plugin@1.8.4` recorded as Phase 3 targets).
+- [x] Rebuild the test container on `node:26` (v26.13.1) and bump the YAML `node` default 24 → 26 (centralized `DEFAULT_CONTAINER_IMAGE`).
+- [x] Confirm the container has Git 2.32+ (git 2.39.5, installed by the new apple-container `provision` step).
 
 ### Phase 1 — Base app shell (shared UI)
 - [ ] Extract the proactive demo's shell (top bar · nav rail · two-pane · footer · toasts) into a shared `base-app` package.

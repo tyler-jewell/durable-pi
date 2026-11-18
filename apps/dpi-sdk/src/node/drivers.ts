@@ -6,7 +6,7 @@ import { join } from "node:path";
 import { createInterface } from "node:readline/promises";
 import type { DeviceKind } from "../api.js";
 import { DpiClient } from "../client.js";
-import { syncConfigToRegistry, type NetDevice, type NetworkConfig } from "./config.js";
+import { DEFAULT_CONTAINER_IMAGE, syncConfigToRegistry, type NetDevice, type NetworkConfig } from "./config.js";
 import { NetworkRegistry } from "./registry.js";
 import { exeDev, remote, rsync, run, shPath, sleep } from "./ops.js";
 
@@ -403,7 +403,7 @@ async function containerCreate(device: NetDevice, ctx: DriverContext) {
     await run("container", ["start", device.id]);
     return;
   }
-  ctx.log(`create ${device.id}: container run ${device.image ?? "node:24.11.1-bookworm-slim"}`);
+  ctx.log(`create ${device.id}: container run ${device.image ?? DEFAULT_CONTAINER_IMAGE}`);
   await run(
     "container",
     [
@@ -411,7 +411,7 @@ async function containerCreate(device: NetDevice, ctx: DriverContext) {
       "-p", `${device.port}:${device.port}`,
       "-m", device.memory ?? "2048M",
       "-c", String(device.cpus ?? 2),
-      device.image ?? "node:24.11.1-bookworm-slim",
+      device.image ?? DEFAULT_CONTAINER_IMAGE,
       "sleep", "infinity",
     ],
     { timeoutMs: 300_000 },
@@ -440,6 +440,15 @@ async function containerDeploy(device: NetDevice, ctx: DriverContext) {
   } catch {}
 }
 
+async function containerProvision(device: NetDevice, ctx: DriverContext) {
+  ctx.log(`provision ${device.id}: apt-get install git`);
+  await containerExec(
+    device,
+    `apt-get update -qq >/dev/null && apt-get install -y -qq git ca-certificates >/dev/null && git --version`,
+    { timeoutMs: 300_000 },
+  );
+}
+
 async function containerStart(device: NetDevice, ctx: DriverContext) {
   const code = containerAbs(device.codeDir);
   const log = `${containerAbs(device.homeDir)}/backend.log`;
@@ -465,6 +474,7 @@ async function containerRestart(device: NetDevice, ctx: DriverContext) {
 
 const appleContainerDriver: Driver = {
   create: containerCreate,
+  provision: containerProvision,
   deploy: containerDeploy,
   env: (d, ctx) => writeEnv(d, ctx),
   register,
@@ -485,6 +495,7 @@ const appleContainerDriver: Driver = {
   },
   async up(d, ctx) {
     await containerCreate(d, ctx);
+    await containerProvision(d, ctx);
     await containerDeploy(d, ctx);
     await writeEnv(d, ctx);
     await containerStart(d, ctx);
@@ -508,7 +519,7 @@ async function limaInstances() {
 
 /** Install nvm + node without git: a fresh macOS VM has no Xcode CLT, and nvm's install.sh needs git. */
 async function macosProvision(device: NetDevice, ctx: DriverContext) {
-  ctx.log(`provision ${device.id}: nvm (curl tarball, no git) + node 24`);
+  ctx.log(`provision ${device.id}: nvm (curl tarball, no git) + node ${device.node}`);
   const result = await exec(
     device,
     `if [ ! -s "$NVM_DIR/nvm.sh" ]; then
@@ -516,8 +527,8 @@ async function macosProvision(device: NetDevice, ctx: DriverContext) {
   curl -fsSL https://github.com/nvm-sh/nvm/archive/refs/tags/v0.40.3.tar.gz | tar -xz -C "$NVM_DIR" --strip-components=1
 fi
 . "$NVM_DIR/nvm.sh"
-nvm install 24 >/dev/null 2>&1
-echo "node: $(nvm which 24)"`,
+nvm install ${device.node} >/dev/null 2>&1
+echo "node: $(nvm which ${device.node})"`,
     { timeoutMs: 900_000 },
   );
   ctx.log(result.stdout.trim());

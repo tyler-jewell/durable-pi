@@ -45,7 +45,7 @@ apps/proactive-dpi-demo/ # the hook: proactive incident agent (just proactive in
 
 Critical, so stop and guide the user if any is missing:
 
-1. `command -v node && node -v`: Node.js **24 or newer** (the backend uses `node:sqlite`). Install with nvm (https://github.com/nvm-sh/nvm): `nvm install 24 && nvm use 24`, or from https://nodejs.org.
+1. `command -v node && node -v`: Node.js **26 or newer** (the backend uses `node:sqlite`). Install with nvm (https://github.com/nvm-sh/nvm): `nvm install 26 && nvm use 26`, or from https://nodejs.org.
 2. `command -v npm && npm -v`.
 3. `command -v just && just --version`: install with `brew install just` or see https://github.com/casey/just.
 4. `command -v zsh`: every `just` recipe runs in zsh. macOS ships it; on Linux install it with `sudo apt install zsh` (or your package manager).

@@ -49,7 +49,7 @@ test("apple-container derives a loopback url and resource defaults", () => {
   const c = parseNetworkConfig("devices:\n  box:\n    kind: apple-container\n    port: 4790");
   assert.equal(c.devices.box.url, "http://127.0.0.1:4790");
   assert.equal(c.devices.box.host, "0.0.0.0");
-  assert.equal(c.devices.box.image, "node:24.11.1-bookworm-slim");
+  assert.equal(c.devices.box.image, "node:26-bookworm-slim");
   assert.equal(c.devices.box.cpus, 2);
   assert.equal(c.devices.box.memory, "2048M");
   const custom = parseNetworkConfig("devices:\n  box:\n    kind: apple-container\n    image: node:24-alpine\n    cpus: 4\n    memory: 4096M");

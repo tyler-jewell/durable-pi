@@ -35,7 +35,7 @@
 
 defaults:
   port: 4780                       # dpi-backend port on every device
-  node: 24                         # Node major installed with nvm on ssh / exe-dev devices
+  node: 26                         # Node major installed with nvm on ssh / exe-dev devices
   code_dir: ~/dpi                  # where apps/dpi-backend + apps/dpi-sdk are synced (ssh / exe-dev)
   home_dir: ~/.dpi                 # backend.env, data and logs; deploys never touch it
   start_dirs: ["~/dpi-work"]       # where new sessions start (created if missing); any existing folder works as a cwd
@@ -66,7 +66,7 @@ devices:
   #   name: Apple container
   #   kind: apple-container
   #   port: 4782               # host port; the backend binds this port inside too
-  #   image: node:24.11.1-bookworm-slim
+  #   image: node:26-bookworm-slim
   #   cpus: 2
   #   memory: 2048M
   #   start_dirs: ["~/dpi-work"]
