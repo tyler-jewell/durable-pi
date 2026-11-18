@@ -41,14 +41,14 @@ stores the key: it passes it per request through pi-ai's `env` option.
 ## Model
 
 `run-real.mjs` uses pi's `ModelRuntime`, so it reads the same login `pi` uses (`~/.pi/agent/auth.json`).
-The default is `anthropic/claude-haiku-5-5`, chosen because the DeepSeek rate limit ran out. Override with
+The Durable Object uses `deepseek-flash` (DeepSeek topped up). `run-real.mjs` defaults to `anthropic/claude-haiku-5-5`. Override with
 `PI_PROVIDER` and `PI_MODEL_ID`. Verified on the host and in the `apple-box` container: 2 tool calls, file on disk.
 
 ## Known issues
 
 - DeepSeek rate limit exhausted. Default moved to Haiku 5.5.
-- The credential is a Claude subscription OAuth token (`sk-ant-oat…`, expires; pi refreshes it). Before any deploy, use an
-  Anthropic API key or AI Gateway BYOK instead, and check the terms for using a subscription token in a server.
+- The Durable Object validates on DeepSeek. The Anthropic OAuth token is no longer used by the DO.
+- One verify run in apple-box stalled inside a model call (no client timeout). The verify now bounds every request with `--max-time`.
 - The DO is not deployed yet. The `dev` path uses local DO storage, and `wrangler deploy` is untested.
 - The shell backend (`exec`) is wired but the verification only exercises `write`/`read`.
 - `run-real.mjs` uses pi's SDK on the host. A Durable Object must use pi-ai with its own key or the AI Gateway instead.

@@ -1,9 +1,9 @@
 // The durable pi object: one PiAgent Durable Object per agent. It owns a Workspace (SQLite
-// filesystem + a worker shell), runs the pi-ai agent loop against Anthropic, and keeps its
+// filesystem + a worker shell), runs the pi-ai agent loop against DeepSeek, and keeps its
 // files across requests and restarts. Derived from cloudflare/computer examples/pi-ai.
 //
 //   client ──► Worker fetch ──► PiAgent DO ──► Workspace (files + shell)
-//                                    └──► Anthropic (claude-haiku-5-5), key from a secret
+//                                    └──► DeepSeek (deepseek-flash), key from a secret
 
 import { DurableObject } from "cloudflare:workers";
 
@@ -11,13 +11,14 @@ import { Workspace, WorkspaceServiceProxy, type WorkspaceStub } from "@cloudflar
 import { WorkerShellBackend } from "@cloudflare/computer/backends/worker-shell";
 import { createPiTools } from "@cloudflare/computer/tools/pi-ai";
 import { createModels, type Message } from "@earendil-works/pi-ai";
-import { anthropicProvider } from "@earendil-works/pi-ai/providers/anthropic";
+import { deepseekProvider } from "@earendil-works/pi-ai/providers/deepseek";
 
 // The worker-shell backend reaches back into this durable object by binding name and id, so
 // the shell shares the agent's filesystem.
 export { WorkspaceServiceProxy };
 
-const MODEL_ID = "claude-haiku-5-5";
+const PROVIDER_ID = "deepseek";
+const MODEL_ID = "deepseek-flash";
 // Bound the spend if the model fails to converge.
 const MAX_TURNS = 10;
 
@@ -52,13 +53,13 @@ export class PiAgent extends DurableObject<Env> {
     const { tools, execute } = createPiTools({ workspace: this.workspace });
 
     const models = createModels();
-    models.setProvider(anthropicProvider());
-    const model = models.getModel("anthropic", MODEL_ID);
+    models.setProvider(deepseekProvider());
+    const model = models.getModel(PROVIDER_ID, MODEL_ID);
     if (!model) throw new Error(`model ${MODEL_ID} is not registered`);
 
     const messages: Message[] = [{ role: "user", content: task, timestamp: Date.now() }];
     // The key travels with each request as pi's per-request env; it is never stored in the DO.
-    const env = { ANTHROPIC_OAUTH_TOKEN: this.env.ANTHROPIC_OAUTH_TOKEN };
+    const env = { DEEPSEEK_API_KEY: this.env.DEEPSEEK_API_KEY };
 
     let toolCalls = 0;
     for (let turn = 0; turn < MAX_TURNS; turn += 1) {
@@ -94,6 +95,12 @@ export class PiAgent extends DurableObject<Env> {
 
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
+    // Fail closed: every route needs the device token, so a public URL cannot spend the model key.
+    if (!env.DPI_TOKEN) return new Response("DPI_TOKEN is not set\n", { status: 503 });
+    if (request.headers.get("authorization") !== `Bearer ${env.DPI_TOKEN}`) {
+      return new Response("unauthorized\n", { status: 401 });
+    }
+
     const url = new URL(request.url);
     // One agent per name; the demo uses a single agent. Use ?agent=<name> to address another.
     const agent = env.PiAgent.get(env.PiAgent.idFromName(url.searchParams.get("agent") ?? "demo"));
