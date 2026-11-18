@@ -1,12 +1,22 @@
 <script setup lang="ts">
 // The canonical layout: top bar · nav rail · left (generated view + approval) · right (the DO
 // streaming itself) · footer. Identity comes from props; content comes from named slots.
-defineProps<{
+import type { CostReadout } from "./cost";
+
+const props = defineProps<{
   title: string;
   appId?: string;
   status?: string;
   model?: string;
+  /** One entry per cost object from the project's /v1/cost report. */
+  costs?: CostReadout[];
 }>();
+const emit = defineEmits<{ toggleFreeTier: [id: string, enabled: boolean] }>();
+
+const costText = (c: CostReadout) => {
+  if (c.usd !== null) return `${c.freeTier ? "free-tier assumed" : "list"} ${c.usd.toFixed(2)}`;
+  return c.status === "unconfigured" ? "top-up not set" : c.status;
+};
 </script>
 
 <template>
@@ -17,6 +27,10 @@ defineProps<{
       <span class="spacer" />
       <span v-if="model" class="muted">{{ model }}</span>
       <span v-if="status" class="base-app__status" data-status>{{ status }}</span>
+      <span v-for="c in props.costs ?? []" :key="c.id" class="base-app__cost" :data-cost="c.id" :title="c.basis + (c.note ? ' · ' + c.note : '')">
+        {{ c.label }} {{ costText(c) }}
+        <button type="button" class="base-app__cost-toggle" :aria-pressed="c.freeTier" @click="emit('toggleFreeTier', c.id, !c.freeTier)">free tier {{ c.freeTier ? "on" : "off" }}</button>
+      </span>
     </header>
 
     <div class="base-app__body">
