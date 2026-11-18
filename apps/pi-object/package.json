@@ -6,7 +6,8 @@
     "local": "node --import ./local-shim.mjs run-local.mjs",
     "deploy": "wrangler deploy",
     "typecheck": "tsc --noEmit",
-    "build:types": "wrangler types"
+    "build:types": "wrangler types",
+    "real": "node --import ./local-shim.mjs run-real.mjs"
   },
   "dependencies": {
     "@cloudflare/computer": "^0.11.3",
@@ -17,6 +18,7 @@
   "devDependencies": {
     "typescript": "^6.0.3",
     "wrangler": "^4.148.0",
-    "@cloudflare/dofs": "file:./vendor/dofs"
+    "@cloudflare/dofs": "file:./vendor/dofs",
+    "@earendil-works/pi-coding-agent": "1.5.2"
   }
 }

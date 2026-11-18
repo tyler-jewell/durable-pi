@@ -7,6 +7,7 @@ Phase A proves the agent loop, tools and Workspace run **without a Cloudflare ac
 ```sh
 npm install
 npm run local       # scripted model, real Workspace + pi-ai tools (no account)
+npm run real        # REAL model (anthropic/claude-haiku-5-5), credentials from ~/.pi/agent/auth.json
 npm run typecheck   # tsc against generated wrangler types
 npm run dev         # wrangler dev (needs Workers AI access)
 ```
@@ -21,7 +22,16 @@ npm run dev         # wrangler dev (needs Workers AI access)
   from npm does not ship that export.
 - `@cloudflare/computer@^0.11.3` and `@earendil-works/pi-ai@1.5.2` come from npm.
 
+## Model
+
+`run-real.mjs` uses pi's `ModelRuntime`, so it reads the same login `pi` uses (`~/.pi/agent/auth.json`).
+The default is `anthropic/claude-haiku-5-5`, chosen because the DeepSeek rate limit ran out. Override with
+`PI_PROVIDER` and `PI_MODEL_ID`. Verified on the host and in the `apple-box` container: 2 tool calls, file on disk.
+
 ## Known issues
+
+- DeepSeek rate limit exhausted. Default moved to Haiku 5.5.
+- `run-real.mjs` uses pi's SDK on the host. A Durable Object must use pi-ai with its own key or the AI Gateway instead.
 
 - `module.register()` in `local-shim.mjs` prints a Node deprecation warning (`registerHooks`
   is the replacement). Harmless for the spike.
