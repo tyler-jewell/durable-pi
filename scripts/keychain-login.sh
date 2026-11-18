@@ -73,6 +73,9 @@ cmd_show() {
     });' "$account"
 }
 
+# Headless Chromium inside the sandbox (root needs --no-sandbox). Never --headed: no display, no VNC.
+BROWSER_ENV=(--env AGENT_BROWSER_EXECUTABLE_PATH=/usr/bin/chromium --env 'AGENT_BROWSER_ARGS=--no-sandbox,--disable-dev-shm-usage')
+
 cmd_browser() {
   [ $# -ge 3 ] || usage
   local service=$1 profile=$2 url=$3; shift 3
@@ -90,13 +93,13 @@ cmd_browser() {
   # Password goes straight from the item to the sandbox's auth vault over stdin.
   item_json "$service" | parse_or_die | node -e '
     let d=""; process.stdin.on("data",c=>d+=c).on("end",()=>process.stdout.write(JSON.parse(d).password));' \
-    | container exec -i "$container" sh -c 'cd /root && agent-browser auth save "$1" --url "$2" --username "$3" --password-stdin' \
+    | container exec -i "${BROWSER_ENV[@]}" "$container" sh -c 'cd /root && agent-browser auth save "$1" --url "$2" --username "$3" --password-stdin' \
         _ "$profile" "$url" "$account" >/dev/null
   echo "saved profile '$profile' for account '$account' in $container"
 
   if [ "$login" = 1 ]; then
     local nav=""; [ "$navigate" = 1 ] || nav="--no-navigate"
-    container exec "$container" sh -c "cd /root && agent-browser --session '$profile' auth login '$profile' $nav" >/dev/null
+    container exec "${BROWSER_ENV[@]}" "$container" sh -c "cd /root && agent-browser --session '$profile' auth login '$profile' $nav" >/dev/null
     echo "logged in with profile '$profile'"
   fi
 }
