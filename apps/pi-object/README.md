@@ -78,11 +78,13 @@ device token is `~/.dpi/pi-object.token`. Each route requires `Authorization: Be
   available to this token (see Known issues), so the figure is an estimate from the card, not Cloudflare's invoice.
 - **Spend limits**: the update path was run live as a round trip ($10 → $11 → $10; the cap is back at $10, version 3).
   The create path has not run live, because it applies only when a product has no policy and both do.
+- **Live DeepSeek reconciliation: not yet passed.** `scripts/deepseek-reconcile.ts run` (100 calls, off-peak, $0.286 expected) gave a balance drop the batch alone did not explain. The cause is another project on this machine (`tailnet-policy`) using the same global DeepSeek key while the batch settled. `attribute` prices every local DeepSeek call in the window and reports the residual. A PASS is meaningful only in a quiet window (no other calls for several minutes, balance stable).
 - **Key-command caching (finding)**: pi resolves an `apiKey: "!command"` per model request, not once per process. A
   five-request task ran the command five times. This package does not use `!command` keys.
 
 ## Known issues
 
+- **One DeepSeek key, several projects.** Every pi project on this machine reads the same `~/.pi/agent/auth.json`, so their calls all draw on one balance. Attribute by session (`deepseek-reconcile.ts attribute`), not by balance alone.
 - **Balance is account-wide.** The DeepSeek key is shared with other tools on this account, and their spend appears
   in the balance but not in this object. A per-agent figure holds only when this agent is the only user of the key.
 - **Cent precision.** Each balance reading is within ±$0.005. Cost is accurate to about a cent at any moment.

@@ -130,7 +130,8 @@ test("metered storage counts rows read and written for every consumption path", 
 });
 
 test("the cost code has no tariff or rate table left in it", () => {
-  const roots = ["src", "test"].map((d) => join(process.cwd(), d));
+  // The runtime cost code only. Validation tooling (scripts/, test/) reads the rate reference on purpose.
+  const roots = [join(process.cwd(), "src")];
   const files: string[] = [];
   const walk = (dir: string) => {
     for (const name of readdirSync(dir)) {

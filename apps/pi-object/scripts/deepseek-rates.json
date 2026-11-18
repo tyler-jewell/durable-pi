@@ -1,0 +1,13 @@
+{
+  "$comment": "Validation reference only. scripts/deepseek-reconcile.ts reads it to price recorded calls. The cost objects never read it: DeepSeek cost comes from the balance.",
+  "source": "https://api-docs.deepseek.com/quick_start/pricing/",
+  "retrieved": "2026-11-18",
+  "unit": "USD per 1M tokens",
+  "peakWindowUtc": { "hours": [[1, 4], [6, 10]], "days": "Monday to Friday", "notes": "Chinese public holidays are peak too; not modelled here, so avoid running on one." },
+  "models": {
+    "deepseek-v4-pro": {
+      "offPeak": { "cacheHit": 0.022, "cacheMiss": 0.66, "output": 1.98 },
+      "peak": { "cacheHit": 0.044, "cacheMiss": 1.32, "output": 3.96 }
+    }
+  }
+}
