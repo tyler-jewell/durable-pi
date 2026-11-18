@@ -35,7 +35,14 @@ printf '%s\n%s\n' "$REMOTE" "$TOKEN" | container run --rm --init --cpus 2 --memo
 
 ## Status
 
-- Container path proven: profile matches (Node 26.13.1, git 2.39.5, wrangler 4.164.0, cf 1.0.0-rc.1, pi 1.5.2).
-- The agent's write, commit, and push succeed against a bare remote.
-- Not yet done: the Artifacts leg (repo create, push with a repo token, host-side verification, teardown) and the
-  orchestrator that runs the whole flow and writes the session log.
+- **Local leg: PASS** (`npm run e2e` in apps/pi-object). Run `e2e-mwmmblef-e840`, 7.4 s wall time.
+  - The container runs the real pi 1.5.2 CLI with a scripted model. It writes `e2e/hello.txt`, commits, and pushes to a
+    fresh Cloudflare Artifacts repo through its bash tool.
+  - The host checks the remote: HEAD equals the container's HEAD, the file content matches, the commit subject matches,
+    and history is seed plus agent commit.
+  - Teardown: the repo is deleted (202, async). The token is refused about 0.7 s later; the check polls rather than
+    assuming. The namespace is removed if this run created it, and no container is left behind.
+- Artifacts behaviour, measured: repo delete is `202 Accepted`; the token is then rejected ("Invalid or expired token"),
+  after a short propagation delay.
+- Logs: `~/.dpi/e2e/<run id>/` holds `run.log`, `container.log` and `result.json`. The token never appears in them.
+- Remote (Cloudflare Worker) leg: not built yet.
