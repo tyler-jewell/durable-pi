@@ -40,12 +40,19 @@ npm run dev:verify  # end-to-end: agent runs, telemetry reaches /v1/cost, file s
 - **Freshness.** The balance is re-read at most once a minute. `GET /v1/cost/stream` pushes a report every minute.
   Balances are cent-precision, so each reading is within ±$0.005.
 
+## Guards (what stops a runaway)
+
+- **Per-DO budget** (`src/cost/config.ts`, `BUDGET`): before every model call, the DO checks Cloudflare spend (rate card) plus LLM spend (pi's estimate, a conservative upper bound) for the billing period. It refuses if the next call could take it past the cap. Overshoot is at most one call, and that bound is reported. Without a rate card it refuses everything (fails closed). Refusals return 402.
+- **Per-invocation limits** (`wrangler.jsonc`, `limits`): CPU time and subrequests per invocation.
+- **Account limits** (`scripts/ensure-spend-limits.sh`): one enabled limit per product per account, applied from `scripts/spend-limits.json`. Cloudflare does not guarantee a maximum invoice, so the per-DO budget is the tighter bound. `--dry-run` needs Billing Read; applying needs Billing Edit.
+
 ## Status
 
 - `npm test`: 19 tests, all pass. `npm run dev:verify`: the agent runs, the telemetry checks pass, the file survives.
 - The toggle, its error paths (400, 404, 401) and the stream were exercised on a live `wrangler dev`.
 - The DeepSeek object is `unconfigured` until `topUpUsd` is set.
-- The Cloudflare cost object is blocked on Cloudflare's billable usage API (latest version, v2). Status for the personal account, checked with a Billing Read token:
+- The Cloudflare cost object reads the account rate card and prices the billing period (not the calendar month). It is blocked only for billable usage v2; see below.
+- Earlier note (superseded): the Cloudflare cost object was blocked on Cloudflare's billable usage API (latest version, v2). Status for the personal account, checked with a Billing Read token:
   - `GET .../billable/usage` (v2): 403, error 1171 `insufficient_permissions`. Cloudflare has not enabled the Restricted endpoint for this account.
   - `POST .../billable/usage` (`metric: cost`): 405, error 10405, "not allowed for this authentication scheme". Only dashboard sessions can use it.
   - `GET .../billable-usage` (v1, Alpha): 200, returns billable overage only. Empty for 1-18 Nov, so its fields are not verified yet.
