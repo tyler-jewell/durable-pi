@@ -45,7 +45,11 @@ npm run dev:verify  # end-to-end: agent runs, telemetry reaches /v1/cost, file s
 - `npm test`: 19 tests, all pass. `npm run dev:verify`: the agent runs, the telemetry checks pass, the file survives.
 - The toggle, its error paths (400, 404, 401) and the stream were exercised on a live `wrangler dev`.
 - The DeepSeek object is `unconfigured` until `topUpUsd` is set.
-- The Cloudflare cost object is blocked. Its source must be Cloudflare's billable usage API (cost computed by Cloudflare, so no price table in this repo). That endpoint needs an API token with Account > Billing > Read, and the current tokens return 403. No price table is kept.
+- The Cloudflare cost object is blocked on Cloudflare's billable usage API (latest version, v2). Status for the personal account, checked with a Billing Read token:
+  - `GET .../billable/usage` (v2): 403, error 1171 `insufficient_permissions`. Cloudflare has not enabled the Restricted endpoint for this account.
+  - `POST .../billable/usage` (`metric: cost`): 405, error 10405, "not allowed for this authentication scheme". Only dashboard sessions can use it.
+  - `GET .../billable-usage` (v1, Alpha): 200, returns billable overage only. Empty for 1-18 Nov, so its fields are not verified yet.
+  No price table is kept. Cost comes from Cloudflare once v2 is enabled.
 - The deployed Worker is an older build with no telemetry or cost objects. It is not redeployed.
 
 ## Known issues
