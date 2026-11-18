@@ -366,14 +366,21 @@ Target: the **durable pi object** runs as **one Cloudflare Durable Object per ap
 
 Every node is proved the same way: **test in a container → review code (remove junk) → review tests (must actually catch failures) → review docs (trim, don't add)**. Non-blocking findings go to [Known issues](#known-issues).
 
-**Definition of done:** a fully functioning demo, identical locally and in production, served publicly at **https://agent.jewell-labs.com**. All docs, scripts and tools stay for now (no removals). Because the live system stream (right panel) is public, the system must **guarantee** it never emits secrets or log-sensitive information (tokens, API keys, private data) anywhere in logs, tool output, or UI events.
+**Definition of done:** a fully functioning demo, identical locally and in production, served publicly at **https://agent.jewell-labs.com**. All docs, scripts and tools stay for now (no removals).
 
-### Secret hygiene — cross-cutting (before the public base app)
-- [ ] Central `redact()` over known secret values (from config/env) and patterns (`cfat_*`, `sk-*`, `Bearer …`, `.env`, private keys) applied to logs and streamed tool output.
-- [ ] Structured UI events stay safe-by-construction (typed, no free-form values) — verified by test.
-- [ ] Agent tool output (bash stdout/stderr) redacted before it enters the transcript/stream.
-- [ ] Deployed: Cloudflare Logs feed redacted (or scoped to safe events) before reaching the right panel.
-- [ ] A test asserting no configured secret value ever appears in any streamed/logged frame.
+**Public-safety model (decided):** the public app is safe to expose because the blast radius is tiny, not because of paranoia.
+- Per DO project: **free-tier Cloudflare AI Gateway models only** (`@cf/*`), so no paid credits are at risk.
+- A **$5/day spend limit** caps the worst case: a hacker spams models and we are out $5.
+- **No valuable secrets live in the public app** — only the free-tier token, which the cap already bounds.
+- **Observability is the feature**: the right panel streams everything the DO does, so abuse (what a bot asked and did) is visible live.
+- Redaction (`redact()`) scrubs the token + obvious patterns from logs/streams as hygiene, not as the guarantee.
+
+### Public-safety standards
+- [ ] Free-tier `@cf/*` models only for public DO projects (a config standard, enforced at deploy).
+- [ ] $5/day spend limit on the Cloudflare account/resource.
+- [ ] `redact()` over known secret values + patterns (`cfat_*`, `sk-*`, `Bearer …`, private keys) on logs + streamed tool output.
+- [ ] Structured UI events stay safe-by-construction (typed, no free-form values).
+- [ ] A test asserting no configured secret value appears in any streamed/logged frame.
 
 ### Phase 0 — Baseline at latest versions
 - [x] Pin latest: `cf@1.0.0-rc.1`, `wrangler@4.164.0`, `pi-*@1.5.2`, Node 26 LTS (`@cloudflare/vite-plugin@2.0.0-rc.0` and `@cloudflare/vitest-plugin@1.8.4` recorded as Phase 3 targets).
