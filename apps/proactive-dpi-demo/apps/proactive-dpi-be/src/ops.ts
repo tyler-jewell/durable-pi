@@ -6,7 +6,11 @@ import { BACKGROUND_CONTEXT as ctx } from "@earendil-works/chord/context";
 import { createModels } from "@earendil-works/pi-ai/models";
 import { openrouterProvider } from "@earendil-works/pi-ai/providers/openrouter";
 import {
+  AgentDoc,
   Harness,
+  InboxDoc,
+  LiveDoc,
+  UsageDoc,
   configure,
   createRegistry,
   type Conversation,
@@ -226,14 +230,26 @@ Your worktree ${incident.worktree} is checkout-api on branch ${incident.branch},
   async snapshot(cid: number) {
     const conversation = await this.conversation(cid);
     const view = await conversation.context(ctx);
-    const [incidents, agent, deploys] = await Promise.all([
+    const [incidents, agent, deploys, live, agentDoc, inbox, usage] = await Promise.all([
       this.incidents(),
       conversation.agent(ctx),
       this.harness.snapshot(Deploys, ctx),
+      this.harness.snapshot(LiveDoc, cid as ConversationId, ctx),
+      this.harness.snapshot(AgentDoc, cid as ConversationId, ctx),
+      this.harness.snapshot(InboxDoc, cid as ConversationId, ctx),
+      this.harness.snapshot(UsageDoc, cid as ConversationId, ctx),
     ]);
     return {
       conversationId: cid,
-      view,
+      view: {
+        entries: view.entries,
+        docs: {
+          "pi.agent": agentDoc,
+          "pi.live": live,
+          "pi.inbox": inbox,
+          "pi.usage": usage,
+        },
+      },
       incidents,
       deploys: Object.values(deploys?.items ?? {}).filter((d) => d.conversationId === cid) as Deploy[],
       tools: agent.tools.map((t) => t.name),
