@@ -3,10 +3,38 @@ import { onBeforeUnmount, ref } from "vue";
 import { AppShell } from "../index";
 import JobCard from "../left/JobCard.vue";
 import StateEditor from "../left/StateEditor.vue";
+import Transcript from "../left/Transcript.vue";
 import SystemStream from "../stream/SystemStream.vue";
 import { changeState, type AppState, type StateChange } from "@sdk/app-state";
 import { emptySystemStream, reduceSystemStream, type SystemStreamView } from "@sdk/system-stream";
+import type { TranscriptItem as TranscriptItemType } from "@sdk/transcript";
 import type { JobDef, JobRun } from "@sdk/jobs";
+
+// ---- left: the conversation transcript -------
+const transcript = ref<TranscriptItemType[]>([
+  { kind: "user", id: 1, text: "Deploy the release notes after review." },
+  {
+    kind: "assistant",
+    id: 2,
+    streaming: false,
+    blocks: [
+      { type: "text", text: "I'll run a **release check** — first gathering facts, then waiting for your approval." },
+      {
+        type: "tool",
+        call: {
+          callId: "c1",
+          name: "run_durable_job",
+          args: { job: "release-check", input: { commits: 5 } },
+          status: "done",
+          result: "Started release check run #3 as task #7",
+        },
+      },
+    ],
+    model: "llama-3.3",
+  },
+  { kind: "tool-result", id: 3, name: "run_durable_job", text: "Started release check run #3 as task #7", isError: false },
+  { kind: "event", id: 4, entryKind: "demo.state-change", text: "App State: update /jobs/release-check" },
+]);
 
 // ---- left: generated view (editable App State) ----
 const state = ref<AppState>({
@@ -113,6 +141,7 @@ onBeforeUnmount(() => clearInterval(timer));
 <template>
   <AppShell title="Base app" app-id="demo" status="live" model="@cf/meta/llama-3.3">
     <template #left>
+      <Transcript :items="transcript" />
       <StateEditor :value="state" @change="apply" />
       <JobCard :run="job" :def="def" :pending="pendingJob" :now="Date.now()" @decide="decide" @stop="stop" />
     </template>

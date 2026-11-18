@@ -6,6 +6,8 @@ export { default as AppShell } from "./shell/AppShell.vue";
 export { default as SystemStream } from "./stream/SystemStream.vue";
 export { default as StateEditor } from "./left/StateEditor.vue";
 export { default as JobCard } from "./left/JobCard.vue";
+export { default as Transcript } from "./left/Transcript.vue";
+export { default as TranscriptItem } from "./left/TranscriptItem.vue";
 export { redact, REDACTED } from "@sdk/redact";
 export {
   emptySystemStream,
