@@ -48,6 +48,8 @@ npm run dev:verify  # end-to-end: agent runs, telemetry reaches /v1/cost, file s
 
 ## Status
 
+- Deployed: `https://durable-pi-object.tyler-jewell.workers.dev` (personal account). Secrets set with `wrangler secret put`. Checked live: 401 without or with a wrong token, cost report with the billing period, budget, a tiny run, 404 on a missing file.
+
 - `npm test`: 19 tests, all pass. `npm run dev:verify`: the agent runs, the telemetry checks pass, the file survives.
 - The toggle, its error paths (400, 404, 401) and the stream were exercised on a live `wrangler dev`.
 - The DeepSeek object is `unconfigured` until `topUpUsd` is set.
@@ -57,8 +59,6 @@ npm run dev:verify  # end-to-end: agent runs, telemetry reaches /v1/cost, file s
   - `POST .../billable/usage` (`metric: cost`): 405, error 10405, "not allowed for this authentication scheme". Only dashboard sessions can use it.
   - `GET .../billable-usage` (v1, Alpha): 200, returns billable overage only. Empty for 1-18 Nov, so its fields are not verified yet.
   No price table is kept. Cost comes from Cloudflare once v2 is enabled.
-- The deployed Worker is an older build with no telemetry or cost objects. It is not redeployed.
-
 ## Known issues
 
 - Balance is account-wide. A per-agent figure holds only when that agent is the only user of the key. Other sessions on the
