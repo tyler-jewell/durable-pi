@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { onBeforeUnmount, ref } from "vue";
-import { AppShell } from "../index";
+import { AppShell, NavRail, type NavItem } from "../index";
 import JobCard from "../left/JobCard.vue";
 import StateEditor from "../left/StateEditor.vue";
 import Transcript from "../left/Transcript.vue";
@@ -9,6 +9,14 @@ import { changeState, type AppState, type StateChange } from "@sdk/app-state";
 import { emptySystemStream, reduceSystemStream, type SystemStreamView } from "@sdk/system-stream";
 import type { TranscriptItem as TranscriptItemType } from "@sdk/transcript";
 import type { JobDef, JobRun } from "@sdk/jobs";
+
+// ---- nav rail: the objects this app manages -------
+const objects: NavItem[] = [
+  { id: "s1", label: "Session #1", kind: "session" },
+  { id: "inc-1", label: "INC-0001", kind: "incident" },
+  { id: "d7", label: "Deploy #7", kind: "deploy" },
+];
+const selectedObject = ref("s1");
 
 // ---- left: the conversation transcript -------
 const transcript = ref<TranscriptItemType[]>([
@@ -140,6 +148,9 @@ onBeforeUnmount(() => clearInterval(timer));
 
 <template>
   <AppShell title="Base app" app-id="demo" status="live" model="@cf/meta/llama-3.3">
+    <template #nav>
+      <NavRail :items="objects" :selected="selectedObject" @select="selectedObject = $event" />
+    </template>
     <template #left>
       <Transcript :items="transcript" />
       <StateEditor :value="state" @change="apply" />

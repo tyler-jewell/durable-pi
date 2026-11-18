@@ -3,6 +3,8 @@
 // (top bar, nav rail, footer) are shared. The stream contract and the `redact()` hygiene helper
 // live in @sdk so the backend and the UI agree on them.
 export { default as AppShell } from "./shell/AppShell.vue";
+export { default as NavRail } from "./shell/NavRail.vue";
+export type { NavItem } from "./shell/NavRail.vue";
 export { default as SystemStream } from "./stream/SystemStream.vue";
 export { default as StateEditor } from "./left/StateEditor.vue";
 export { default as JobCard } from "./left/JobCard.vue";
