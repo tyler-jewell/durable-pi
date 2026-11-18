@@ -34,3 +34,7 @@ install:
 
 # Type checks and unit tests, every app
 check: test::unit
+
+# Vue type check on another TypeScript, in a clean container (default 7.0.2; TS_VERSION=5.9.3 is the control)
+ts-probe *args:
+    scripts/vue-ts-probe.sh {{args}}

@@ -59,8 +59,15 @@ Each item was researched in the official docs, changed on its own, and checked b
   - The upload is 3.4 MB. The increase over the earlier 2.7 MB came from the e2e's Cloudflare git client and
     `@platformatic/vfs`, not from `cf` (same size on both paths, measured).
 - **TypeScript 7.0.2: done for four apps.** `pi-object`, `dpi-sdk`, `dpi-backend`, `dpi-tui` compile and test on 7.0.2
-  (46, 23, 14 and 8 tests). `base-app`, `dpi-playground` and the proactive demo stay on 5.9.3: `vue-tsc` 3.3.14, the
-  latest, still imports `typescript/lib/tsc`, which TS 7 no longer exports. They move when `vue-tsc` supports 7.
+  (46, 23, 14 and 8 tests). `base-app`, `dpi-playground` and the proactive demo stay on 5.9.3. Measured in clean
+  Node 26 containers (`just ts-probe`):
+  - `vue-tsc` 3.3.14 (latest) fails on TypeScript 7.0.2 and on 7.1.0-beta: `ERR_PACKAGE_PATH_NOT_EXPORTED` for
+    `typescript/lib/tsc`. The control passes on 5.9.3 for the same app.
+  - Why it is upstream: TypeScript 7.0.2's public JS API exports only `version`, so the compiler API that Volar uses is
+    gone. `@volar/typescript` declares `typescript < 7`. The next Vue layer, `@vue/language-core` 4.0.0-alpha.3, needs
+    `typescript >= 7.1.0-beta`, and no stable `vue-tsc` uses it yet.
+  - Considered and rejected: a `*.vue` declaration shim on TS 7 type-checks the `.ts` code (after moving one type out
+    of a `.vue` file), but it turns off template checking, which is what `vue-tsc` is for. Not worth the loss.
   `base-app` dropped the removed `baseUrl` option; its check passes on 5.9.3 too.
 - **Compatibility date: done (`2026-05-26` to `2026-11-18`).** Reviewed each change between the two dates on the flags
   page. Changes that touch this Worker: Node.js v2 defaults (4 Aug), the new module registry (17 Nov, validated import
@@ -77,7 +84,8 @@ Each item was researched in the official docs, changed on its own, and checked b
 
 Still open after this pass:
 
-- `vue-tsc` on TypeScript 7 (the three Vue apps), waiting on the `vue-tsc` release.
+- `vue-tsc` on TypeScript 7 (the three Vue apps). Re-run `just ts-probe` when `vue-tsc` releases support; a pass
+  there is the signal to move them, and the probe needs no change.
 - An offline Artifacts e2e leg using `wrangler dev`'s local simulator. Not needed for the remote-repo proof.
 - Repo-count charges: date and rate to be taken from the pricing page when Cloudflare announces them.
 
