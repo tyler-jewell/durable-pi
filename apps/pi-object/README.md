@@ -10,7 +10,8 @@ npm test                # 40 tests: telemetry, cost math, budget guard, Cloudfla
 npm run typecheck
 npm run dev             # wrangler dev (workerd, local Durable Object storage)
 npm run dev:verify      # end to end: the agent writes and reads a file, telemetry reaches /v1/cost, the file survives a restart
-npm run deploy          # wrangler deploy (the account in .env)
+npm run deploy          # wrangler deploy (the account in .env; wrangler 4.165.0)
+npx cf observability tail --worker durable-pi-object   # live logs (replaces wrangler tail)
 npm run e2e                  # end-to-end: Apple container pushes to Artifacts (e2e/README.md)
 npm run e2e:remote           # the same scenario on the deployed Durable Object
 npm run spend-limits:check   # preview the account spend limits (no writes)
@@ -87,6 +88,8 @@ device token is `~/.dpi/pi-object.token`. Each route requires `Authorization: Be
 
 ## Known issues
 
+- **cf 1.0 RC and accounts.** `cf` no longer remembers the account between runs. `.env` sets `CLOUDFLARE_ACCOUNT_ID`, which `cf` reads from this directory. With one account on a profile it is used without asking; with several it prompts, and a non-interactive run fails. Status messages go to stderr, so scripts read stdout (JSON) only.
+- **Artifacts permission names.** The account's permission groups are `Artifacts Read` and `Artifacts Write`. The Artifacts docs say "Edit"; the group is "Write". The deploy token needs both.
 - **One DeepSeek key, several projects.** Every pi project on this machine reads the same `~/.pi/agent/auth.json`, so their calls all draw on one balance. Attribute by session (`deepseek-reconcile.ts attribute`), not by balance alone.
 - **Balance is account-wide.** The DeepSeek key is shared with other tools on this account, and their spend appears
   in the balance but not in this object. A per-agent figure holds only when this agent is the only user of the key.

@@ -384,7 +384,7 @@ Every node is proved the same way: **test in a container → review code (remove
 - [ ] A test asserting no configured secret value appears in any streamed/logged frame.
 
 ### Phase 0 — Baseline at latest versions
-- [x] Pin latest: `cf@1.0.0-rc.1`, `wrangler@4.164.0`, `pi-*@1.5.2`, Node 26 LTS (`@cloudflare/vite-plugin@2.0.0-rc.0` and `@cloudflare/vitest-plugin@1.8.4` recorded as Phase 3 targets).
+- [x] Pin latest: `cf@1.0.0-rc.1` (the 1.0 release candidate, announced 17 Nov 2026), `wrangler@4.165.0`, `pi-*@1.5.2`, Node 26 LTS (`@cloudflare/vite-plugin@2.0.0-rc.0` and `@cloudflare/vitest-plugin@1.8.4` recorded as Phase 3 targets).
 - [x] Rebuild the test container on `node:26` (v26.13.1) and bump the YAML `node` default 24 → 26 (centralized `DEFAULT_CONTAINER_IMAGE`).
 - [x] Confirm the container has Git 2.32+ (git 2.39.5, installed by the new apple-container `provision` step).
 
@@ -393,7 +393,7 @@ Every node is proved the same way: **test in a container → review code (remove
 - [ ] Left panel = document-driven generated views + approval flow (port playground `StateEditor`/`JobCard` + proactive `AgentChat`/`IncidentCard`).
 - [ ] Right panel = unified system stream (logs + structured UI events) with a source selector: Cloudflare Logs (deployed) / local logs (local).
 - [ ] Local log source: harness + dev-server logs over the stream.
-- [ ] Deployed log source: `cf tail` / Workers Logs adapter.
+- [ ] Deployed log source: `cf observability tail` / Workers Logs adapter.
 - [ ] Nav rail = object/session/app selector.
 
 ### Phase 2 — Component proofs in containers
@@ -409,7 +409,7 @@ Every node is proved the same way: **test in a container → review code (remove
 - [ ] Write `cloudflare.config.ts` for the base DO app.
 - [ ] Push the repo into an Artifacts repo (git-over-HTTPS, repo token) — no GitHub.
 - [ ] Workers Builds deploy-on-push from the Artifacts repo.
-- [ ] Artifacts local simulator via `wrangler dev` (isolated local repos).
+- [ ] Artifacts local simulator via `wrangler dev` (isolated local repos). Available since 16 Nov 2026: the binding uses the local simulator by default, and `remote = true` uses deployed repos.
 - [ ] One Durable Object per app, thin Pi harness inside (DO storage adapter).
 - [ ] Move session/catalog state to D1 (KV/R2 where they fit).
 - [ ] cf CLI + MCP Code Mode + Cloudflare Skills wired for agent-driven Cloudflare ops.
@@ -428,7 +428,8 @@ Every node is proved the same way: **test in a container → review code (remove
 ## Known issues
 
 - **Artifacts needs the Workers Paid plan** (not Free); 1 GB/repo for repos created after 2026-09-29.
-- **`cf` is beta** (`1.0.0-rc.1`); commands/config/Build Output may change before stable.
+- **`cf` is a 1.0 release candidate** (`1.0.0-rc.1`, announced 17 Nov 2026). The config format, Build Output, and the create/develop/deploy commands are declared stable. A few generated API commands may still be renamed (`cf workers secrets bulk` is now `bulk-edit`). See [`docs/latest-changes-2026-11-18.md`](docs/latest-changes-2026-11-18.md).
+- **Artifacts billing starts 19 Nov 2026** for operations and storage (per the pricing page). Repository-count billing comes later, with notice. Our 2026-10-01 changelog entry said 14 Oct; the pricing page supersedes it.
 - **Cloudflare spend limits are account-level, not per project.** Each product has one hard cap per account, and a cap is not an invoice guarantee. Details: [pi-object Known issues](apps/pi-object/README.md#known-issues).
 - **Jev via Workers AI and third-party models need AI Gateway prepaid credits or BYOK** (error 2021 on Free).
 - **No Durable Object storage adapter for pi-durable yet** — today it is `openNodeSqliteStorage`; the DO target needs an adapter.

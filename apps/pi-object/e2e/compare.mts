@@ -55,7 +55,7 @@ const rows: Array<[string, string, string]> = [
   ["Image / worker", `${L.profile.image} (digest ${L.profile.image_digest})`, `${R.profile.worker}`],
   ["Node / runtime version", L.profile.node ?? "n/a", "workerd (Workers runtime, nodejs_compat)"],
   ["git", L.profile.git ?? "n/a", "@cloudflare/computer git client (isomorphic-git over the workspace)"],
-  ["wrangler / cf / pi", `${L.profile.wrangler} / ${L.profile.cf} / ${L.profile.pi}`, `wrangler 4.164.0 / pi-ai 1.5.2`],
+  ["wrangler / cf / pi", `${L.profile.wrangler} / ${L.profile.cf} / ${L.profile.pi}`, `wrangler 4.165.0 / pi-ai 1.5.2`],
   ["CPU / memory", `${L.profile.cpus} vCPU / ${L.profile.memory}`, "Workers limits (cpuMs 30000, subrequests 500)"],
   ["Model", "scripted (pi CLI, faux provider)", "scripted (pi-ai faux provider)"],
   ["Agent tools used", "write, bash (git add/commit/push)", "write, git_commit_push"],

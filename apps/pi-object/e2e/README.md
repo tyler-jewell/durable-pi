@@ -46,7 +46,7 @@ Local image, once: `container build -t dpi-artifacts-dev:local -f e2e/Containerf
 | Image / worker | dpi-artifacts-dev:local (digest 371c1eb7ce17) | https://durable-pi-object.tyler-jewell.workers.dev |
 | Node / runtime version | v26.13.1 | workerd (Workers runtime, nodejs_compat) |
 | git | 2.39.5 | @cloudflare/computer git client (isomorphic-git over the workspace) |
-| wrangler / cf / pi | 4.164.0 / 1.0.0-rc.1 / 1.5.2 | wrangler 4.164.0 / pi-ai 1.5.2 |
+| wrangler / cf / pi | 4.165.0 / 1.0.0-rc.1 / 1.5.2 | wrangler 4.165.0 / pi-ai 1.5.2 |
 | CPU / memory | 2 vCPU / 1G | Workers limits (cpuMs 30000, subrequests 500) |
 | Model | scripted (pi CLI, faux provider) | scripted (pi-ai faux provider) |
 | Agent tools used | write, bash (git add/commit/push) | write, git_commit_push |
@@ -66,6 +66,8 @@ Local image, once: `container build -t dpi-artifacts-dev:local -f e2e/Containerf
   environments; a deterministic run uses `container run --rm`.
 - **Local flags.** `--init` (signal forwarding and reaping, pi spawns children), `--cpus 2 --memory 1G` (a VM does not
   return freed memory), stdin for the remote and token, and `container builder stop` after builds.
+- **Artifacts**: a namespace can be pinned to the US or EU (`jurisdiction` on create). The e2e namespace is unpinned, as it is test data. Billing for operations and storage starts 19 Nov 2026.
+- **Offline option (not built):** `wrangler dev` runs Artifacts locally by default (16 Nov 2026), so the same scenario could run with no network. The remote-repo runs above test the real service.
 - **Remote needs** `@platformatic/vfs` (optional peer of `@cloudflare/computer/git`, pinned 0.5.0).
 - **Net-zero on Cloudflare:** the Durable Object deletes its storage whether the scenario passes or fails, and the
   account's Artifacts namespace is removed when the run created it.
