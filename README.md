@@ -360,6 +360,68 @@ just proactive take        # reset and run the proactive demo
 
 ---
 
+## Roadmap: prove it end-to-end
+
+Target: the **durable pi object** runs as **one Cloudflare Durable Object per app**, wrapped in a thin Pi coding harness (pi-durable + pi-ai). Code lives in **Cloudflare Artifacts** (git, no GitHub) and deploys via **Workers Builds**. The agent drives Cloudflare through **cf CLI + MCP Code Mode + Cloudflare Skills**. Inference routes through **AI Gateway**. Every DO ships the same shell: **left = generated view + approval flow**, **right = the DO streaming itself** (Cloudflare Logs when deployed, local logs locally).
+
+Every node is proved the same way: **test in a container → review code (remove junk) → review tests (must actually catch failures) → review docs (trim, don't add)**. Non-blocking findings go to [Known issues](#known-issues).
+
+### Phase 0 — Baseline at latest versions
+- [ ] Pin latest: `cf@1.0.0-rc.1`, `wrangler@4.164.0`, `pi-*@1.5.2`, `@cloudflare/vite-plugin@2.0.0-rc.0`, `@cloudflare/vitest-plugin@1.8.4`, Node 26 LTS.
+- [ ] Rebuild the test container on `node:26` and bump the YAML `node` default 24 → 26.
+- [ ] Confirm the container has Git 2.32+ (Artifacts local-simulator requirement).
+
+### Phase 1 — Base app shell (shared UI)
+- [ ] Extract the proactive demo's shell (top bar · nav rail · two-pane · footer · toasts) into a shared `base-app` package.
+- [ ] Left panel = document-driven generated views + approval flow (port playground `StateEditor`/`JobCard` + proactive `AgentChat`/`IncidentCard`).
+- [ ] Right panel = unified system stream (logs + structured UI events) with a source selector: Cloudflare Logs (deployed) / local logs (local).
+- [ ] Local log source: harness + dev-server logs over the stream.
+- [ ] Deployed log source: `cf tail` / Workers Logs adapter.
+- [ ] Nav rail = object/session/app selector.
+
+### Phase 2 — Component proofs in containers
+- [ ] `dpi-sdk` leaf modules (api/transcript/models/app-state/jobs/sse/client/errors) — unit tests green in a container.
+- [ ] `dpi-sdk` node drivers (config/registry/ops/drivers) — config + registry tests green in a container.
+- [ ] `dpi-backend` core (store/harness/jobs/extensions/streams/shared-state/addons/providers/jev/history/idempotency/auth/errors) — backend suite green in a container.
+- [ ] `dpi-backend` REST + SSE (`api`/`recovery`/`store`/`streams`/`shared-state`/`history`/`jev`) — all pass in a container.
+- [ ] `dpi-playground` hub (guard/proxy/monitor/mux/seed) — hub test green in a container.
+- [ ] `dpi-playground` FE (generative UI) — build + e2e green in a container.
+- [ ] Base-app shell — render tests green in a container.
+- [ ] AI Gateway inference — live smoke test in a container on free `@cf/*` models.
+
+### Phase 3 — Cloudflare / Artifacts / DO integration (new)
+- [ ] Write `cloudflare.config.ts` for the base DO app.
+- [ ] Push the repo into an Artifacts repo (git-over-HTTPS, repo token) — no GitHub.
+- [ ] Workers Builds deploy-on-push from the Artifacts repo.
+- [ ] Artifacts local simulator via `wrangler dev` (isolated local repos).
+- [ ] One Durable Object per app, thin Pi harness inside (DO storage adapter).
+- [ ] Move session/catalog state to D1 (KV/R2 where they fit).
+- [ ] cf CLI + MCP Code Mode + Cloudflare Skills wired for agent-driven Cloudflare ops.
+- [ ] AI Gateway routing for inference (Workers AI free models; third-party via BYOK/credits).
+
+### Phase 4 — Live local + deployed acceptance
+- [ ] Local: full stack running locally; base app shows generated view + live local-log stream.
+- [ ] Deployed: base DO app live on Cloudflare; stream shows Cloudflare Logs.
+- [ ] Acceptance: same app local vs deployed — left generated/approval parity, right stream parity.
+
+### Phase 5 — Cleanup & docs
+- [ ] Remove non-critical areas (trim `ai_docs/`, `migrate-playground.ts`, exe-dev skill) once approved.
+- [ ] Trim/update README + app READMEs to the base-app + Cloudflare model.
+- [ ] Keep [Known issues](#known-issues) current.
+
+## Known issues
+
+- **Artifacts needs the Workers Paid plan** (not Free); 1 GB/repo for repos created after 2026-09-29.
+- **`cf` is beta** (`1.0.0-rc.1`); commands/config/Build Output may change before stable.
+- **`wrangler` is below the Artifacts-local-dev minimum** (4.159 vs 4.163+); upgrade to 4.164.0.
+- **Jev via Workers AI and third-party models need AI Gateway prepaid credits or BYOK** (error 2021 on Free).
+- **No Durable Object storage adapter for pi-durable yet** — today it is `openNodeSqliteStorage`; the DO target needs an adapter.
+- **`macos-vm` Lima vz portForwards don't publish for macOS guests** — the port is forwarded over SSH (`-L`).
+- **`apple-container` runs the backend via `nohup`** (no service manager inside the container).
+- **`jev-damage-control` is a guard, not a sandbox** — commands run when Jev is unreachable (see [Where it can still fail](#where-it-can-still-fail)).
+
+---
+
 ## License
 
 MIT — see [`LICENSE`](LICENSE).
