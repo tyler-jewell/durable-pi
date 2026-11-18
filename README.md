@@ -419,6 +419,7 @@ Every node is proved the same way: **test in a container → review code (remove
 - **`macos-vm` Lima vz portForwards don't publish for macOS guests** — the port is forwarded over SSH (`-L`).
 - **`apple-container` runs the backend via `nohup`** (no service manager inside the container).
 - **`jev-damage-control` is a guard, not a sandbox** — commands run when Jev is unreachable (see [Where it can still fail](#where-it-can-still-fail)).
+- **Container tests need the repo-root `dpi-network.example.yaml`** — `config.test.ts` validates the shipped example, but the device deploy only syncs `apps/`; copy it in first (`container cp dpi-network.example.yaml <container>:/root/dpi/`).
 
 ---
 
