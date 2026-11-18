@@ -44,13 +44,32 @@ stores the key: it passes it per request through pi-ai's `env` option.
 The Durable Object uses `deepseek-flash` (DeepSeek topped up). `run-real.mjs` defaults to `anthropic/claude-haiku-5-5`. Override with
 `PI_PROVIDER` and `PI_MODEL_ID`. Verified on the host and in the `apple-box` container: 2 tool calls, file on disk.
 
+## Deployed
+
+- URL: https://durable-pi-object.flagseeker.workers.dev
+- Account: Hello@flagseeker.com (the account Wrangler is logged into). The personal account `09f27…` used for AI Gateway is not used here.
+- Secrets: `DEEPSEEK_API_KEY`, `DPI_TOKEN` (set with `wrangler secret put`). The device token is in `~/.dpi/pi-object.token` (mode 600).
+- Every route needs `Authorization: Bearer <token>`. Checked live: no token and wrong token both get 401.
+- Live run: 2 tool calls, 4.7s. The file is readable from a separate request. Missing files get 404.
+
+```sh
+URL=https://durable-pi-object.flagseeker.workers.dev; TOKEN=$(cat ~/.dpi/pi-object.token)
+curl -X POST $URL/ -H "authorization: Bearer $TOKEN" -H content-type:application/json -d '{"task":"..."}'
+curl -H "authorization: Bearer $TOKEN" "$URL/file?path=/workspace/haiku.txt"
+```
+
+## Scope of the deployed build
+
+- **File tools only** (read, write, edit, ls, find, grep, delete). No `exec`. The worker-shell backend needs the `experimental` compatibility flag, and Cloudflare rejects that flag on deployed Workers (error 10021). Local and deployed builds are the same code.
+
 ## Known issues
 
 - DeepSeek rate limit exhausted. Default moved to Haiku 5.5.
 - The Durable Object validates on DeepSeek. The Anthropic OAuth token is no longer used by the DO.
 - One verify run in apple-box stalled inside a model call (no client timeout). The verify now bounds every request with `--max-time`.
-- The DO is not deployed yet. The `dev` path uses local DO storage, and `wrangler deploy` is untested.
-- The shell backend (`exec`) is wired but the verification only exercises `write`/`read`.
+- The deployed Durable Object is on the flagseeker account, not the personal account. Move it if you want one account.
+- The public URL can spend the DeepSeek balance. Only the device token protects it. Rotate with `wrangler secret put DPI_TOKEN`.
+- No `exec` tool when deployed (see Scope). Its backend needs the `experimental` flag.
 - `run-real.mjs` uses pi's SDK on the host. A Durable Object must use pi-ai with its own key or the AI Gateway instead.
 
 - `module.register()` in `local-shim.mjs` prints a Node deprecation warning (`registerHooks`

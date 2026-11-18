@@ -1,21 +1,16 @@
 // The durable pi object: one PiAgent Durable Object per agent. It owns a Workspace (SQLite
-// filesystem + a worker shell), runs the pi-ai agent loop against DeepSeek, and keeps its
+// filesystem), runs the pi-ai agent loop against DeepSeek, and keeps its
 // files across requests and restarts. Derived from cloudflare/computer examples/pi-ai.
 //
-//   client ──► Worker fetch ──► PiAgent DO ──► Workspace (files + shell)
+//   client ──► Worker fetch ──► PiAgent DO ──► Workspace (files)
 //                                    └──► DeepSeek (deepseek-flash), key from a secret
 
 import { DurableObject } from "cloudflare:workers";
 
-import { Workspace, WorkspaceServiceProxy, type WorkspaceStub } from "@cloudflare/computer";
-import { WorkerShellBackend } from "@cloudflare/computer/backends/worker-shell";
+import { Workspace } from "@cloudflare/computer";
 import { createPiTools } from "@cloudflare/computer/tools/pi-ai";
 import { createModels, type Message } from "@earendil-works/pi-ai";
 import { deepseekProvider } from "@earendil-works/pi-ai/providers/deepseek";
-
-// The worker-shell backend reaches back into this durable object by binding name and id, so
-// the shell shares the agent's filesystem.
-export { WorkspaceServiceProxy };
 
 const PROVIDER_ID = "deepseek";
 const MODEL_ID = "deepseek-flash";
@@ -26,23 +21,9 @@ const SYSTEM_PROMPT =
   "You are working in a directory at /workspace. Use the tools to do what the user asks, then say what you did.";
 
 export class PiAgent extends DurableObject<Env> {
-  workspace = new Workspace({
-    storage: this.ctx.storage,
-    backends: [
-      new WorkerShellBackend({
-        id: "shell",
-        loader: this.env.LOADER,
-        workspace: { binding: "PiAgent", id: this.ctx.id.toString() },
-        ctx: this.ctx,
-      }),
-    ],
-  });
-
-  /** Lets the shell in the Dynamic Worker reach this workspace. */
-  async __getWorkspaceStub(): Promise<WorkspaceStub> {
-    await this.workspace.ready();
-    return this.workspace.stub();
-  }
+  // File tools only (read, write, edit, ls, find, grep, delete). No shell backend: the worker-shell
+  // needs the `experimental` compatibility flag, which cannot be deployed yet.
+  workspace = new Workspace({ storage: this.ctx.storage });
 
   /** Read a file from this agent's workspace (for inspection and tests). */
   async read(path: string): Promise<string> {

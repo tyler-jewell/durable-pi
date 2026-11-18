@@ -1,20 +1,14 @@
 {
   // Durable pi object: a PiAgent Durable Object with a Workspace and a pi-ai agent loop.
   //
-  // The model is Anthropic; its credential is the ANTHROPIC_OAUTH_TOKEN secret (see .dev.vars.example).
+  // The model is DeepSeek (deepseek-flash). Secrets: DEEPSEEK_API_KEY and DPI_TOKEN (see .dev.vars.example).
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "durable-pi-object",
   "main": "src/index.ts",
   "compatibility_date": "2026-05-26",
-  "compatibility_flags": ["nodejs_compat", "experimental"],
-
-
-  // The workspace shell runs in a Dynamic Worker minted through this.
-  "worker_loaders": [
-    {
-      "binding": "LOADER"
-    }
-  ],
+  "compatibility_flags": ["nodejs_compat"],
+  "workers_dev": true,
+  "preview_urls": false,
 
   "durable_objects": {
     "bindings": [
