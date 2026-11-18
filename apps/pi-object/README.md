@@ -1,77 +1,56 @@
-# pi-object (Phase A spike)
+# pi-object
 
-A one-shot [pi](https://github.com/earendil-works/pi) agent in a Durable Object, vendored from
-[`cloudflare/computer` → `examples/pi-ai`](https://github.com/cloudflare/computer/tree/main/examples/pi-ai).
-Phase A proves the agent loop, tools and Workspace run **without a Cloudflare account**.
+One Durable Object per agent. The agent runs a pi-ai loop against DeepSeek, works in a Workspace (SQLite files plus a
+codemode `exec` backend), and meters every priced thing it does into a cost ledger.
 
 ```sh
 npm install
-npm run local       # scripted model, real Workspace + pi-ai tools (no account)
-npm run real        # REAL model (anthropic/claude-haiku-5-5), credentials from ~/.pi/agent/auth.json
-npm run typecheck   # tsc against generated wrangler types
-npm run dev         # wrangler dev (needs Workers AI access)
+npm test            # cost and tariff validation, no network
+npm run dev         # wrangler dev (workerd, local Durable Object storage)
+npm run dev:verify  # end-to-end: agent writes and reads a file, dev server restarts, file survives
+npm run validate:deepseek -- --calls 120   # live: spends real money, reconciles against DeepSeek's balance
 ```
 
-## What is vendored and why
+## Layout
 
-- `src/`, `run-local.mjs`, `local-shim.mjs`, `wrangler.jsonc`: copied from `examples/pi-ai` at commit
-  `3636ffb`, with names changed only.
-- `vendor/dofs/`: `@cloudflare/dofs` **0.11.3** built from the `cloudflare/computer` source
-  (`packages/dofs`, `tsdown`). It is **not published to npm** (`npm view` → 404), but
-  `run-local.mjs` needs its `./testing` export (`SQLiteTestStorage`). `@cloudflare/computer@0.11.3`
-  from npm does not ship that export.
-- `@cloudflare/computer@^0.11.3` and `@earendil-works/pi-ai@1.5.2` come from npm.
+| Path | What |
+|---|---|
+| `src/index.ts` | `PiAgent` Durable Object (agent loop, metering) and the Worker routes |
+| `src/tariff.ts` | DeepSeek tariff: schedule rule and the pi-ai model for the tariff in force at a time |
+| `pricing/deepseek.json` | The one DeepSeek tariff file (rates from the DeepSeek pricing docs) |
+| `pi/extensions/deepseek-tariff.ts` | Host pi extension: tariff providers and a tariff-aware virtual model |
+| `src/cost/` | Ledger: price book (Cloudflare), meter arithmetic, SQLite store, metered storage |
+| `test/cost.test.ts` | Validation tests |
+| `scripts/deepseek-validate.ts` | Live reconciliation against DeepSeek's billing balance |
 
-## The Durable Object (`src/index.ts`)
+## How cost is decided
 
-`PiAgent` is one Durable Object per agent name. It owns a `Workspace` (SQLite-backed files plus a worker
-shell) and runs the agent loop against Anthropic. Routes:
+- **LLM spend is pi's metric.** Each assistant message's `usage.cost` is set by pi-ai's `calculateCost`, using the
+  model that answered. The ledger records those components as they are. It never recomputes them.
+- **The tariff is chosen per request by the clock.** DeepSeek charges peak rates 01:00–04:00 and 06:00–10:00 UTC,
+  Monday to Friday, and half that otherwise. `deepseekModelAt(model, now)` returns the model with the tariff in force.
+- **Host pi does the same routing with a virtual model.** `deepseek-tariff/deepseek-flash` routes each request to
+  `deepseek-peak` or `deepseek-offpeak`. Enable the extension in `~/.pi/agent/settings.json` under `extensions`.
+- **Cloudflare services** are priced from the price book in `src/cost/prices.ts`. Secrets are listed with a $0 cost.
 
-- `POST /` with `{"task": "..."}` runs the loop and returns `{answer, toolCalls, turns}`.
-- `GET /file?path=/workspace/x` reads a file from the agent's workspace (404 if missing).
-- `?agent=<name>` addresses another agent. The default is `demo`.
+## Status
 
-`npm run dev` starts it under `wrangler dev` (workerd, the real Durable Object runtime, local storage).
-`npm run dev:verify` runs the end-to-end proof: the agent writes and reads a haiku, the dev server restarts,
-and the file is unchanged. Verified on the host and in `apple-box`.
-
-Secrets: `.dev.vars` (gitignored) holds `ANTHROPIC_OAUTH_TOKEN`. See `.dev.vars.example`. The Durable Object never
-stores the key: it passes it per request through pi-ai's `env` option.
-
-## Model
-
-`run-real.mjs` uses pi's `ModelRuntime`, so it reads the same login `pi` uses (`~/.pi/agent/auth.json`).
-The Durable Object uses `deepseek-flash` (DeepSeek topped up). `run-real.mjs` defaults to `anthropic/claude-haiku-5-5`. Override with
-`PI_PROVIDER` and `PI_MODEL_ID`. Verified on the host and in the `apple-box` container: 2 tool calls, file on disk.
-
-## Deployed
-
-- URL: https://durable-pi-object.flagseeker.workers.dev
-- Account: Hello@flagseeker.com (the account Wrangler is logged into). The personal account `09f27…` used for AI Gateway is not used here.
-- Secrets: `DEEPSEEK_API_KEY`, `DPI_TOKEN` (set with `wrangler secret put`). The device token is in `~/.dpi/pi-object.token` (mode 600).
-- Every route needs `Authorization: Bearer <token>`. Checked live: no token and wrong token both get 401.
-- Live run: 2 tool calls, 4.7s. The file is readable from a separate request. Missing files get 404.
-
-```sh
-URL=https://durable-pi-object.flagseeker.workers.dev; TOKEN=$(cat ~/.dpi/pi-object.token)
-curl -X POST $URL/ -H "authorization: Bearer $TOKEN" -H content-type:application/json -d '{"task":"..."}'
-curl -H "authorization: Bearer $TOKEN" "$URL/file?path=/workspace/haiku.txt"
-```
-
-## Scope of the deployed build
-
-- **File tools only** (read, write, edit, ls, find, grep, delete). No `exec`. The worker-shell backend needs the `experimental` compatibility flag, and Cloudflare rejects that flag on deployed Workers (error 10021). Local and deployed builds are the same code.
+- Ledger, tariff, and the host extension are covered by `npm test` (15 tests).
+- The live DeepSeek reconciliation has not been run against a metered batch. Billing settles several minutes after a
+  call, so the check has to wait for settlement.
+- The deployed Worker (`durable-pi-object.flagseeker.workers.dev`) is an older build: file tools only, no cost ledger.
+  It is not redeployed. The personal account is set in `.env`, which Wrangler reads automatically.
 
 ## Known issues
 
-- DeepSeek rate limit exhausted. Default moved to Haiku 5.5.
-- The Durable Object validates on DeepSeek. The Anthropic OAuth token is no longer used by the DO.
-- One verify run in apple-box stalled inside a model call (no client timeout). The verify now bounds every request with `--max-time`.
-- The deployed Durable Object is on the flagseeker account, not the personal account. Move it if you want one account.
-- The public URL can spend the DeepSeek balance. Only the device token protects it. Rotate with `wrangler secret put DPI_TOKEN`.
-- No `exec` tool when deployed (see Scope). Its backend needs the `experimental` flag.
-- `run-real.mjs` uses pi's SDK on the host. A Durable Object must use pi-ai with its own key or the AI Gateway instead.
+- DeepSeek has no usage or cost endpoint and no machine-readable price list. The tariff comes from the docs and is
+  checked by reconciliation.
+- Balance is account-wide. A per-agent reconciliation holds only when that agent is the only user of the key.
+- Chinese public holidays are peak per DeepSeek's page. They are not in the schedule.
+- Cloudflare CPU time cannot be measured in-band. Wall-clock is an upper bound, labeled `estimated`.
+- Ledger SKUs changed from `llm.deepseek.deepseek-flash.*` to `llm.deepseek-flash.*`. Local dev state still holds rows
+  under the old names.
+- The DeepSeek key command (`pi auth print-api-key`) is documented to run once per pi process and be cached. That is not
+  observed in this setup yet.
 
-- `module.register()` in `local-shim.mjs` prints a Node deprecation warning (`registerHooks`
-  is the replacement). Harmless for the spike.
-- `vendor/dofs` must be rebuilt from source when `@cloudflare/computer` is bumped.
+Design and triage are tracked in the repository's issues: #2 (cost model) and #1 (LSP triage).

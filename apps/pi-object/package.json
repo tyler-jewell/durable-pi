@@ -10,7 +10,8 @@
     "build:types": "wrangler types",
     "real": "node --import ./local-shim.mjs run-real.mjs",
     "dev:verify": "bash scripts/verify-do.sh",
-    "test": "tsx --test test/*.test.ts"
+    "test": "tsx --test test/*.test.ts",
+    "validate:deepseek": "tsx scripts/deepseek-validate.ts"
   },
   "dependencies": {
     "@cloudflare/computer": "^0.11.3",

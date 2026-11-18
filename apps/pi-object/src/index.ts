@@ -14,11 +14,11 @@ import { createPiTools } from "@cloudflare/computer/tools/pi-ai";
 import { createModels, type Message } from "@earendil-works/pi-ai";
 import { deepseekProvider } from "@earendil-works/pi-ai/providers/deepseek";
 
+import { deepseekModelAt } from "./tariff.js";
 import * as M from "./cost/meter.js";
 import { meterStorage } from "./cost/metered-storage.js";
 import { CostStore, type Snapshot } from "./cost/store.js";
 
-const PROVIDER_ID = "deepseek";
 const MODEL_ID = "deepseek-flash";
 /** Bound the spend if the model fails to converge. */
 const MAX_TURNS = 10;
@@ -111,8 +111,6 @@ export class PiAgent extends DurableObject<Env> {
 
     const models = createModels();
     models.setProvider(deepseekProvider());
-    const model = models.getModel(PROVIDER_ID, MODEL_ID);
-    if (!model) throw new Error(`model ${PROVIDER_ID}/${MODEL_ID} is not registered`);
 
     const messages: Message[] = [{ role: "user", content: task, timestamp: Date.now() }];
     // The key travels with each request as pi's per-request env; it is never stored in the DO.
@@ -120,12 +118,10 @@ export class PiAgent extends DurableObject<Env> {
 
     let toolCalls = 0;
     for (let turn = 0; turn < MAX_TURNS; turn += 1) {
-      const reply = await models.complete(model, { systemPrompt: SYSTEM_PROMPT, messages, tools }, { env });
+      // The tariff in force now (peak or off-peak), priced by pi-ai; the same rule the host extension uses.
+      const reply = await models.complete(deepseekModelAt(MODEL_ID, Date.now()), { systemPrompt: SYSTEM_PROMPT, messages, tools }, { env });
       messages.push(reply);
-      this.cost.record(
-        M.deepseekLines(MODEL_ID, { input: reply.usage.input, cacheRead: reply.usage.cacheRead, output: reply.usage.output }, Date.now()),
-        Date.now(),
-      );
+      this.cost.record(M.llmLines(MODEL_ID, reply.usage), Date.now());
 
       const calls = reply.content.filter((block) => block.type === "toolCall");
       if (calls.length === 0) {

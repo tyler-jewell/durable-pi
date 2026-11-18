@@ -9,10 +9,11 @@
 
 import { readFileSync } from "node:fs";
 import { homedir } from "node:os";
-import { isDeepSeekPeak, PRICES } from "../src/cost/prices.js";
+import { calculateCost, type Usage } from "@earendil-works/pi-ai";
+import { deepseekModelAt, isPeak, TARIFF } from "../src/tariff.js";
 
 const args = Object.fromEntries(process.argv.slice(2).reduce<string[][]>((acc, a, i, all) => (a.startsWith("--") ? [...acc, [a.slice(2), all[i + 1] ?? "true"]] : acc), []));
-const MODEL = (args.model ?? "deepseek-v4-pro") as keyof typeof PRICES.deepseek;
+const MODEL = args.model ?? "deepseek-v4-pro";
 const CALLS = Number(args.calls ?? 120);
 const CONCURRENCY = Number(args.concurrency ?? 40);
 const MAX_TOKENS = Number(args["max-tokens"] ?? 1200);
@@ -59,7 +60,7 @@ async function call(i: number): Promise<{ usage: Usage; at: number; peak: boolea
   });
   if (!res.ok) throw new Error(`call ${i}: HTTP ${res.status} ${(await res.text()).slice(0, 200)}`);
   const body = (await res.json()) as { usage: Usage };
-  return { usage: body.usage, at, peak: isDeepSeekPeak(at) };
+  return { usage: body.usage, at, peak: isPeak(at) };
 }
 
 async function main() {
@@ -82,17 +83,20 @@ async function main() {
   );
   const after = await balance();
 
-  // Price every response with the price book. A call priced at peak uses peak rates, so the window is recorded.
-  const rates = PRICES.deepseek[MODEL];
+  // Price every response with pi's own calculateCost, at the tariff in force when the call was made.
   let expected = 0;
   let inputMiss = 0, inputHit = 0, output = 0, reasoning = 0;
-  for (const { usage, peak } of results) {
-    const pick = (r: { peak: number; offPeak: number }) => (peak ? r.peak : r.offPeak);
-    expected +=
-      (usage.prompt_cache_miss_tokens * pick(rates.inputMiss) +
-        usage.prompt_cache_hit_tokens * pick(rates.inputHit) +
-        usage.completion_tokens * pick(rates.output)) /
-      1_000_000;
+  for (const { usage, at } of results) {
+    const priced: Usage = {
+      input: usage.prompt_cache_miss_tokens,
+      cacheRead: usage.prompt_cache_hit_tokens,
+      output: usage.completion_tokens,
+      cacheWrite: 0,
+      totalTokens: usage.total_tokens,
+      cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+    };
+    calculateCost(deepseekModelAt(MODEL, at), priced);
+    expected += priced.cost.total;
     inputMiss += usage.prompt_cache_miss_tokens;
     inputHit += usage.prompt_cache_hit_tokens;
     output += usage.completion_tokens;
@@ -108,7 +112,7 @@ async function main() {
     calls: results.length,
     failures: failures.length,
     failureSample: failures.slice(0, 3),
-    window: { startedUtc: new Date(started).toISOString(), endedUtc: new Date(after.at).toISOString(), anyPeak: results.some((r) => r.peak) },
+    window: { startedUtc: new Date(started).toISOString(), endedUtc: new Date(after.at).toISOString(), anyPeak: results.some((r) => r.peak), tariffVerifiedOn: TARIFF.verifiedOn },
     tokens: { inputMiss, inputHit, output, reasoningIncludedInOutput: reasoning },
     balance: { currency: before.currency, before: before.total, after: after.total },
     usd: { expectedFromUsageAndPriceBook: round(expected), observedFromBalance: round(observed), difference: round(diff), tolerance },

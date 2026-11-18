@@ -1,7 +1,7 @@
 // Pure metering arithmetic. No I/O: the Durable Object feeds it counters and it returns priced ledger lines,
 // so every rule here runs under plain Node tests.
 
-import { isDeepSeekPeak, PRICES } from "./prices.js";
+import { PRICES } from "./prices.js";
 
 /**
  * How a quantity was obtained. "exact": provider-reported counts at a published price.
@@ -39,27 +39,26 @@ export interface LlmUsage {
   output: number;
 }
 
+import type { Usage as PiUsage } from "@earendil-works/pi-ai";
+
 const perMillion = (quantity: number, rate: number) => (quantity / 1_000_000) * rate;
 
-export function deepseekLines(model: keyof typeof PRICES.deepseek, usage: LlmUsage, atMs: number): Line[] {
-  const rates = PRICES.deepseek[model];
-  const peak = isDeepSeekPeak(atMs);
-  const pick = (r: { peak: number; offPeak: number }) => (peak ? r.peak : r.offPeak);
-  const id = `deepseek.${model}`;
-  const rows: Array<[string, string, number, number]> = [
-    ["input_miss", "tokens", usage.input, pick(rates.inputMiss)],
-    ["input_hit", "tokens", usage.cacheRead, pick(rates.inputHit)],
-    ["output", "tokens", usage.output, pick(rates.output)],
+/**
+ * LLM spend, read straight from pi: `usage.cost` on an assistant message is set by pi-ai's calculateCost, using
+ * the rate table of the model that answered (the tariff in force for that request). We never recompute it here,
+ * so pi stays the single source of truth for LLM cost.
+ */
+export function llmLines(modelId: string, usage: PiUsage): Line[] {
+  const id = `llm.${modelId}`;
+  const row = (kind: string, unit: string, quantity: number, usd: number): Line => ({
+    service: "llm", sku: `${id}.${kind}`, unit, quantity, usd, precision: "exact", model: modelId,
+  });
+  return [
+    row("input_miss", "tokens", usage.input, usage.cost.input),
+    row("input_hit", "tokens", usage.cacheRead, usage.cost.cacheRead),
+    row("cache_write", "tokens", usage.cacheWrite, usage.cost.cacheWrite),
+    row("output", "tokens", usage.output, usage.cost.output),
   ];
-  return rows.map(([kind, unit, quantity, rate]) => ({
-    service: "llm",
-    sku: `llm.${id}.${kind}`,
-    unit,
-    quantity,
-    usd: perMillion(quantity, rate),
-    precision: "exact",
-    model: id,
-  }));
 }
 
 /** The line that charges one Durable Object request. */

@@ -11,7 +11,6 @@ export const SOURCES = {
   workers: "https://developers.cloudflare.com/workers/platform/pricing/",
   dynamicWorkers: "https://developers.cloudflare.com/dynamic-workers/pricing/",
   secrets: "https://developers.cloudflare.com/workers/configuration/secrets/",
-  deepseek: "https://api-docs.deepseek.com/quick_start/pricing",
 } as const;
 
 export const PRICES = {
@@ -40,32 +39,5 @@ export const PRICES = {
   },
   /** Secrets are not billed. They are listed in the cost stream so their footprint is visible. */
   secrets: { perSecret: 0 },
-  /**
-   * DeepSeek per million tokens. Peak and off-peak rates from the pricing page (off-peak is half of peak).
-   * `inputMiss` is uncached prompt tokens, `inputHit` is cache-hit prompt tokens, `output` includes reasoning.
-   */
-  deepseek: {
-    "deepseek-flash": {
-      inputMiss: { peak: 0.3, offPeak: 0.15 },
-      inputHit: { peak: 0.006, offPeak: 0.003 },
-      output: { peak: 1.2, offPeak: 0.6 },
-    },
-    "deepseek-v4-pro": {
-      inputMiss: { peak: 1.32, offPeak: 0.66 },
-      inputHit: { peak: 0.044, offPeak: 0.022 },
-      output: { peak: 3.96, offPeak: 1.98 },
-    },
-  },
 } as const;
 
-/**
- * DeepSeek peak window: 01:00–04:00 and 06:00–10:00 UTC, Monday through Friday. Chinese public holidays are
- * also peak; that calendar is not available offline, so holidays are a known limitation (see the README).
- */
-export function isDeepSeekPeak(atMs: number): boolean {
-  const d = new Date(atMs);
-  const day = d.getUTCDay();
-  if (day === 0 || day === 6) return false;
-  const h = d.getUTCHours();
-  return (h >= 1 && h < 4) || (h >= 6 && h < 10);
-}
