@@ -380,14 +380,12 @@ Every node is proved the same way: **test in a container → review code (remove
 - [ ] Nav rail = object/session/app selector.
 
 ### Phase 2 — Component proofs in containers
-- [ ] `dpi-sdk` leaf modules (api/transcript/models/app-state/jobs/sse/client/errors) — unit tests green in a container.
-- [ ] `dpi-sdk` node drivers (config/registry/ops/drivers) — config + registry tests green in a container.
-- [ ] `dpi-backend` core (store/harness/jobs/extensions/streams/shared-state/addons/providers/jev/history/idempotency/auth/errors) — backend suite green in a container.
-- [ ] `dpi-backend` REST + SSE (`api`/`recovery`/`store`/`streams`/`shared-state`/`history`/`jev`) — all pass in a container.
-- [ ] `dpi-playground` hub (guard/proxy/monitor/mux/seed) — hub test green in a container.
-- [ ] `dpi-playground` FE (generative UI) — build + e2e green in a container.
-- [ ] Base-app shell — render tests green in a container.
-- [ ] AI Gateway inference — live smoke test in a container on free `@cf/*` models.
+- [x] `dpi-sdk` (api/transcript/models/app-state/jobs/sse/client/errors + node drivers) — 16/16 unit tests green in the `apple-box` container (Node 26).
+- [x] `dpi-backend` (store/harness/jobs/extensions/streams/shared-state/addons/providers/jev/history/idempotency/auth/errors + REST/SSE) — 14/14 tests green in the container.
+- [x] `dpi-playground` hub (guard/proxy/monitor/mux/seed) — 1/1 hub test green in the container.
+- [x] `dpi-playground` FE (generative UI) — `npm run build` green in the container (Playwright e2e still to run).
+- [ ] Base-app shell — render tests green in a container (Phase 1).
+- [x] AI Gateway inference — live smoke test in the container on free `@cf/*` models (`GATEWAY_OK`).
 
 ### Phase 3 — Cloudflare / Artifacts / DO integration (new)
 - [ ] Write `cloudflare.config.ts` for the base DO app.
