@@ -89,6 +89,8 @@ device token is `~/.dpi/pi-object.token`. Each route requires `Authorization: Be
 
 ## Known issues
 
+- **One `as unknown as` cast on the Durable Object namespace (known deviation from durable-objects / workers-best-practices).** `cloudflare.config.ts` binds `PiAgent` by Worker name, so `cf` types the namespace as a bare stub with no RPC methods. The class is this module's own export, so the cast is exact. Tried and rejected: `GlobalProps` with the main module (no effect on a name-bound binding); a narrow `as DurableObjectNamespace<PiAgent>` (strict TypeScript 5.9 rejects it as insufficient overlap, and the repo gate runs that); `ctx.exports.PiAgent` (typed as a generic union, not the class). Revisit when cf types same-Worker exports.
+- **`cf build` delegates to Wrangler.** The `wrangler` devDependency is required for `cf build`, so it stays pinned (4.165.0) even though the `wrangler` skill says not to add Wrangler to a `cf` project. The skill is not installed here.
 - **cf 1.0 RC and accounts.** `cf` no longer remembers the account between runs. `.env` sets `CLOUDFLARE_ACCOUNT_ID`, which `cf` reads from this directory. With one account on a profile it is used without asking; with several it prompts, and a non-interactive run fails. Status messages go to stderr, so scripts read stdout (JSON) only.
 - **Artifacts permission names.** The account's permission groups are `Artifacts Read` and `Artifacts Write`. The Artifacts docs say "Edit"; the group is "Write". The deploy token needs both.
 - **One DeepSeek key, several projects.** Every pi project on this machine reads the same `~/.pi/agent/auth.json`, so their calls all draw on one balance. Attribute by session (`deepseek-reconcile.ts attribute`), not by balance alone.

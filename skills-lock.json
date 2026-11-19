@@ -1,0 +1,75 @@
+{
+  "version": 2,
+  "skills": {
+    "agent-browser": {
+      "source": "vercel-labs/agent-browser",
+      "commit": "eb19c9a3cebb2a30918c31b9935340d61e76c788",
+      "sourceType": "github",
+      "skillPath": "skills/agent-browser/SKILL.md",
+      "computedHash": "a0dfac7503f69bcf529b2660fc79964064c4f179eb65695904ddc45fc0d99d20"
+    },
+    "cf-cli": {
+      "source": "cloudflare/skills",
+      "commit": "5108325ecceabc899c761e07aa617b09c02445ee",
+      "sourceType": "github",
+      "skillPath": "skills/cf-cli/SKILL.md",
+      "computedHash": "2e05ef054a100c652513e6028ed478b16f7db01a4b397544bd20ced39a4591e9"
+    },
+    "cloudflare": {
+      "source": "cloudflare/skills",
+      "commit": "5108325ecceabc899c761e07aa617b09c02445ee",
+      "sourceType": "github",
+      "skillPath": "skills/cloudflare/SKILL.md",
+      "computedHash": "a40c5c77e4b96b0f6603a54e67bf2ff401a872366af48ff8f6ae0e872d4ad324"
+    },
+    "cloudflare-app-bootstrap": {
+      "source": "cloudflare/skills",
+      "commit": "5108325ecceabc899c761e07aa617b09c02445ee",
+      "sourceType": "github",
+      "skillPath": "skills/cloudflare-app-bootstrap/SKILL.md",
+      "computedHash": "3979e94a82db1c3754f822995e3c2e6624ae4593c296f10eab31ce1e654133e5"
+    },
+    "cloudflare-one": {
+      "source": "cloudflare/skills",
+      "commit": "5108325ecceabc899c761e07aa617b09c02445ee",
+      "sourceType": "github",
+      "skillPath": "skills/cloudflare-one/SKILL.md",
+      "computedHash": "198e43c174b287819638e8d011494055d7d77c69fbf8b275b3a99c641c7bf949"
+    },
+    "durable-objects": {
+      "source": "cloudflare/skills",
+      "commit": "5108325ecceabc899c761e07aa617b09c02445ee",
+      "sourceType": "github",
+      "skillPath": "skills/durable-objects/SKILL.md",
+      "computedHash": "659669f02a6e1b37020b799be0f71e3fecc7b5111f3f406d9f844a0a21994113"
+    },
+    "playwright-cli": {
+      "source": "microsoft/playwright-cli",
+      "commit": "c872a33cec77fa03c28fa7c6d1ad99d15d04ce42",
+      "sourceType": "github",
+      "skillPath": "skills/playwright-cli/SKILL.md",
+      "computedHash": "54c3f1e47b2566ecc3a2c1515823f77f4609edfe8029351924311dafc0d2ba66"
+    },
+    "terraform-style-guide": {
+      "source": "hashicorp/agent-skills",
+      "commit": "5e30fa5c867ba6777c37e4206babfd08049c396f",
+      "sourceType": "github",
+      "skillPath": "plugins/terraform/skills/terraform-style-guide/SKILL.md",
+      "computedHash": "39a686ad7d71d99e5fbead0a5cbd666c096af8d38d152f7597eb314e5b2b622c"
+    },
+    "workers-best-practices": {
+      "source": "cloudflare/skills",
+      "commit": "5108325ecceabc899c761e07aa617b09c02445ee",
+      "sourceType": "github",
+      "skillPath": "skills/workers-best-practices/SKILL.md",
+      "computedHash": "7f941bbc549454872a4c7c261bf75a1ef7aaa69666bc85cec91e97cf40c11cc6"
+    },
+    "workers-development": {
+      "source": "cloudflare/skills",
+      "commit": "5108325ecceabc899c761e07aa617b09c02445ee",
+      "sourceType": "github",
+      "skillPath": "skills/workers-development/SKILL.md",
+      "computedHash": "a5b7dd748116d8b83db7d198867badcdde53c9eb13bf884c7557d40d0c965e38"
+    }
+  }
+}

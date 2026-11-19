@@ -40,6 +40,10 @@ setup:
     cd pi/lsp/eval && npm install --no-audit --no-fund
     @echo "setup: pre-commit gate installed (core.hooksPath=.githooks); servers and type packages installed"
 
+# Restore the skills this repo uses, exactly as skills-lock.json pins them (official sources; see README "Skills")
+skills:
+    npx -y skills@1.9.0 experimental_install -a pi -a claude-code --frozen-lockfile
+
 # Install dependencies for every network app
 install:
     cd apps/dpi-sdk && npm install --no-audit --no-fund

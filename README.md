@@ -308,7 +308,7 @@ durable-pi/
 │   ├── pi-object/                     # pi agent in a Durable Object: telemetry, cost objects, budget guard
 │   └── proactive-dpi-demo/            # the hook: Jev log watcher, incident agents, durable deploy approval
 ├── images/                            # README diagrams, numbered in reading order
-└── .claude/                           # commands/ (prime, install), skills/agent-sandboxes-exe-dev/ (device ops)
+└── .claude/                           # commands/ (prime, install), skills/ (installed skills, see skills-lock.json)
 ```
 
 ### Commands
@@ -427,6 +427,30 @@ Every node is proved the same way: **test in a container → review code (remove
 - [ ] Trim/update README + app READMEs to the base-app + Cloudflare model.
 - [ ] Keep [Known issues](#known-issues) current.
 
+## Skills
+
+The skills this repo uses are pinned in [`skills-lock.json`](skills-lock.json) and restored with `just skills`
+(`npx skills experimental_install --frozen-lockfile`, CLI pinned to 1.9.0). Forks get exactly this set and nothing else.
+Pi reads `.agents/skills/`; Claude Code reads `.claude/skills/`, which holds symlinks into it.
+
+| Skill | Source (official) | Why this repo needs it |
+|---|---|---|
+| `cf-cli` | cloudflare/skills | Every Cloudflare command here is `cf` (the project has `cloudflare.config.ts`) |
+| `cloudflare` | cloudflare/skills | Product choice for Workers, Durable Objects, AI Gateway, Artifacts |
+| `durable-objects`, `workers-best-practices`, `workers-development` | cloudflare/skills | `apps/pi-object` is a Durable Object Worker; `cf dev` for local work |
+| `cloudflare-app-bootstrap` | cloudflare/skills | Bringing a generated app to a working local request |
+| `cloudflare-one` | cloudflare/skills | Access apps and the SSH mesh in `infra/` |
+| `terraform-style-guide` | hashicorp/agent-skills | `infra/` is a Terraform module |
+| `agent-browser` | vercel-labs/agent-browser | `scripts/app-verify.mts` drives it |
+| `playwright-cli` | microsoft/playwright-cli | `apps/dpi-playground` UI tests use Playwright |
+| `vue-official-docs` | this repo | Vue questions answered from vuejs.org (`llms.txt`), not community skills |
+| `durable-pi-browser` | this repo | Browser rules: headless in containers, never headed or over VNC |
+| `agent-sandboxes-exe-dev` | this repo | Operating the exe.dev devices in `dpi-network.yaml` |
+
+Not installed, on purpose: `wrangler` (its rule is "do not add Wrangler" to a `cf` project; `cf build` still delegates to a pinned Wrangler, see pi-object known issues), `agents-sdk`, `basin`, `k2`, `cloudflare-email-service`, `cloudflare-one-migrations`, `frameworks-on-cloudflare`, `gateway-workers`, `nextjs-on-cloudflare`, the three `sandbox-*` skills, `tailscale`, `turnstile-spin`, `web-perf`, `workers-profiling`, `untangle-codebase`, `prune-tests` (a third-party skill that deletes tests; add it back if you want that), and the community `vuejs-ai/skills` (it describes itself as unofficial).
+
+To add a skill: `npx skills add <owner/repo> -s <skill> -a pi -a claude-code`, commit `skills-lock.json` and `.agents/skills/<skill>`. To remove one: `npx skills remove <skill>`, then commit.
+
 ## Known issues
 
 - **Artifacts needs the Workers Paid plan** (not Free); 1 GB/repo for repos created after 2026-09-29.
@@ -441,6 +465,8 @@ Every node is proved the same way: **test in a container → review code (remove
 - **`macos-vm` Lima vz portForwards don't publish for macOS guests** — the port is forwarded over SSH (`-L`).
 - **`apple-container` runs the backend via `nohup`** (no service manager inside the container).
 - **`jev-damage-control` is a guard, not a sandbox** — commands run when Jev is unreachable (see [Where it can still fail](#where-it-can-still-fail)).
+- **Skills on the maintainer laptop.** `~/.agents/skills` is global: its skills show in every project on that machine, including this repo. A fork only gets the locked set. Project settings cannot hide a global skill; removing it from the global folder is the only fix.
+- **Playwright skill example uses `--headed`.** The installed `playwright-cli` session reference opens a headed browser as an example. The repo rule (`durable-pi-browser`) overrides it: headless in containers.
 - **Container tests need the repo-root `dpi-network.example.yaml`** — `config.test.ts` validates the shipped example, but the device deploy only syncs `apps/`; copy it in first (`container cp dpi-network.example.yaml <container>:/root/dpi/`).
 
 ---

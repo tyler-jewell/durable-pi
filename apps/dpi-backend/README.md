@@ -57,7 +57,7 @@ just net probe <id>    # /healthz 200 and /v1/device 401 without a token
 | `exe-dev` | systemd | VM created on demand; the HTTPS proxy is set public, so the token is the gate |
 | `url` | none | connect only: `just net register <id> --token <t>` |
 
-Templates live in [`deploy/`](deploy/). The operator skill [`.claude/skills/agent-sandboxes-exe-dev/cookbook/dpi-network.md`](../../.claude/skills/agent-sandboxes-exe-dev/cookbook/dpi-network.md) covers debugging per kind.
+Templates live in [`deploy/`](deploy/). The operator skill [`.agents/skills/agent-sandboxes-exe-dev/cookbook/dpi-network.md`](../../.agents/skills/agent-sandboxes-exe-dev/cookbook/dpi-network.md) covers debugging per kind.
 
 ## Layout on a device
 
