@@ -150,6 +150,31 @@ Fork any agent at any entry, from the transcript or with `/fork`. The fork copie
 
 ---
 
+## Use cases
+
+Each use case is a section: what the feature does, how it works, and a real run through the hub UI.
+
+### 1. Jev bash gate — a decision on every bash command
+
+The most basic Jev feature. With `jev-damage-control` on, every `bash` command is sent to a Jev decision model **before it runs** — Clef-Flash or OpenJev on the Studio, or any System One endpoint via `JEV_BASE_URL` — and classified three ways:
+
+- **allow** — read-only (lists, reads, tests): runs automatically.
+- **needs human approval** — reversible (edits, installs, deploys): held until a human approves.
+- **block** — irreversible or destructive (`rm -rf`, force push): refused.
+
+The verdict is a durable memo (a restart never re-asks) and fails open (if Jev is down, the command runs).
+
+<p align="center">
+  <img src="docs/images/jev/jev-1-switch.png" width="760" alt="Extend tab with the Jev damage control switch on">
+  <img src="docs/images/jev/jev-2-block.png" width="760" alt="rm -rf blocked: irreversible, Clef-Flash confidence 0.78">
+  <img src="docs/images/jev/jev-3-approve.png" width="760" alt="touch held for human approval: reversible, confidence 0.81">
+  <img src="docs/images/jev/jev-4-allow.png" width="760" alt="ls allowed: read-only">
+</p>
+
+More use cases follow here.
+
+---
+
 ## Any client: web, terminal, curl
 
 <p align="center">
