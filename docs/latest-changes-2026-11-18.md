@@ -82,11 +82,12 @@ Each item was researched in the official docs, changed on its own, and checked b
   jurisdictions and repo counts. It prints counts only, so no price table enters the code. Operations and storage
   billing starts 19 Nov 2026.
 
+Item 2 (done since): the offline Artifacts leg. `npm run e2e:offline` runs the scenario with the local simulator and no Cloudflare calls; see `apps/pi-object/e2e/README.md`.
+
 Still open after this pass:
 
 - `vue-tsc` on TypeScript 7 (the three Vue apps). Re-run `just ts-probe` when `vue-tsc` releases support; a pass
   there is the signal to move them, and the probe needs no change.
-- An offline Artifacts e2e leg using `wrangler dev`'s local simulator. Not needed for the remote-repo proof.
 - Repo-count charges: date and rate to be taken from the pricing page when Cloudflare announces them.
 
 ## Permissions and accounts (learned during the audit)

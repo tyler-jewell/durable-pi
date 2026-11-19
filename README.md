@@ -409,7 +409,7 @@ Every node is proved the same way: **test in a container → review code (remove
 - [ ] Write `cloudflare.config.ts` for the base DO app.
 - [ ] Push the repo into an Artifacts repo (git-over-HTTPS, repo token) — no GitHub.
 - [ ] Workers Builds deploy-on-push from the Artifacts repo.
-- [ ] Artifacts local simulator via `wrangler dev` (isolated local repos). Available since 16 Nov 2026: the binding uses the local simulator by default, and `remote = true` uses deployed repos.
+- [x] Artifacts local simulator via `wrangler dev` (isolated local repos): the offline e2e leg runs the same scenario with no Cloudflare calls (`npm run e2e:offline`). Available since 16 Nov 2026: the binding uses the local simulator by default, and `remote = true` uses deployed repos.
 - [ ] One Durable Object per app, thin Pi harness inside (DO storage adapter).
 - [ ] Move session/catalog state to D1 (KV/R2 where they fit).
 - [ ] cf CLI + MCP Code Mode + Cloudflare Skills wired for agent-driven Cloudflare ops.

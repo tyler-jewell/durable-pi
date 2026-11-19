@@ -1,0 +1,10 @@
+{
+  "name": "dpi-artifacts-sim",
+  "private": true,
+  "type": "module",
+  "description": "Local Artifacts simulator for the offline e2e leg. Dependency cache only: per-run state is removed by the e2e.",
+  "devDependencies": {
+    "cf": "1.0.0-rc.1",
+    "wrangler": "4.165.0"
+  }
+}
