@@ -8,7 +8,6 @@ import { DatabaseSync } from "node:sqlite";
 import { DO_COMPONENT, fetchRateCard, parseRateCard, ROUNDING_USD_PER_UNIT, type RawPlan } from "../src/cost/cloudflare-rate-card.js";
 import { cloudflareDoView, doPeriodUsage, DO_MEMORY_GB, type DoPeriodUsage } from "../src/cost/cloudflare-do.js";
 import { dayOf, UsageStore, type SqlLike } from "../src/cost/store.js";
-import * as T from "../src/cost/meter.js";
 
 const close = (a: number | null | undefined, b: number, eps = 1e-9) => assert.ok(a != null && Math.abs(a - b) <= eps, `${a} != ${b}`);
 

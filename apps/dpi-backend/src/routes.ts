@@ -28,7 +28,7 @@ export function v1(store: Store) {
   const create = idempotent(store);
 
   // Resolve :s and :a once per request.
-  r.param("s", (req, res, next, value: string) => {
+  r.param("s", (_req, res, next, value: string) => {
     try {
       const row = store.resolveSession(value);
       res.locals.row = row;

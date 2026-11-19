@@ -102,7 +102,6 @@ function decide(approved: boolean) {
   pendingJob.value = true;
   setTimeout(() => {
     const now = Date.now();
-    const approve = job.value.phases.find((p) => p.id === "approve")!;
     job.value = {
       ...job.value,
       approval: approved ? "approved" : "declined",

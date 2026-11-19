@@ -3,7 +3,7 @@
 port="$1"
 pids=$(lsof -ti "tcp:$port" -sTCP:LISTEN 2>/dev/null)
 [ -z "$pids" ] && exit 0
-echo "port $port in use; stopping pid $(echo "$pids")" >&2
+echo "port $port in use; stopping pid $(printf '%s' "$pids" | tr '\n' ' ')" >&2
 # shellcheck disable=SC2086
 kill $pids 2>/dev/null
 i=0

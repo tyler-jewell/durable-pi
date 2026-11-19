@@ -37,7 +37,6 @@ import {
   notify,
   number,
   refreshDetail,
-  session,
   sessionHandle,
   sessionSummary,
   showInspector,

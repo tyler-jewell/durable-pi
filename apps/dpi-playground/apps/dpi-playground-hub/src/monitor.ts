@@ -23,7 +23,6 @@ export interface LiveState {
 export class DeviceMonitor {
   private live = new Map<string, LiveState>();
   private loops = new Map<string, AbortController>();
-  private wakers = new Map<string, () => void>();
   private listeners = new Set<() => void>();
   private persistedAt = new Map<string, number>();
   private emitTimer?: ReturnType<typeof setTimeout>;

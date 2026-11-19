@@ -64,7 +64,7 @@ function addApp(name: string, title: string): void {
   console.log(`next: just app verify ${name}`);
 }
 
-function pageComponent(name: string, title: string): string {
+function pageComponent(title: string): string {
   return `<script setup lang="ts">
 const props = defineProps<{ title: string }>();
 </script>
@@ -82,7 +82,7 @@ function addPage(app: string, name: string): string {
   if (!/^[A-Z][A-Za-z0-9]{0,40}$/.test(name)) die(`page name "${name}" must be PascalCase, e.g. Settings`);
   const file = join(appDir(app), "src", "pages", `${name}.vue`);
   if (existsSync(file)) die(`${relative(ROOT, file)} already exists`);
-  writeFileSync(file, pageComponent(name, titleCase(name)));
+  writeFileSync(file, pageComponent(titleCase(name)));
   return file;
 }
 

@@ -220,7 +220,7 @@ async function serviceCommand(device: NetDevice, action: "restart" | "down") {
         : `launchctl bootout ${domain}/${SERVICE_LABEL} 2>/dev/null || true`,
     );
   }
-    return exec(device, `sudo -n systemctl ${action === "restart" ? "restart" : "stop"} ${SYSTEMD_UNIT}`);
+  if (device.service === "systemd") return exec(device, `sudo -n systemctl ${action === "restart" ? "restart" : "stop"} ${SYSTEMD_UNIT}`);
   throw Error(`${device.id} has no service; it runs with \`just backend run\``);
 }
 

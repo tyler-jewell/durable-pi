@@ -27,7 +27,6 @@ import { BRANCH, DONE_MARKER, E2E_CONTENT, E2E_FILE, COMMIT_MESSAGE } from "./co
 import { api, JURISDICTION, NAMESPACE, repoCount } from "./artifacts-api.mts";
 
 const here = dirname(fileURLToPath(import.meta.url));
-const ROOT = join(here, "..");
 const SIM_DIR = join(here, "artifacts-sim");
 const IMAGE = "dpi-artifacts-dev:local";
 const WORKER = "https://durable-pi-object.tyler-jewell.workers.dev";

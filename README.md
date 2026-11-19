@@ -346,7 +346,7 @@ just lsp eval              # does DeepSeek Flash reach for the servers on its ow
 
 | Check | Result |
 |---|---|
-| `just check` (`just test unit`): SDK (23), backend (14), hub (1), TUI (8) and pi-object (46) tests with strict types; base-app type check and build; web build and lint | **pass** |
+| `just check` (`just test unit`): SDK (24), backend (14), hub (1), TUI (8) and pi-object (46) tests with strict types; base-app type check and build; web build and lint | **pass** |
 | `just test ui`: 28 web checks against two faux devices, including offline recovery, bad tokens, read only, extensions, durable jobs, the context bar, slash commands, keyboard and mobile | **28 of 28** |
 | `just test device` on a cloud VM with a real model: the web UI, steer, dedupe, subagents, jobs, compaction, reset, and quitting the browser mid-tool | **18 of 18** |
 | `just test e2e` on an ssh Mac: TUI and web on one run, steer from the web, both clients closed, device restarted mid-tool, fork, TUI reattach | **pass**: 9 tool results, 1 interrupted by the restart, each prompt admitted once |
@@ -416,7 +416,7 @@ Every node is proved the same way: **test in a container → review code (remove
 - [x] Nav rail = object/session/app selector (`NavRail`).
 
 ### Phase 2 — Component proofs in containers
-- [x] `dpi-sdk` (api/transcript/models/app-state/jobs/sse/client/errors + node drivers) — 23/23 unit tests green (host, `just check`). The 16/16 container run predates the redaction and system-stream tests; re-run in the container is open.
+- [x] `dpi-sdk` (api/transcript/models/app-state/jobs/sse/client/errors + node drivers) — 24/24 unit tests green (host, `just check`). The 16/16 container run predates the redaction and system-stream tests; re-run in the container is open.
 - [x] `dpi-backend` (store/harness/jobs/extensions/streams/shared-state/addons/providers/jev/history/idempotency/auth/errors + REST/SSE) — 14/14 tests green in the container.
 - [x] `dpi-playground` hub (guard/proxy/monitor/mux/seed) — 1/1 hub test green in the container.
 - [x] `dpi-playground` FE (generative UI) — `npm run build` green in the container (Playwright e2e still to run).
