@@ -27,7 +27,7 @@ import { inspectHost } from "../src/host-inspect.js";
 const GROUND_TRUTH = {
   models: ["Clef-Flash-Q4_K_M", "OpenJev-Q4_K_M"],
   serverExe: "llama-server",
-  modelDir: "/Users/Shared/studio-models/gguf",
+  modelDir: "/srv/studio-models/gguf",
   alias: "Clef-Flash-Q4_K_M",
   autoStartServices: [] as string[], // no launchd service auto-starts the model server
 };

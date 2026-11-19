@@ -69,7 +69,7 @@ Local image, once: `container build -t dpi-artifacts-dev:local -f e2e/Containerf
 | Simulator state removed | n/a | n/a | yes |
 | Cloudflare cost (list, this run) | n/a (no Cloudflare run) | $0.0001570 | n/a (no Cloudflare run) |
 | Durable Object requests (this run) | n/a | 1 recorded; duration posts after the response | n/a |
-| Log directory | /Users/mbp/.dpi/e2e/e2e-local-mwmsbqd4-d4d2 | /Users/mbp/.dpi/e2e/e2e-remote-mwmsc0by-f750 | /Users/mbp/.dpi/e2e/e2e-offline-mwmscrmv-e501 |
+| Log directory | `~/.dpi/e2e/e2e-local-mwmsbqd4-d4d2` | `~/.dpi/e2e/e2e-remote-mwmsc0by-f750` | `~/.dpi/e2e/e2e-offline-mwmscrmv-e501` |
 
 ## Notes
 

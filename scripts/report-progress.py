@@ -4,10 +4,13 @@
 # hub UI and readable by any agent via read_state.
 import json, os, re, subprocess, time, urllib.request
 
-TOKEN = "dpi_8zEMx25E4-IwVgmUMaB-mR6QhL6P457D7d4TfTQq8SQ"
-URL = "http://127.0.0.1:4782/v1/sessions/phase2-smoke/agents/main/demo/state"
+# Credentials and endpoint come from the environment — never hardcode tokens or device URLs.
+TOKEN = os.environ.get("DPI_DEVICE_TOKEN", "")
+URL = os.environ.get("DPI_APP_STATE_URL", "")
+if not TOKEN or not URL:
+    raise SystemExit("set DPI_DEVICE_TOKEN and DPI_APP_STATE_URL (the device's /demo/state endpoint)")
 LOGFILE = os.path.expanduser("~/.dpi-mcp/report-progress.log")
-TOTAL_GB = 82.9
+TOTAL_GB = float(os.environ.get("DPI_DOWNLOAD_TOTAL_GB", "82.9"))
 DURATION = 2 * 3600
 INTERVAL = 300
 

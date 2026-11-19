@@ -8,7 +8,7 @@ is built, and what remains.
 ## Validated resources (19 Nov 2026)
 
 `studio.tail9d6cad.ts.net` (Apple M1 Max, 32 GB) runs **llama.cpp `llama-server` 1.0.0**.
-The canonical model root is `/Users/studio/local/models/` (manifest.json is the SSoT; see
+The canonical model root is `~/local/models/` (manifest.json is the SSoT; see
 docs/model-lineup.md), and one router on `:8080` serves one GGUF at a time from
 `gguf/` (`--models-max 1`, autoload, sleep-idle 600 s):
 
@@ -92,7 +92,7 @@ The registry is **data derived from the host's own API**, not hand-written confi
 1. **Add a coding LLM to the Studio.** Download a text+tool-calling GGUF (a ~8–14B Q4 model
    fits the 32 GB box beside Clef-Flash; the `local` provider lists Qwen3 Coder 8B and
    DeepSeek Coder V2 Lite as the expected aliases) into
-   `/Users/Shared/studio-models/gguf`, and let the 8080 router serve it. This is a deliberate
+   `~/local/models/gguf`, and let the 8080 router serve it. This is a deliberate
    choice (model, size, quantization); pick it explicitly before a multi-GB download.
 2. ~~`local` provider~~ — done (step 3 above).
 3. **Mesh reachability.** `llama-server` binds `127.0.0.1` today, so other hosts (MacBook,

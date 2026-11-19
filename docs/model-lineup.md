@@ -12,14 +12,14 @@ Model files are **not** the SSoT. The SSoT is the manifest, per the router
 presets' own rule ("Model facts, sizes, hashes and licenses live only in
 `models/manifest.json`"):
 
-- **`/Users/studio/local/models/manifest.json`** — the canonical registry on the
+- **`~/local/models/manifest.json`** — the canonical registry on the
   Studio: every model's id, kind, role, CF name, GGUF file, quant, size, license,
   status (local/staging/pending) and benchmark.
-- `/Users/studio/local/models/gguf/` + `mlx/` — storage (GGUF for llama.cpp, MLX
+- `~/local/models/gguf/` + `mlx/` — storage (GGUF for llama.cpp, MLX
   for Apple-native).
-- `/Users/studio/local/models/llama-models.ini` — the router presets (one GGUF
+- `~/local/models/llama-models.ini` — the router presets (one GGUF
   served at a time on `:8080`, `--models-max 1`).
-- `/Users/Shared/studio-models/` — import/staging only (the import tarball lives
+- the macOS Shared models area — import/staging only (the import tarball lives
   there); it is **not** the model root.
 
 ## Measured baselines (19 Nov 2026, Studio)
@@ -106,7 +106,7 @@ forecast/estimate capability to the factory's judge tier.
 
 ## Download state (19 Nov 2026)
 
-The canonical root is `/Users/studio/local/models/` (manifest.json = SSoT). Verified
+The canonical root is `~/local/models/` (manifest.json = SSoT). Verified
 GGUF files and their exact sizes:
 
 | Model | GGUF (Q4_K_M unless noted) | Size | Status |
@@ -126,5 +126,5 @@ GGUF files and their exact sizes:
 stays CF-only. Once each GGUF lands, its tokens/s + cold-load are measured and
 recorded in manifest.json.
 3. Once the lineup is chosen, download the GGUFs into
-   `/Users/Shared/studio-models/gguf` and capture per-model tokens/s + cold-load
+   `~/local/models/gguf` and capture per-model tokens/s + cold-load
    the same way Clef/OpenJev were measured.
