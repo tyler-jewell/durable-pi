@@ -3,3 +3,5 @@ apps/proactive-dpi-demo/mock-repo-template/  # overlays: 01-initial is the base,
 pi/lsp/check/fixture/  # deliberately broken: the planted type error the LSP check asserts on.
 templates/  # scaffolds: their imports resolve only after `just app add` installs them. `just app verify` checks each generated app.
 pi/lsp/gate-fixtures/  # a fake language server for gate-test.sh: it speaks LSP so the gate can be tested against a server that publishes twice.
+.agents/skills/  # installed skills (skills-lock.json: third-party, pinned by hash), and the exe.dev operator CLI in them, which has its own uv environment and is not part of the apps. Repo-owned skill docs are not code.
+.claude/skills/  # symlinks into .agents/skills/ (Claude Code reads this folder), so the same exclusion applies.

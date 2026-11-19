@@ -128,6 +128,32 @@ expect "a server that exits blocks (fails closed)" fail "" src/fine.ts
 unset DPI_LSP_TS_COMMAND
 cd "$SRC" || exit 1; rm -rf "$D"
 
+# 11. A Vue template that names something undefined must block. The fixture links the pinned vue from our tools folder
+#     (install.sh), the way a project installs it. The check comes from the TypeScript companion that the Vue
+#     server uses (it carries the template types), so this fails if that bridge is broken.
+new_repo vue-template
+printf 'node_modules/\n' > .gitignore
+mkdir -p node_modules && ln -s "$HOME/.dpi/lsp-tools/node_modules/vue" node_modules/vue
+printf '{"compilerOptions":{"strict":true,"noEmit":true,"target":"es2022","module":"esnext","moduleResolution":"bundler","jsx":"preserve"},"include":["src"]}\n' > tsconfig.json
+printf '<script setup lang="ts">\nconst n = 1;\n</script>\n\n<template>\n  <p>{{ n }} {{ missingThing.value }}</p>\n</template>\n' > src/Broken.vue
+expect "a Vue template error blocks" fail "error" src/Broken.vue
+cd "$SRC" || exit 1; rm -rf "$D"
+
+# 12. A clean Vue component passes (the same bridge, no finding).
+new_repo vue-clean
+printf 'node_modules/\n' > .gitignore
+mkdir -p node_modules && ln -s "$HOME/.dpi/lsp-tools/node_modules/vue" node_modules/vue
+printf '{"compilerOptions":{"strict":true,"noEmit":true,"target":"es2022","module":"esnext","moduleResolution":"bundler","jsx":"preserve"},"include":["src"]}\n' > tsconfig.json
+printf '<script setup lang="ts">\nconst n: number = 1;\n</script>\n\n<template>\n  <p>{{ n }}</p>\n</template>\n' > src/Fine.vue
+expect "a clean Vue component passes" pass "" src/Fine.vue
+cd "$SRC" || exit 1; rm -rf "$D"
+
+# 13. A Vue project that does not install vue must fail closed: without its types the template checks pass silently.
+new_repo vue-no-vue
+printf '<script setup lang="ts">\nconst n = 1;\n</script>\n\n<template>\n  <p>{{ n }} {{ missingThing.value }}</p>\n</template>\n' > src/NoVue.vue
+expect "a Vue project without vue installed fails closed" fail "" src/NoVue.vue
+cd "$SRC" || exit 1; rm -rf "$D"
+
 if [ "$FAILS" = 0 ]; then
   echo "GATE_TEST_PASS"
 else

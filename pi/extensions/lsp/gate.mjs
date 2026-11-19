@@ -13,6 +13,9 @@
 import { execFileSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
 import { dirname, join, relative, resolve } from "node:path";
+
+/** Languages checked per project (a tsconfig or jsconfig folder), because their types come from that project. */
+const PROJECT_LANGS = new Set(["typescript", "vue"]);
 import { LANGUAGES, SEVERITY, checkDocuments, startServer, listFiles, killAllLiveServers } from "./core.mjs";
 
 /** @typedef {import("./core.mjs").LangId} LangId */
@@ -88,19 +91,19 @@ for (const lang of LANG_IDS) {
   if (mode === "all") {
     for (const f of LANGUAGES[lang].files(root)) {
       if (LANGUAGES[lang].perFile) addTo(lang, f, f);
-      else if (lang !== "typescript") addTo(lang, root, f);
+      else if (!PROJECT_LANGS.has(lang)) addTo(lang, root, f);
       else addTo(lang, projectOf(f) ?? "", f);
     }
     continue;
   }
   const mine = (files ?? []).filter((f) => LANGUAGES[lang].languageId(f) !== undefined);
   if (mine.length === 0) continue;
-  if (lang === "typescript") {
-    // Every TypeScript file under each affected project, so breakage in callers is caught.
+  if (PROJECT_LANGS.has(lang)) {
+    // Every file of the language under each affected project, so breakage in callers is caught.
     for (const f of mine) {
       const p = projectOf(f);
       if (p === null) continue;
-      for (const g of listFiles(p, (n) => LANGUAGES.typescript.languageId(n) !== undefined)) addTo(lang, p, g);
+      for (const g of listFiles(p, (n) => LANGUAGES[lang].languageId(n) !== undefined)) addTo(lang, p, g);
     }
   } else {
     for (const f of mine) addTo(lang, LANGUAGES[lang].perFile ? f : root, f);
@@ -111,7 +114,7 @@ for (const lang of LANG_IDS) {
 const failures = [];
 // A TypeScript or JavaScript file that no tsconfig or jsconfig covers has no project: the standard requires one.
 for (const [key, g] of groups) {
-  if (key.startsWith("typescript\0") && g.serverRoot === "") {
+  if (PROJECT_LANGS.has(g.lang) && g.serverRoot === "") {
     for (const f of g.files) failures.push(`${rel(f)}: no tsconfig.json or jsconfig.json covers this file; add one to the folder that owns it`);
     groups.delete(key);
   }
@@ -151,7 +154,7 @@ const results = await pool(
   [...groups.values()],
   JOBS,
   async (g) => {
-    const label = `${LANGUAGES[g.lang].label}${g.lang === "typescript" ? ` (${rel(g.serverRoot) || "."})` : ""}`;
+    const label = `${LANGUAGES[g.lang].label}${PROJECT_LANGS.has(g.lang) ? ` (${rel(g.serverRoot) || "."})` : ""}`;
     /** @type {Awaited<ReturnType<typeof startServer>>} */
     let server;
     try {

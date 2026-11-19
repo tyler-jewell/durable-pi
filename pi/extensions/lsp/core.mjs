@@ -10,13 +10,13 @@ import { spawn, execFileSync } from "node:child_process";
 import { existsSync, readdirSync, statSync } from "node:fs";
 import { createRequire } from "node:module";
 import { homedir } from "node:os";
-import { basename, extname, join } from "node:path";
+import { basename, dirname, extname, join } from "node:path";
 import { pathToFileURL } from "node:url";
 
 /** @typedef {{ line: number, character: number }} Position */
 /** @typedef {{ start: Position, end: Position }} Range */
 /** @typedef {{ range: Range, severity?: number, code?: string | number, source?: string, message: string }} Diagnostic */
-/** @typedef {"typescript" | "json" | "css" | "html" | "bash" | "python"} LangId */
+/** @typedef {"typescript" | "vue" | "json" | "css" | "html" | "bash" | "python"} LangId */
 /** @typedef {{ missing: string } | { command: string, args: string[], initializationOptions?: object }} ServerSpec */
 /** @typedef {{ label: string, perFile?: boolean, detect: (root: string) => boolean, files: (root: string) => string[], languageId: (p: string) => string | undefined, spec: (root: string) => ServerSpec }} Language */
 /** @typedef {{ client: LspClient, info: string, versions: Map<string, number>, lang: LangId }} Running */
@@ -63,6 +63,10 @@ export class LspClient {
     this.diagnostics = new Map();
     /** @type {Map<string, Set<Listener>>} */
     this.listeners = new Map();
+    /** @type {Map<string, Array<(params: any) => void>>} */
+    this.notificationHandlers = new Map();
+    /** Latest list per source per document: the server itself, and any companion that also reports on its documents. @type {Map<string, Map<string, Diagnostic[]>>} */
+    this.sources = new Map();
     this.buffer = Buffer.alloc(0);
     /** @type {string[]} */
     this.stderrTail = [];
@@ -121,6 +125,13 @@ export class LspClient {
   /** @param {string} uri */
   clearDiagnostics(uri) {
     this.diagnostics.delete(uri);
+  }
+
+  /** Handles a notification the server sends (not a publish): e.g. the Vue server's tsserver/request. @param {string} method @param {(params: any) => void} fn */
+  onNotification(method, fn) {
+    const list = this.notificationHandlers.get(method) ?? [];
+    list.push(fn);
+    this.notificationHandlers.set(method, list);
   }
 
   /** @param {string} uri @param {Listener} fn */
@@ -253,13 +264,31 @@ export class LspClient {
       else p.resolve(msg.result);
       return;
     }
-    if (msg.method === "textDocument/publishDiagnostics") {
-      const uri = msg.params.uri;
-      /** @type {Diagnostic[]} */
-      const list = msg.params.diagnostics ?? [];
-      this.diagnostics.set(uri, list);
-      for (const fn of [...(this.listeners.get(uri) ?? [])]) fn(list);
+    if (msg.method !== undefined) for (const fn of this.notificationHandlers.get(msg.method) ?? []) fn(msg.params);
+    if (msg.method === "textDocument/publishDiagnostics") this.publishFrom("self", msg.params.uri, msg.params.diagnostics ?? []);
+  }
+
+  /**
+   * Records a source's latest list for a document, and tells the waiters. A document's list is the union of its sources,
+   * without duplicates: the Vue server's own list and the TypeScript companion's (which carries the template checks).
+   * @param {string} source @param {string} uri @param {Diagnostic[]} list
+   */
+  publishFrom(source, uri, list) {
+    const bySource = this.sources.get(uri) ?? new Map();
+    bySource.set(source, list);
+    this.sources.set(uri, bySource);
+    const seen = new Set();
+    /** @type {Diagnostic[]} */
+    const all = [];
+    for (const d of [...bySource.values()].flat()) {
+      const key = `${d.range.start.line}:${d.range.start.character}|${d.range.end.line}:${d.range.end.character}|${d.code}|${d.message}`;
+      if (!seen.has(key)) {
+        seen.add(key);
+        all.push(d);
+      }
     }
+    this.diagnostics.set(uri, all);
+    for (const fn of [...(this.listeners.get(uri) ?? [])]) fn(all);
   }
 
   /** @param {Error} err */
@@ -291,7 +320,8 @@ export function listFiles(root, accept, { depth = 6, limit = 2000 } = {}) {
       return;
     }
     for (const name of names) {
-      if (SKIP.has(name) || (name.startsWith(".") && name !== ".")) continue;
+      // Dot-folders are part of the repo (.agents, .claude, .github, .githooks): only the SKIP names are left out.
+      if (SKIP.has(name)) continue;
       const p = join(dir, name);
       let st;
       try {
@@ -393,6 +423,19 @@ export const LANGUAGES = {
     // The server would otherwise scan the whole workspace (node_modules included) in the background before answering.
     spec: () => ({ command: binary("bash-language-server"), args: ["start"], initializationOptions: { backgroundAnalysisMaxFiles: 0 } }),
   },
+  vue: {
+    label: "Vue",
+    // Checked per project, like TypeScript: the server resolves 'vue' and the component types from the project's own
+    // node_modules. Its TypeScript is the same one the TypeScript server reads.
+    detect: (root) => listFiles(root, extSet(".vue"), { depth: 3, limit: 1 }).length > 0,
+    files: (root) => listFiles(root, extSet(".vue")),
+    languageId: (p) => (extOf(p) === ".vue" ? "vue" : undefined),
+    spec(root) {
+      const tsserver = resolveTsserver(root);
+      if (!tsserver) return { missing: "no TypeScript found: install it in the project, or run `just setup`" };
+      return { command: binary("vue-language-server"), args: ["--stdio"], initializationOptions: { typescript: { tsdk: dirname(tsserver) } } };
+    },
+  },
   python: {
     label: "Python",
     detect: (root) => hasFile(root, ["pyproject.toml", "setup.py", "requirements.txt"]) || listFiles(root, extSet(".py"), { depth: 2, limit: 1 }).length > 0,
@@ -405,8 +448,64 @@ export const LANGUAGES = {
 export const SEVERITY = ["error", "warning", "information", "hint"];
 
 /** Starts a language's server for a project, and completes the initialize handshake. */
+/** Our tools folder: the Vue TypeScript plugin resolves from here. */
+const VUE_PLUGIN = { name: "@vue/typescript-plugin", location: join(TOOLS_MODULES, ".."), languages: ["vue"] };
+
 /** @param {LangId} lang @param {string} root @returns {Promise<Running | { missing: string }>} */
 export async function startServer(lang, root) {
+  if (lang === "vue") return startVue(root);
+  return startPlain(lang, root, undefined);
+}
+
+/**
+ * The Vue server does its TypeScript work through a TypeScript server that has the Vue plugin loaded. The client carries
+ * its requests: each tsserver/request is run on that server (typescript.tsserverRequest) and answered with tsserver/response.
+ * @param {string} root @returns {Promise<Running | { missing: string }>}
+ */
+async function startVue(root) {
+  // The template checks type-check against the project's own vue. Without it, template expressions resolve to any and
+  // pass silently, so a Vue project that does not install vue fails closed.
+  try {
+    createRequire(join(root, "package.json")).resolve("vue/package.json");
+  } catch {
+    return { missing: "vue is not installed in this project: run npm install (the template checks need its types)" };
+  }
+  const companion = await startPlain("typescript", root, { plugins: [VUE_PLUGIN] });
+  if ("missing" in companion) return companion;
+  const vue = await startPlain("vue", root, undefined);
+  if ("missing" in vue) {
+    await companion.client.shutdown();
+    return vue;
+  }
+  // The server sends [[id, command, args]]: the request is the first parameter.
+  vue.client.onNotification("tsserver/request", (/** @type {[[number, string, unknown]]} */ [[id, command, args]]) => {
+    companion.client
+      .request("workspace/executeCommand", { command: "typescript.tsserverRequest", arguments: [command, args, {}] }, 60_000)
+      .then(
+        (res) => vue.client.notify("tsserver/response", [[id, res?.body ?? null]]),
+        () => vue.client.notify("tsserver/response", [[id, null]]),
+      );
+  });
+  // The companion must see the same documents, or tsserver has no project for a .vue file.
+  const notify = vue.client.notify.bind(vue.client);
+  vue.client.notify = (/** @type {string} */ method, /** @type {unknown} */ params) => {
+    notify(method, params);
+    if (method.startsWith("textDocument/")) companion.client.notify(method, params);
+  };
+  // The companion's diagnostics for .vue documents are part of the Vue document's list.
+  companion.client.onNotification("textDocument/publishDiagnostics", (/** @type {{ uri: string, diagnostics?: Diagnostic[] }} */ params) => {
+    if (params.uri.endsWith(".vue")) vue.client.publishFrom("companion", params.uri, params.diagnostics ?? []);
+  });
+  const shutdown = vue.client.shutdown.bind(vue.client);
+  vue.client.shutdown = async () => {
+    await shutdown();
+    await companion.client.shutdown();
+  };
+  return { ...vue, info: `${vue.info} + ${companion.info}` };
+}
+
+/** @param {LangId} lang @param {string} root @param {object | undefined} extraInit @returns {Promise<Running | { missing: string }>} */
+async function startPlain(lang, root, extraInit) {
   const spec = LANGUAGES[lang].spec(root);
   if ("missing" in spec) return { missing: spec.missing };
   const client = new LspClient(spec.command, spec.args, root);
@@ -429,7 +528,7 @@ export async function startServer(lang, root) {
           hover: { contentFormat: ["markdown", "plaintext"] },
         },
       },
-      initializationOptions: spec.initializationOptions,
+      initializationOptions: { ...spec.initializationOptions, ...extraInit },
     },
     60_000,
   );

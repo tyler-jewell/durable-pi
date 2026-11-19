@@ -12,7 +12,7 @@ SRC="${1:?usage: install.sh <src-dir>}"
 TOOLS="$HOME/.dpi/lsp-tools"
 mkdir -p "$TOOLS"
 # Pinned: each server, the TypeScript that the TypeScript server reads (5.9.3), and pi.
-PINS='typescript@5.9.3 typescript-language-server@6.1.0 vscode-langservers-extracted@4.10.0 bash-language-server@5.8.1 pyright@1.1.414 @earendil-works/pi-coding-agent@1.5.2'
+PINS='typescript@5.9.3 typescript-language-server@6.1.0 vscode-langservers-extracted@4.10.0 bash-language-server@5.8.1 pyright@1.1.414 @vue/language-server@3.3.14 vue@3.5.43 @earendil-works/pi-coding-agent@1.5.2'
 want_ok=1
 for pin in $PINS; do
   name="${pin%@*}"; ver="${pin##*@}"
