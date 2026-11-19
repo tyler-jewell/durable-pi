@@ -1,0 +1,8 @@
+cloudflare_account_id = "09f27fe672991450d128a652b5fb4d73"
+cloudflare_zone_id    = "5f9863e470a38e7debdfb5b4f6181920"
+hostname              = "studio.jewell-labs.com"
+ssh_emails            = [
+  "tyler.p.jewell@gmail.com",
+  "vgrdz5h54y@privaterelay.appleid.com",
+]
+service_token_duration = "720h"
