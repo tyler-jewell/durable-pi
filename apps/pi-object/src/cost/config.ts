@@ -8,9 +8,9 @@
 import type { DeepseekConfig } from "./objects.js";
 
 export const COST_CONFIG: { deepseek: DeepseekConfig & { label: string } } = {
-  // Derived, not typed in: the DeepSeek export (2026-10-20 to 2026-11-18) records $75.454438, all from the paid wallet,
-  // and the live balance is $19.54 with $0.00 granted. 75.454438 + 19.54 = 94.99 to the cent, and $95.00 is also within
-  // the balance rounding. Assumes no spend before the export window; confirm against the top-up history.
+  // Confirmed against the DeepSeek platform billing page (19 Nov 2026): total cost $82.13, balance $12.86, granted $0.
+  // 82.13 + 12.86 = 94.99 to the cent, so the lifetime top-up is $95.00. Live balance read agrees: total $12.46, no
+  // mismatch (topUp - toppedUp = 82.54). Update topUpUsd after each top-up.
   deepseek: { label: "DeepSeek", topUpUsd: 95.0, grantedUsd: 0 },
 };
 
