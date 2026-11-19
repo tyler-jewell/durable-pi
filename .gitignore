@@ -30,3 +30,9 @@ test-results/
 tmp/
 *.log
 .DS_Store
+
+# terraform: local state and per-operator variables (secrets travel by env)
+infra/terraform.tfvars
+infra/.terraform/
+infra/*.tfstate
+infra/*.tfstate.*

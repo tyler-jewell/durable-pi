@@ -69,7 +69,7 @@ resource "cloudflare_access_policy" "studio_ssh" {
 # ---- Per-app short-lived certificate CA ----
 # GOTCHA: this is SEPARATE from the legacy account-level SSH CA. Without it,
 # `cloudflared access ssh-gen` fails with "Please create a ca for application."
-resource "cloudflare_zero_trust_access_short_lived_certificates" "studio_ssh" {
+resource "cloudflare_zero_trust_access_short_lived_certificate" "studio_ssh" {
   account_id     = var.cloudflare_account_id
   application_id = cloudflare_access_application.studio_ssh.id
 }

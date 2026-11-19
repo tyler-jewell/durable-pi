@@ -26,6 +26,6 @@ output "service_token_client_secret" {
 
 output "short_lived_cert_ca_public_key" {
   description = "Public key of the per-app short-lived SSH certificate CA (sensitive)"
-  value       = cloudflare_zero_trust_access_short_lived_certificates.studio_ssh.public_key
+  value       = cloudflare_zero_trust_access_short_lived_certificate.studio_ssh.public_key
   sensitive   = true
 }
