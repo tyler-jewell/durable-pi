@@ -67,3 +67,13 @@ them destroys and recreates the tunnel and the policy, and the mesh stops. The u
 4. Apply only after the plan shows no destroy.
 
 Until someone confirms the state, the provider stays on v4 and `validate` is expected to fail.
+
+## Second defect (cloudflare-one skill): the agent lane cannot authenticate
+
+`cloudflare_access_policy.studio_ssh` puts the service token in an **Allow** policy together with the email rules. The
+cloudflare-one skill is explicit: a service token must be included by a policy with the **Service Auth** action, and an
+Allow policy is not a substitute. So the non-interactive lane (the agent's service token) gets the login redirect.
+
+The fix: a second policy with `decision = "non_identity"` (Service Auth) that includes only the service token, and an
+Allow policy with only the email rules. This changes live authentication, so it goes through the same reviewed plan as
+the v5 migration above: expect an in-place policy update, and check that the service-token SSH login succeeds after apply.
