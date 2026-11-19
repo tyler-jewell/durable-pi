@@ -46,6 +46,12 @@ install:
     cd apps/dpi-backend && npm install --no-audit --no-fund
     cd apps/dpi-playground && npm install --no-audit --no-fund
     cd apps/dpi-tui && npm install --no-audit --no-fund
+    cd apps/base-app && npm install --no-audit --no-fund
+    cd apps/pi-object && npm install --no-audit --no-fund
+    cd apps/pi-object/e2e && npm install --no-audit --no-fund
+    cd apps/proactive-dpi-demo && npm install --no-audit --no-fund
+    cd scripts && npm install --no-audit --no-fund
+    cd pi/lsp/check && npm install --no-audit --no-fund
 
 # Type checks and unit tests, every app
 check: test::unit
