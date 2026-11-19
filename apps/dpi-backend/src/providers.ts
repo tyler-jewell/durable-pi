@@ -4,16 +4,14 @@
 // provider is a spec here, not a change to the store: the rest of the backend is
 // provider-agnostic and only reads ProviderId / NetworkProviderSpec.
 import type { Provider } from "@earendil-works/pi-ai/models";
-import { createProvider } from "@earendil-works/pi-ai/models";
-import { openAICompletionsApi } from "@earendil-works/pi-ai/api/openai-completions.lazy";
 import { openrouterProvider } from "@earendil-works/pi-ai/providers/openrouter";
 import { deepseekProvider } from "@earendil-works/pi-ai/providers/deepseek";
 import { cloudflareWorkersAIProvider } from "@earendil-works/pi-ai/providers/cloudflare-workers-ai";
 import { curatedModels, defaultModelId } from "./model-catalog.js";
 
-export type ProviderId = "openrouter" | "deepseek" | "cloudflare-ai-gateway" | "local" | "faux";
+export type ProviderId = "openrouter" | "deepseek" | "cloudflare-ai-gateway" | "faux";
 
-export const PROVIDER_IDS = ["openrouter", "deepseek", "cloudflare-ai-gateway", "local", "faux"] as const;
+export const PROVIDER_IDS = ["openrouter", "deepseek", "cloudflare-ai-gateway", "faux"] as const;
 
 export interface ModelSpec {
   /** Provider-native model id (an OpenRouter slug for openrouter). */
@@ -92,35 +90,6 @@ export const networkProviders: Record<Exclude<ProviderId, "faux">, NetworkProvid
       { id: "@cf/zai-org/glm-5.3-flash", name: "GLM 5.3 Flash", tier: "B", icon: "zai.png" },
     ],
     defaultModelId: "@cf/deepseek-ai/deepseek-v4-flash-0731",
-  },
-  local: {
-    id: "local",
-    label: "Local (llama.cpp / Ollama)",
-    envKeys: [], // no credentials: an ambient OpenAI-compatible endpoint
-    factory: () => {
-      const base = (process.env.LLAMA_BASE_URL ?? "http://127.0.0.1:8080/v1").replace(/\/+$/, "");
-      // Text (chat + tool calling) GGUF models the Studio serves from its llama-server
-      // router. Download the matching GGUF into the models dir so the id matches the alias.
-      const models: { id: string; name: string; api: "openai-completions"; input: ("text" | "image")[]; cost: { input: number; output: number; cacheRead: number; cacheWrite: number }; reasoning: boolean; contextWindow: number; maxTokens: number }[] = [
-        { id: "Qwen3-Coder-8B-Instruct-Q4_K_M", name: "Qwen3 Coder 8B", api: "openai-completions", input: ["text"], cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 }, reasoning: false, contextWindow: 32768, maxTokens: 8192 },
-        { id: "DeepSeek-Coder-V2-Lite-Instruct-Q4_K_M", name: "DeepSeek Coder V2 Lite", api: "openai-completions", input: ["text"], cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 }, reasoning: false, contextWindow: 32768, maxTokens: 8192 },
-      ];
-      return createProvider({
-        id: "local",
-        name: "Local (llama.cpp / Ollama)",
-        baseUrl: base,
-        auth: { apiKey: { name: "Local (no key)", resolve: async () => ({ auth: {} }) } },
-        models: models.map((m) => ({ ...m, provider: "local", baseUrl: base })),
-        api: openAICompletionsApi(),
-      });
-    },
-    // The curated list shown in the UI; ids are llama-server aliases. Two sensible text
-    // models for a 32 GB M1 Max — download either GGUF and the provider just works.
-    models: [
-      { id: "Qwen3-Coder-8B-Instruct-Q4_K_M", name: "Qwen3 Coder 8B", tier: "A", icon: "qwen.png" },
-      { id: "DeepSeek-Coder-V2-Lite-Instruct-Q4_K_M", name: "DeepSeek Coder V2 Lite", tier: "A", icon: "deepseek.png" },
-    ],
-    defaultModelId: "Qwen3-Coder-8B-Instruct-Q4_K_M",
   },
 };
 
