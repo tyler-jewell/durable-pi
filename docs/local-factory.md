@@ -7,24 +7,27 @@ is built, and what remains.
 
 ## Validated resources (19 Nov 2026)
 
-`studio.tail9d6cad.ts.net` (Apple M1 Max, 32 GB) runs **llama.cpp `llama-server` 1.0.0**:
+`studio.tail9d6cad.ts.net` (Apple M1 Max, 32 GB) runs **llama.cpp `llama-server` 1.0.0**.
+The canonical model root is `/Users/studio/local/models/` (manifest.json is the SSoT; see
+docs/model-lineup.md), and one router on `:8080` serves one GGUF at a time from
+`gguf/` (`--models-max 1`, autoload, sleep-idle 600 s):
 
-| Endpoint (on the Studio) | What it is | Models | Modality |
+| Endpoint | What it is | Models (canonical `gguf/`) | Modality |
 |---|---|---|---|
-| `127.0.0.1:8080` | multi-model **router** (`--models-dir /Users/Shared/studio-models/gguf`, `--models-max 1`) | `Clef-Flash-Q4_K_M` (6.7 GB), `OpenJev-Q4_K_M` (19.4 GB) | `decisions` |
-| `127.0.0.1:62199` | dedicated server (`--alias Clef-Flash-Q4_K_M`) | `Clef-Flash-Q4_K_M` | `decisions` |
+| `127.0.0.1:8080` | multi-model **router** | Clef-Flash, OpenJev, gpt-oss-20b (+ clairic-flash + the 7 text models as they land) | text + decisions |
 
-Both answer `/health` and `/v1/models`; each model's `architecture.output_modalities` is
-`["decisions"]`, so both are **decision** models (System One), not chat models. Both expose
-`/v1/systemone`; a real call to Clef-Flash answered a `choice` question in **~0.75 s** cold:
+Every model answers `/health` and `/v1/models`; decision models report
+`architecture.output_modalities: ["decisions"]` and expose `/v1/systemone`; chat models
+serve `/v1/chat/completions` (with `timings.predicted_per_second`). A real call to
+Clef-Flash answered a `choice` question in **~0.75 s** cold:
 
 ```json
 { "answers": { "verdict": { "type": "choice", "choice": "approve",
   "confidence": 0.862, "probabilities": { "approve": 0.908, "reject": 0.056, "revise": 0.034 } } } }
 ```
 
-The two GGUF files are the only models present. **There is no text-generation (chat + tool
-calling) model on the Studio yet** — that is the one real gap for a local-only factory (below).
+Benchmarks so far (19 Nov): Clef-Flash 617 ms/decision, OpenJev 1254 ms/decision,
+gpt-oss-20b ~40 tok/s generation. The remaining text models land in this batch (below).
 
 ## Architecture
 
@@ -34,14 +37,14 @@ Studio (127.0.0.1)
 │     ├── coding agents ──► local LLM (OpenAI /v1)            ← the missing text model
 │     └── review phase ──► askJev ──► /v1/systemone (Clef)     ← already works, no code change
 ├── dpi-mcp          MCP tools (create_app/check/test/push + capability lifecycle)
-└── llama-server     8080 (router) + 62199 (Clef)
+└── llama-server     8080 (router, one GGUF at a time from ~/local/models/gguf)
 ```
 
 - **Coding agents** (planner/builder/scout/reviewer/documenter) need a *text* model with
   tool calling. `dpi-backend` routes every agent through one provider (`DPI_PROVIDER`); a new
   `local` provider (OpenAI-compatible → `LLAMA_BASE_URL`) is the only backend change.
 - **`jev-quality`** (step 3, implemented) already calls `askJev`; setting
-  `JEV_BASE_URL=http://127.0.0.1:62199/v1/systemone` and `JEV_MODEL=Clef-Flash-Q4_K_M`
+  `JEV_BASE_URL=http://127.0.0.1:8080/v1/systemone` and `JEV_MODEL=Clef-Flash-Q4_K_M`
   routes it to the local Clef with **no code change** — the System One envelope llama.cpp
   serves matches `dpi-backend/src/jev.ts` exactly. The reviewer gate fails open to the model
   reviewer when Jev is unreachable, so a sleeping model server never blocks a run.

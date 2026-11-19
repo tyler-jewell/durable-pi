@@ -74,7 +74,7 @@ devices:
   #   env:
   #     DPI_PROVIDER: local
   #     LLAMA_BASE_URL: http://127.0.0.1:8080/v1
-  #     JEV_BASE_URL: http://127.0.0.1:62199/v1/systemone
+  #     JEV_BASE_URL: http://127.0.0.1:8080/v1/systemone
   #     JEV_MODEL: Clef-Flash-Q4_K_M
 
   # An Apple Container (the macOS `container` CLI): the backend runs in a Linux arm64
