@@ -1,4 +1,5 @@
 #!/bin/sh
+# The agent eval. The extension comes from pi's global extensions folder, as it does for any worker (install.sh).
 # The agent eval: a real model fixes four planted problems (TypeScript, JSON, CSS, Bash) and commits through the gate.
 # It passes only if the final repo is clean, the commit went through, and the agent used the language servers.
 #
@@ -15,7 +16,7 @@ rm -rf "$SESSION"
 PROMPT='Four files in this repo have problems: src/math.ts (TypeScript), config.json (JSON), site.css (CSS), scripts/run.sh (Bash). Fix each so the project has no errors or warnings. Keep each file'"'"'s intent. Then commit everything with a message. Commits are checked by a gate: if it refuses, fix what it reports and commit again.'
 cd "$WORK/repo"
 set +e
-pi --provider deepseek --model "$MODEL" -e "$SRC/pi/extensions/lsp/index.ts" --session-dir "$SESSION" -p "$PROMPT" > "$WORK/pi.out" 2>&1
+pi --provider deepseek --model "$MODEL" --session-dir "$SESSION" -p "$PROMPT" > "$WORK/pi.out" 2>&1
 PI_EXIT=$?
 set -e
 echo "pi exit $PI_EXIT"
