@@ -409,7 +409,8 @@ Every node is proved the same way: **test in a container → review code (remove
 
 ### Phase 3 — Cloudflare / Artifacts / DO integration (new)
 - [x] `cloudflare.config.ts` for the Durable Object app (`apps/pi-object`, deployed with `cf deploy`). The base app is a Vue shell, not a Durable Object, so it has no Cloudflare config yet.
-- [ ] Push the repo into an Artifacts repo (git-over-HTTPS, repo token) — no GitHub. The e2e proves the push path with ephemeral repos; this repo itself is not mirrored yet.
+- [x] Decision (19 Nov 2026): use Artifacts now as the demo's agent-output storage (issue #14).
+- [ ] Implementation: mirror this repo into a persistent Artifacts repo and push the DO workspace to it — no GitHub; the e2e proves the push path with ephemeral repos.
 - [ ] Workers Builds deploy-on-push from the Artifacts repo.
 - [x] Artifacts local simulator via `wrangler dev` (isolated local repos): the offline e2e leg runs the same scenario with no Cloudflare calls (`npm run e2e:offline`). Available since 16 Nov 2026: the binding uses the local simulator by default, and `remote = true` uses deployed repos.
 - [ ] One Durable Object per app, thin Pi harness inside (DO storage adapter).
