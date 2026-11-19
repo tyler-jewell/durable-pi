@@ -8,7 +8,7 @@ import { probeHost, saveRegistry, type Capability, type CapabilityRegistry } fro
 const base = (process.env.LLAMA_BASE_URL ?? "http://127.0.0.1:18080").replace(/\/+$/, "");
 const hostName = process.env.LLAMA_HOST ?? "studio";
 const cfAccount = process.env.CLOUDFLARE_ACCOUNT_ID ?? "";
-const cfEndpoint = cfAccount ? `https://api.cloudflare.com/client/v4/accounts/${cfAccount}/ai/run` : "";
+const cfEndpoint = cfAccount ? `https://api.cloudflare.com/client/v4/accounts/${cfAccount}` : "";
 
 const host = await probeHost(hostName, base);
 host.models = host.models.length
@@ -49,28 +49,31 @@ for (const m of host.models) {
 }
 
 // Cloud fallback: a few Workers AI models, recommended (not enabled) until an api key is supplied.
-const cloud = ["@cf/deepseek-ai/deepseek-v4.1-flash-1017", "@cf/qwen/qwen3-30b-a3b-fp8", "@cf/openai/gpt-oss-20b"];
-for (const id of cloud) {
-  caps.push({
-    id: `cloudflare-llm-${id.split("/").pop()}`,
-    name: id,
-    kind: "llm",
-    host: "cloudflare",
-    address: cfEndpoint,
-    model: id,
-    transport: "cloudflare-workers-ai",
-    description: "Cloudflare Workers AI model (cloud fallback)",
-    purpose: ["agent"],
-    state: "recommended",
-    autoEnable: false,
-    source: "agent",
-    inputs: [{ name: "api_key", description: "Cloudflare Workers AI API key", required: true, secret: true }],
-    options: [],
-    createdAt: now,
-    updatedAt: now,
-  });
+const cloudLlm = ["@cf/deepseek-ai/deepseek-v4.1-flash-1017", "@cf/qwen/qwen3-30b-a3b-fp8", "@cf/openai/gpt-oss-20b"];
+const cloudDecision = ["@cf/cloudflare/clef-flash"];
+for (const [kind, ids] of [["llm", cloudLlm], ["decision", cloudDecision]] as const) {
+  for (const id of ids) {
+    caps.push({
+      id: `cloudflare-${kind}-${id.split("/").pop()}`,
+      name: id,
+      kind,
+      host: "cloudflare",
+      address: cfEndpoint,
+      model: id,
+      transport: "cloudflare-workers-ai",
+      description: "Cloudflare Workers AI model (cloud fallback)",
+      purpose: kind === "decision" ? ["jev-quality"] : ["agent"],
+      state: "recommended",
+      autoEnable: false,
+      source: "agent",
+      inputs: [{ name: "api_key", description: "Cloudflare Workers AI API key", required: true, secret: true }],
+      options: [],
+      createdAt: now,
+      updatedAt: now,
+    });
+  }
 }
 
 const reg: CapabilityRegistry = { hosts: [host], capabilities: caps };
 saveRegistry(reg);
-console.log(`seeded ${host.models.length} local capabilities on ${hostName} + ${cloud.length} cloud (recommended)`);
+console.log(`seeded ${host.models.length} local capabilities on ${hostName} + ${cloudLlm.length} cloud LLM + ${cloudDecision.length} cloud decision (recommended)`);

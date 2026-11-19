@@ -247,7 +247,8 @@ export async function runLlm(
   const timeoutMs = opts.timeoutMs ?? 120_000;
   const base = address.replace(/\/+$/, "");
   if (opts.transport === "cloudflare-workers-ai") {
-    const res = await fetch(`${base}/ai/run`, {
+    // Chat models serve an OpenAI-compatible endpoint at /ai/v1/chat/completions.
+    const res = await fetch(`${base}/ai/v1/chat/completions`, {
       method: "POST",
       headers: { "Content-Type": "application/json", ...(opts.apiKey ? { Authorization: `Bearer ${opts.apiKey}` } : {}) },
       body: JSON.stringify({ model, messages, max_tokens: 2048 }),
@@ -255,9 +256,9 @@ export async function runLlm(
       redirect: "error",
     });
     if (!res.ok) throw new Error(`LLM ${model}: HTTP ${res.status}`);
-    const data = (await res.json()) as { result?: { response?: string }; errors?: { message?: string }[] };
+    const data = (await res.json()) as { choices?: { message?: { content?: string } }[]; errors?: { message?: string }[] };
     if (data.errors?.length) throw new Error(`LLM ${model}: ${data.errors[0].message}`);
-    return data.result?.response ?? "";
+    return data.choices?.[0]?.message?.content ?? "";
   }
   const res = await fetch(`${base}/v1/chat/completions`, {
     method: "POST",
@@ -299,9 +300,12 @@ export async function runDecision(
       redirect: "error",
     });
     if (!res.ok) throw new Error(`Decision ${model}: HTTP ${res.status}`);
-    const data = (await res.json()) as { result?: { answers?: Record<string, DecisionAnswer> }; errors?: { message?: string }[] };
+    const data = (await res.json()) as { result?: { answers?: Record<string, DecisionAnswer>; state?: string; result?: { answers?: Record<string, DecisionAnswer> } }; errors?: { message?: string }[] };
     if (data.errors?.length) throw new Error(`Decision ${model}: ${data.errors[0].message}`);
-    return data.result?.answers ?? {};
+    // Cloudflare-hosted models (clef) return answers under result; third-party System One wraps once more.
+    if (data.result?.answers) return data.result.answers;
+    if (data.result?.result?.answers) return data.result.result.answers;
+    return {};
   }
   const res = await fetch(`${base}/v1/systemone`, {
     method: "POST",
