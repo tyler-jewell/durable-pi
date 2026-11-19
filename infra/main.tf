@@ -1,12 +1,3 @@
-terraform {
-  required_providers {
-    cloudflare = {
-      source  = "cloudflare/cloudflare"
-      version = "~> 4.0"
-    }
-  }
-}
-
 # Auth: set CLOUDFLARE_API_TOKEN (scoped token; see README for permissions).
 # Account + zone come from variables (terraform.tfvars).
 
@@ -47,12 +38,12 @@ resource "cloudflare_access_service_token" "agent" {
 # GOTCHA: app_launcher_visible MUST be false for ssh apps, or post-login
 # redirects land on the (disabled) App Launcher and confuse everyone.
 resource "cloudflare_access_application" "studio_ssh" {
-  account_id               = var.cloudflare_account_id
-  name                     = "studio-ssh"
-  domain                   = var.hostname
-  type                     = "ssh"
-  session_duration         = "24h"
-  app_launcher_visible     = false
+  account_id                = var.cloudflare_account_id
+  name                      = "studio-ssh"
+  domain                    = var.hostname
+  type                      = "ssh"
+  session_duration          = "24h"
+  app_launcher_visible      = false
   auto_redirect_to_identity = false
 }
 
@@ -83,23 +74,3 @@ resource "cloudflare_zero_trust_access_short_lived_certificates" "studio_ssh" {
   application_id = cloudflare_access_application.studio_ssh.id
 }
 
-# ---- Outputs (feed the host bootstrap) ----
-output "tunnel_id" {
-  value = cloudflare_tunnel.studio.id
-}
-output "tunnel_token" {
-  value     = cloudflare_tunnel.studio.token
-  sensitive = true
-}
-output "service_token_client_id" {
-  value     = cloudflare_access_service_token.agent.client_id
-  sensitive = true
-}
-output "service_token_client_secret" {
-  value     = cloudflare_access_service_token.agent.client_secret
-  sensitive = true
-}
-output "short_lived_cert_ca_public_key" {
-  value     = cloudflare_zero_trust_access_short_lived_certificates.studio_ssh.public_key
-  sensitive = true
-}

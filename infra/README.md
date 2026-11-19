@@ -7,7 +7,7 @@ short-lived certificate CA.
 Recreate from nothing:
 
 ```bash
-brew install terraform cloudflared   # terraform on the operator Mac; cloudflared on each host
+brew install hashicorp/tap/terraform cloudflared   # terraform (HashiCorp tap; not in Homebrew core) on the operator Mac; cloudflared on each host
 cp terraform.tfvars.example terraform.tfvars   # edit emails/account
 export CLOUDFLARE_API_TOKEN=...     # scoped token, see below
 terraform init
@@ -46,3 +46,24 @@ feeding it the `tunnel_token` and `short_lived_cert_ca_public_key` outputs.
 ```bash
 cloudflared access ssh-config --hostname studio.jewell-labs.com --short-lived-cert
 ```
+
+## Status: does not validate yet (provider v4 vs v5)
+
+`terraform validate` fails under the pinned provider (`~> 4.0`) with two errors that are not formatting:
+
+- `cloudflare_tunnel.studio` needs `secret` in v4; v5 calls it `tunnel_secret`, and the resource is renamed to
+  `cloudflare_zero_trust_tunnel_cloudflared`.
+- `cloudflare_zero_trust_access_short_lived_certificates` does not exist; v5 has `..._short_lived_certificate` with `app_id`.
+
+The style guide asks for the latest major provider (v5, 5.29.0 at the time of writing). Moving to v5 also renames the
+DNS record, the service token, the identity provider and the Access policy (`cloudflare_access_policy` becomes inline
+`policies` on the application). **Do not apply a v5 change without `moved` blocks and a reviewed plan**: a rename without
+them destroys and recreates the tunnel and the policy, and the mesh stops. The upgrade guide is
+`cloudflare/terraform-provider-cloudflare` `docs/guides/version-5-upgrade.md`. The steps:
+
+1. `terraform state list` against the real state, and keep a copy of the state file.
+2. Migrate the resources with `moved` blocks (or the `tf-migrate` tool the guide describes), then `terraform init -upgrade`.
+3. `terraform validate`, then `terraform plan` with your `terraform.tfvars`. Expect no destroy of the tunnel, the policy or the app.
+4. Apply only after the plan shows no destroy.
+
+Until someone confirms the state, the provider stays on v4 and `validate` is expected to fail.

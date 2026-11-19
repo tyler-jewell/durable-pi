@@ -15,13 +15,13 @@ variable "hostname" {
   default     = "studio.jewell-labs.com"
 }
 
-variable "ssh_emails" {
-  description = "Emails allowed to authenticate (Access maps the cert principal to the email PREFIX)"
-  type        = list(string)
-}
-
 variable "service_token_duration" {
   description = "Service token lifetime before rotation (Go duration)"
   type        = string
   default     = "720h"
+}
+
+variable "ssh_emails" {
+  description = "Emails allowed to authenticate (Access maps the cert principal to the email PREFIX)"
+  type        = list(string)
 }
