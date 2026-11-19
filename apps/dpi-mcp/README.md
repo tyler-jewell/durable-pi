@@ -43,8 +43,10 @@ run without them.
 | `recommend_capability` | turn a discovered model into a named capability (recommended) | — | no |
 | `enable_capability` | supply inputs/options and turn a capability on | — | yes |
 | `disable_capability` | toggle a capability off (kept in settings) | — | yes |
-| `run_llm` | chat completion on an enabled LLM capability | — | no |
+| `run_llm` | chat completion on an enabled LLM capability (auto: local hot-first, cloud fallback) | — | no |
 | `run_decision` | System One (Jev/Clef) decision on an enabled decision capability | — | no |
+| `list_usage` | local kWh + cost at the configured electricity price | — | yes |
+| `update_settings` | edit electricity price/kWh and idle/load watts | — | yes |
 
 Every tool returns `structuredContent` with a full ordered `events` array
 (`{ step, status, ts, detail, durMs }`) so the caller sees the progress of each step, and
@@ -132,12 +134,19 @@ run_llm / run_decision            # use an enabled capability (local default, cl
 ```
 
 Model access is one surface: `run_llm`/`run_decision` call a capability by id (the agent
-decides), or, with no id, resolve the default — an enabled capability of that kind, **local
-hosts first, cloud as fallback** (`prefer: "local" | "cloud"`). A capability carries a
-`transport` (`openai-compat` for a local llama-server/Ollama, `cloudflare-workers-ai` for the
-Cloudflare Workers AI API), so the same tool reaches both. `scripts/seed-capabilities.mts`
-probes `LLAMA_BASE_URL` and seeds one enabled capability per local model plus recommended
-cloud fallbacks — the registry always reflects the current system.
+decides deterministically), or, with no id, resolve **automatically** — the next-best-cheapest:
+an enabled local capability, most-recently-used first (so the already-loaded model is reused and
+no swap is paid), falling back to cloud. A capability carries a `transport` (`openai-compat` for a
+local llama-server/Ollama, `cloudflare-workers-ai` for the Cloudflare Workers AI API), so the
+same tool reaches both. `scripts/seed-capabilities.mts` probes `LLAMA_BASE_URL` and seeds one
+enabled capability per local model plus recommended cloud fallbacks — the registry always
+reflects the current system.
+
+**Local cost is metered.** Every local `run_llm`/`run_decision` call records its interval;
+`list_usage` reports total kWh (idle power over elapsed time plus load power over the **union** of
+call intervals, so concurrent/parallel calls share the load and never double-count) and the dollar
+cost at the configured price. `update_settings` edits `electricityUsdPerKwh` (global price/kWh,
+default 0.15), `idleWatts` and `loadWatts` — these are system settings, not hardcoded.
 
 `enable_capability` reports any missing required inputs and sets `autoEnable` (auto-turn-on:
 re-enable after startup/discovery without re-asking, default true); `disable_capability` keeps
