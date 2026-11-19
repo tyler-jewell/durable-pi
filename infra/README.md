@@ -4,19 +4,50 @@ Declarative Cloudflare setup for the "access from anywhere" SSH mesh: tunnel,
 DNS, Access SSH app + policy, OTP login method, service token, and the per-app
 short-lived certificate CA.
 
-> **Status (19 Nov 2026): resources are live but Terraform has no state for them.**
-> The tunnel `studio` and `studio.jewell-labs.com` exist in the personal account, but
-> there is no `backend` block, no `.terraform/` state, and R2 is not enabled on the
-> account. A plain `terraform apply` would create duplicates. The recovery plan
-> (R2 backend, `terraform import`, then the v5 and Access-policy fixes) is issue #11.
+> **Status (19 Nov 2026): recovered.** State lives in the private R2 bucket
+> `durable-pi-terraform-state`; the module is on provider v5; all five `studio`
+> resources are imported and `terraform plan` reports no changes. The remaining
+> follow-up is the Service Auth policy fix at the bottom.
 
-Recreate from nothing (once state is imported per issue #11):
+## Credentials (Keychain + env, never committed)
+
+Three groups, all read with `security find-generic-password … -w` into env vars:
+
+| Purpose | Keychain account / service | Env var(s) |
+|---|---|---|
+| Cloudflare API (provider) | `tf-token` / `durable-pi-terraform` (temporary; recreate via `cf user tokens create` when needed) | `CLOUDFLARE_API_TOKEN` |
+| R2 state backend | `r2-access-key-id` and `r2-secret-access-key` / `durable-pi-terraform-r2` | `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY` |
+| (none) | — | no `AWS_SESSION_TOKEN` |
+
+### R2 S3 credentials are derived from a normal API token — no dashboard
+
+The dashboard "Manage R2 API Tokens" is unnecessary. Create a standard API token
+with the `Workers R2 Storage` permission, then derive the S3 credentials:
+
+- **Access Key ID** = the token's `id`.
+- **Secret Access Key** = the SHA-256 hex of the token's `value`.
+
+Endpoint: `https://<ACCOUNT_ID>.r2.cloudflarestorage.com`. No session token.
+(Source: developers.cloudflare.com/r2/api/tokens/.)
+
+## API token permissions (scoped, not "all")
+
+The Terraform provider needs these permission groups on its token:
+
+| Scope | Permission group |
+|---|---|
+| Account | Cloudflare Tunnel — Write |
+| Account | Access: Apps and Policies — Write (covers the app, nested policy and short-lived cert CA) |
+| Account | Access: Organizations, Identity Providers, and Groups — Write |
+| Account | Access: Service Tokens — Write (for the `cf` rotation; the token itself is not in Terraform) |
+| Zone | DNS — Write |
+
+## Recreate from nothing
 
 ```bash
-brew install hashicorp/tap/terraform cloudflared   # terraform (HashiCorp tap; not in Homebrew core) on the operator Mac; cloudflared on each host
-cp terraform.tfvars.example terraform.tfvars   # edit emails/account
-export CLOUDFLARE_API_TOKEN=...     # scoped token, see below
-terraform init
+brew install hashicorp/tap/terraform cloudflared
+# create the provider token (cf user tokens create) and the R2 token, then:
+terraform init          # reads state from R2 (env vars above)
 terraform plan
 terraform apply
 ```
@@ -24,28 +55,15 @@ terraform apply
 Then run the host bootstrap on each machine (see `../scripts/bootstrap-studio-ssh.sh`),
 feeding it the `tunnel_token` and `short_lived_cert_ca_public_key` outputs.
 
-## API token permissions (scoped, not "all")
-
-| Scope   | Permission                                             |
-|---------|--------------------------------------------------------|
-| Account | Cloudflare Tunnel — Edit                               |
-| Account | Access: Apps and Policies — Edit                       |
-| Account | Access: Organizations, Identity Providers, and Groups — Write |
-| Zone    | DNS — Edit                                             |
-
 ## Gotchas encoded here (do not undo)
 
-1. **Correct account.** `09f27fe…` (jewell-labs). The Cloudflare *MCP* may be
-   authed to a different account (`flagseeker`); use the `cf` CLI / Terraform
-   token for this account.
-2. **Per-app short-lived cert CA** (`zero_trust_access_short_lived_certificates`)
-   — separate from the legacy account-level SSH CA. Without it, `ssh-gen` fails.
+1. **Correct account.** `09f27fe…` (jewell-labs). Never the flagseeker account.
+2. **Per-app short-lived cert CA** — separate from the legacy account-level SSH CA.
 3. **OTP IdP** (`onetimepin`) must exist or login shows "no login methods available".
-4. **`app_launcher_visible = false`** on ssh apps or post-login redirects hit the
-   disabled App Launcher.
-5. **Cert principal = email PREFIX.** For `tyler.p.jewell@gmail.com`, the
-   `sshd` `authorized_principals` must contain `tyler.p.jewell` (not the full email).
-6. **Service token duration is bounded + rotated** — never `forever`.
+4. **`app_launcher_visible = false`** on ssh apps.
+5. **Cert principal = email PREFIX** (`tyler.p.jewell`, not the full email).
+6. **Service token is external** (`var.service_token_id`), rotated via
+   `cf zero-trust access service-tokens …` — never re-import a lost secret, rotate instead.
 
 ## Client ssh config (generated by cloudflared)
 
@@ -53,33 +71,11 @@ feeding it the `tunnel_token` and `short_lived_cert_ca_public_key` outputs.
 cloudflared access ssh-config --hostname studio.jewell-labs.com --short-lived-cert
 ```
 
-## Status: does not validate yet (provider v4 vs v5)
+## Remaining follow-up: Service Auth policy for the agent lane
 
-`terraform validate` fails under the pinned provider (`~> 4.0`) with two errors that are not formatting:
-
-- `cloudflare_tunnel.studio` needs `secret` in v4; v5 calls it `tunnel_secret`, and the resource is renamed to
-  `cloudflare_zero_trust_tunnel_cloudflared`.
-- `cloudflare_zero_trust_access_short_lived_certificates` does not exist; v5 has `..._short_lived_certificate` with `app_id`.
-
-The style guide asks for the latest major provider (v5, 5.29.0 at the time of writing). Moving to v5 also renames the
-DNS record, the service token, the identity provider and the Access policy (`cloudflare_access_policy` becomes inline
-`policies` on the application). **Do not apply a v5 change without `moved` blocks and a reviewed plan**: a rename without
-them destroys and recreates the tunnel and the policy, and the mesh stops. The upgrade guide is
-`cloudflare/terraform-provider-cloudflare` `docs/guides/version-5-upgrade.md`. The steps:
-
-1. `terraform state list` against the real state, and keep a copy of the state file.
-2. Migrate the resources with `moved` blocks (or the `tf-migrate` tool the guide describes), then `terraform init -upgrade`.
-3. `terraform validate`, then `terraform plan` with your `terraform.tfvars`. Expect no destroy of the tunnel, the policy or the app.
-4. Apply only after the plan shows no destroy.
-
-Until someone confirms the state, the provider stays on v4 and `validate` is expected to fail.
-
-## Second defect (cloudflare-one skill): the agent lane cannot authenticate
-
-`cloudflare_access_policy.studio_ssh` puts the service token in an **Allow** policy together with the email rules. The
-cloudflare-one skill is explicit: a service token must be included by a policy with the **Service Auth** action, and an
-Allow policy is not a substitute. So the non-interactive lane (the agent's service token) gets the login redirect.
-
-The fix: a second policy with `decision = "non_identity"` (Service Auth) that includes only the service token, and an
-Allow policy with only the email rules. This changes live authentication, so it goes through the same reviewed plan as
-the v5 migration above: expect an in-place policy update, and check that the service-token SSH login succeeds after apply.
+The service token currently sits in the same **Allow** policy as the email rules.
+The cloudflare-one skill requires a service token to be included by a **Service
+Auth** (`decision = "non_identity"`) policy. Fix: a second nested policy with
+`decision = "non_identity"` including only the service token, and keep the Allow
+policy with only the email rules. Do it as a reviewed `terraform plan`/`apply`;
+expect an in-place policy update, and verify the service-token SSH login after.
