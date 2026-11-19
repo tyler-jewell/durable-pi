@@ -465,7 +465,7 @@ To add a skill: `npx skills add <owner/repo> -s <skill> -a pi -a claude-code`, c
 - **`macos-vm` Lima vz portForwards don't publish for macOS guests** — the port is forwarded over SSH (`-L`).
 - **`apple-container` runs the backend via `nohup`** (no service manager inside the container).
 - **`jev-damage-control` is a guard, not a sandbox** — commands run when Jev is unreachable (see [Where it can still fail](#where-it-can-still-fail)).
-- **Skills on the maintainer laptop.** `~/.agents/skills` is global: its skills show in every project on that machine, including this repo. A fork only gets the locked set. Project settings cannot hide a global skill; removing it from the global folder is the only fix.
+- **Skills on the maintainer laptop: resolved (18 Nov 2026).** The 25 global skills in `~/.agents/skills` were removed, so this machine loads only what each repo pins. A backup of the removed set and its lock file is kept outside the repo (`~/.dpi/backups`).
 - **Playwright skill example uses `--headed`.** The installed `playwright-cli` session reference opens a headed browser as an example. The repo rule (`durable-pi-browser`) overrides it: headless in containers.
 - **Container tests need the repo-root `dpi-network.example.yaml`** — `config.test.ts` validates the shipped example, but the device deploy only syncs `apps/`; copy it in first (`container cp dpi-network.example.yaml <container>:/root/dpi/`).
 
