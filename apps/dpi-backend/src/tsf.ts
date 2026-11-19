@@ -111,3 +111,21 @@ export function loadTsfConfig(dir: string): TsfConfig | undefined {
   if (!existsSync(file)) return undefined;
   return parseTsfConfig(readFileSync(file, "utf8"), file);
 }
+
+/** The prompt files (system/user) for one agent of a project's roster, resolved under <dir>/.tsf/. */
+export function loadTsfPrompts(dir: string, agentName: string): { system?: string; user?: string } | undefined {
+  const cfg = loadTsfConfig(dir);
+  const agent = cfg?.agents.find((a) => a.name === agentName);
+  if (!agent?.prompt) return undefined;
+  const base = join(dir, ".tsf");
+  const out: { system?: string; user?: string } = {};
+  if (agent.prompt.system) {
+    const f = join(base, agent.prompt.system);
+    if (existsSync(f)) out.system = readFileSync(f, "utf8");
+  }
+  if (agent.prompt.user) {
+    const f = join(base, agent.prompt.user);
+    if (existsSync(f)) out.user = readFileSync(f, "utf8");
+  }
+  return out.system || out.user ? out : undefined;
+}

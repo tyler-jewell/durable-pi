@@ -91,7 +91,7 @@ test("REST v1: auth, sessions, agents, messages, waits, idempotency, errors", as
 
     // Demo extension + docs.
     // Durable jobs: definitions on the device, a run started by a client, then one started by the agent's tool.
-    assert.deepEqual((await client.device()).jobs?.map((j) => j.id), ["workspace-snapshot", "release-check", "change-watch"]);
+    assert.deepEqual((await client.device()).jobs?.map((j) => j.id), ["workspace-snapshot", "release-check", "change-watch", "create-app"]);
     const runs = async () => (await main.doc<JobRunsDoc>("demo.job-runs")).value.items;
     const job = await main.demo<{ taskId: number }>("jobs", { job: "workspace-snapshot" });
     await until(async () => (await runs())[job.taskId]?.status === "completed", 15000, "job");
@@ -121,6 +121,17 @@ test("REST v1: auth, sessions, agents, messages, waits, idempotency, errors", as
     assert.ok(checked.phases[0].steps?.some((s) => s.includes("git status --short")));
     await main.send("check: nope-job", "followUp", "check-missing", 20000);
     assert.match(await toolText("check_durable_job"), /No run of nope-job/);
+
+    // create-app: the .tsf factory phase graph. With the faux model the planner/builder/scout
+    // subagents echo back, the test phase finds no package.json (skips), and the reviewer does
+    // not approve — so the run reaches the review gate and fails there.
+    const created = await main.demo<{ taskId: number }>("jobs", { job: "create-app", input: { description: "a tiny todo app" } });
+    await until(async () => (await runs())[created.taskId]?.status === "failed", 30000, "create-app run");
+    assert.deepEqual(
+      (await runs())[created.taskId].phases.map((p) => p.status),
+      ["done", "done", "done", "done", "failed", "skipped", "skipped"],
+      "plan/build/scout/test run, review fails on a non-approve verdict, later phases skip",
+    );
 
     // search_history finds an earlier tool call by name, and pages.
     await main.send("search: workspace-snapshot", "followUp", "search-1", 20000);

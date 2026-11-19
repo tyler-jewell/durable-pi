@@ -16,7 +16,9 @@ import {
   type TaskRuntime,
   type Tx,
 } from "@earendil-works/pi-durable";
-import { CodingTools, createBashTool, createReadTool } from "@earendil-works/pi-durable/tools";
+import { CodingTools, createBashTool, createEditTool, createReadTool, createWriteTool } from "@earendil-works/pi-durable/tools";
+import type { ToolRegistration } from "@earendil-works/pi-durable";
+import { loadTsfPrompts } from "./tsf.js";
 import { readState } from "../../dpi-sdk/src/app-state.js";
 import type { WireAssistantMessage, WireMessage, WireToolResultMessage } from "../../dpi-sdk/src/api.js";
 import { clip, messageText } from "../../dpi-sdk/src/transcript.js";
@@ -120,6 +122,27 @@ export const JOB_DEFS: JobDef[] = [
     resultPath: `/${RESULT_ROOT}/change-watch`,
     seconds: 25,
   },
+  {
+    id: "create-app",
+    title: "Create app",
+    summary:
+      "A team of agents ships an app from one description: plan, build, scout, test, review, document, deploy. Each phase is a checkpoint; a restart resumes it.",
+    phases: [
+      { id: "plan", label: "Plan", summary: "A planner subagent turns the description into a plan" },
+      { id: "build", label: "Build", summary: "A builder subagent implements the plan in this folder" },
+      { id: "scout", label: "Scout", summary: "A read-only subagent verifies the plan's facts" },
+      { id: "test", label: "Test", summary: "Run the project's typecheck and build" },
+      { id: "review", label: "Review", summary: "A reviewer subagent returns approve, revise or reject" },
+      { id: "document", label: "Document", summary: "A documenter subagent writes the README" },
+      { id: "deploy", label: "Deploy", summary: "Deploy to Cloudflare Workers (skipped without credentials)" },
+    ],
+    inputs: [
+      { name: "description", type: "string", default: "", description: "What to build, in one sentence" },
+    ],
+    approval: false,
+    resultPath: `/${RESULT_ROOT}/create-app`,
+    seconds: 90,
+  },
 ];
 
 export const jobDef = (id: string) => JOB_DEFS.find((d) => d.id === id);
@@ -169,8 +192,8 @@ interface Phase {
   saveResult(value: JsonValue): Promise<void>;
   /** Read whatever is currently at this job's documented result path. */
   readResult(): Promise<JsonValue | undefined>;
-  /** Run a subagent with read and bash in an owned child conversation; its tool calls become steps. */
-  agent(prompt: string): Promise<string>;
+  /** Run a subagent in an owned child conversation; its tool calls become steps. `opts` overrides the default read+bash toolset and instructions. */
+  agent(prompt: string, opts?: { tools?: readonly ToolRegistration[]; instructions?: string }): Promise<string>;
   /** Block (non-durably) until the given clock time, for pacing and repeat phases. */
   waitUntil(at: number): Promise<void>;
 }
@@ -181,6 +204,46 @@ type Handler = (p: Phase) => Promise<Outcome>;
 const inDir = (dir: string, command: string) => (dir === "." ? command : `cd ${q(dir)} && ${command}`);
 const label = (dir: string, command: string) => (dir === "." ? command : `${command}  (in ${dir})`);
 const FIND = `find . -maxdepth 2 -type f -not -path '*/.git/*' -not -path '*/node_modules/*'`;
+
+// ------------------------------------------------------------------ create-app (the .tsf factory job)
+
+const slug = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 40) || "app";
+const render = (t: string, vars: Record<string, string>) => t.replace(/\{\{(\w+)\}\}/g, (_, k) => vars[k] ?? "");
+
+const DEFAULT_PROMPTS: Record<string, { system: string; user: string }> = {
+  planner: {
+    system: "You are the planner of a software factory. Turn the request into a concrete plan. Do not edit files; reply with the plan only.",
+    user: "Description: {{description}}\n\nWrite the plan (goal, pages, data, stack, acceptance checks).",
+  },
+  builder: {
+    system: "You are the builder of a software factory. Implement the plan in this folder, then run the project's typecheck and build until they pass. You may create and edit files.",
+    user: "App name: {{name}}\n\nPlan:\n{{plan}}\n\nImplement it, then make typecheck and build pass.",
+  },
+  scout: {
+    system: "You are the scout of a software factory. Read-only recon: verify the plan's facts against the repo. Change nothing.",
+    user: "Plan:\n{{plan}}\n\nVerify it and report the facts in at most 5 lines.",
+  },
+  reviewer: {
+    system: "You are the reviewer of a software factory. Review the work against the plan. Reply with exactly one of approve, revise, reject, then a short reason.",
+    user: "Plan:\n{{plan}}\n\nScout facts:\n{{facts}}\n\nReturn your verdict.",
+  },
+  documenter: {
+    system: "You are the documenter of a software factory. Write a short, factual README for the app in this folder. You may write files.",
+    user: "App name: {{name}}\n\nPlan:\n{{plan}}\n\nWrite README.md.",
+  },
+};
+
+/** Load an agent's system/user prompts from the project's .tsf roster, falling back to the defaults. */
+async function tsfPrompt(p: Phase, role: string, vars: Record<string, string>) {
+  const cwd = (await p.shell("pwd")).out.trim();
+  const roster = loadTsfPrompts(cwd, role);
+  const def = DEFAULT_PROMPTS[role];
+  return { system: roster?.system ?? def.system, user: render(roster?.user ?? def.user, vars) };
+}
+
+const WRITE_TOOLS = [createReadTool(), createBashTool(), createWriteTool(), createEditTool()];
+const READ_TOOLS = [createReadTool(), createBashTool()];
+
 
 const HANDLERS: Record<string, Record<string, Handler>> = {
   "workspace-snapshot": {
@@ -321,6 +384,62 @@ const HANDLERS: Record<string, Record<string, Handler>> = {
         changes,
       });
       return { done: changes.length ? `${changes.length} changes saved to App State` : "No changes. Report saved to App State" };
+    },
+  },
+
+  "create-app": {
+    plan: async (p) => {
+      const description = String(p.input.description);
+      const name = slug(description);
+      const pr = await tsfPrompt(p, "planner", { description });
+      const plan = await p.agent(pr.user, { tools: READ_TOOLS, instructions: pr.system });
+      return { done: clip(plan, 120), data: { plan, name } };
+    },
+    build: async (p) => {
+      const name = String(p.data.name);
+      const pr = await tsfPrompt(p, "builder", { name, plan: String(p.data.plan ?? "") });
+      await p.agent(pr.user, { tools: WRITE_TOOLS, instructions: pr.system });
+      return { done: `Built ${name}` };
+    },
+    scout: async (p) => {
+      const pr = await tsfPrompt(p, "scout", { plan: String(p.data.plan ?? "") });
+      const facts = await p.agent(pr.user, { tools: READ_TOOLS, instructions: pr.system });
+      return { done: clip(facts, 120), data: { facts } };
+    },
+    test: async (p) => {
+      const hasPkg = (await p.shell("test -f package.json && echo yes || echo no")).out.trim() === "yes";
+      if (!hasPkg) {
+        await p.note("No package.json; skipping test", "the builder did not create a project");
+        return { done: "Skipped (no package.json)" };
+      }
+      await p.exec("npm run typecheck", "npm run typecheck");
+      await p.exec("npm run build", "npm run build");
+      return { done: "typecheck and build passed" };
+    },
+    review: async (p) => {
+      const pr = await tsfPrompt(p, "reviewer", { plan: String(p.data.plan ?? ""), facts: String(p.data.facts ?? "") });
+      const verdict = (await p.agent(pr.user, { tools: READ_TOOLS, instructions: pr.system })).trim().toLowerCase();
+      if (verdict.startsWith("approve")) return { done: "Approved" };
+      throw Error(verdict.slice(0, 200) || "Reviewer returned no verdict");
+    },
+    document: async (p) => {
+      const name = String(p.data.name);
+      const pr = await tsfPrompt(p, "documenter", { name, plan: String(p.data.plan ?? "") });
+      await p.agent(pr.user, { tools: WRITE_TOOLS, instructions: pr.system });
+      return { done: `README written for ${name}` };
+    },
+    deploy: async (p) => {
+      const token = process.env.CLOUDFLARE_API_TOKEN ?? "";
+      const hasWrangler = (await p.shell("test -f wrangler.jsonc && echo yes || echo no")).out.trim() === "yes";
+      if (!token || !hasWrangler) {
+        await p.note("Skipping deploy", !token ? "CLOUDFLARE_API_TOKEN not set" : "no wrangler.jsonc");
+        await p.saveResult({ run: p.run.n, at: new Date(p.now()).toISOString(), app: String(p.data.name), plan: String(p.data.plan ?? ""), deployed: false });
+        return { done: "Skipped deploy" };
+      }
+      const out = await p.exec("npx wrangler deploy", "npx wrangler deploy");
+      const url = out.match(/https:\/\/[a-z0-9.-]+\.workers\.dev/)?.[0];
+      await p.saveResult({ run: p.run.n, at: new Date(p.now()).toISOString(), app: String(p.data.name), plan: String(p.data.plan ?? ""), deployed: true, url: url ?? null });
+      return { done: url ?? "Deployed" };
     },
   },
 };
@@ -485,7 +604,7 @@ export function createJobs(deps: JobsDeps) {
       saveResult: (value) => save(def.resultPath, value),
       readResult: () => read(def.resultPath),
       waitUntil: (at) => wait(Math.max(0, at - runtime.now())),
-      agent: async (prompt) => {
+      agent: async (prompt, opts) => {
         let childId = 0;
         const stepId = `${spec.id}:${cp.iteration}:agent`;
         const at = runtime.now();
@@ -496,8 +615,8 @@ export function createJobs(deps: JobsDeps) {
             const child = await tx.createConversation({ ownership: { kind: "task", taskId: task.id } });
             await configure(tx, child.id, {
               extensions: [CodingTools],
-              tools: [createReadTool(), createBashTool()],
-              instructions: CHILD_INSTRUCTIONS,
+              tools: opts?.tools ?? [createReadTool(), createBashTool()],
+              instructions: opts?.instructions ?? CHILD_INSTRUCTIONS,
             });
             childId = child.id as number;
           }
