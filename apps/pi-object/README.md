@@ -73,11 +73,11 @@ device token is `~/.dpi/pi-object.token`. Each route requires `Authorization: Be
 - **Deployed** to the personal account: `https://durable-pi-object.tyler-jewell.workers.dev`. Live checks passed: 401
   without or with a wrong token; cost report with the billing period; budget present; a tiny run returned `OK`; 404 on a
   missing file.
-- **DeepSeek cost, reconciled to the export.** The live object reads $75.46. The DeepSeek export records $75.454438
-  spent from the paid wallet, a difference of $0.0056, inside the $0.01 tolerance. `topUpUsd = 95.00` is derived, not
-  typed in: the export's spend plus the live balance ($19.54, granted $0.00) gives $94.99 to the cent, and $95.00 is
-  within the balance rounding. This assumes no spend before the export window (2026-10-20). Confirm against the
-  top-up history.
+- **DeepSeek cost, confirmed against the platform (19 Nov 2026).** Platform billing page: total cost $82.13, balance
+  $12.86, granted $0 → lifetime top-up $95.00 (`topUpUsd = 95.00`, `grantedUsd = 0` in `src/cost/config.ts`). The live
+  object reads `status: ok`, no config-mismatch. The earlier export reconciliation ($75.454438, diff $0.0056) also holds.
+- **Namespace access is `ctx.exports` (no cast).** The Worker reaches `PiAgent` through the typed loopback binding with
+  `enable_ctx_exports`; the entrypoint is imported as a module object so `cf` infers the namespace with its RPC methods.
 - **Cloudflare cost**: priced at the rate card over the billing period. Cloudflare's billable-usage v2 endpoint is not
   available to this token (see Known issues), so the figure is an estimate from the card, not Cloudflare's invoice.
 - **Spend limits**: the update path was run live as a round trip ($10 → $11 → $10; the cap is back at $10, version 3).
