@@ -349,7 +349,7 @@ just lsp eval              # does DeepSeek Flash reach for the servers on its ow
 | `just check` (`just test unit`): SDK (24), backend (18), hub (1), TUI (8) and pi-object (46) tests with strict types; base-app type check and build; web build and lint | **pass** |
 | `just test ui`: 28 web checks against two faux devices, including offline recovery, bad tokens, read only, extensions, durable jobs, the context bar, slash commands, keyboard and mobile | **28 of 28** |
 | `just test device apple-box` with a real model (DeepSeek V4 Flash via the gateway): the web UI, steer, dedupe, subagents, jobs, compaction, reset, and quitting the browser mid-tool | **18 of 18** |
-| `just test e2e` on an ssh Mac: TUI and web on one run, steer from the web, both clients closed, device restarted mid-tool, fork, TUI reattach | **pass**: 9 tool results, 1 interrupted by the restart, each prompt admitted once |
+| `just test e2e apple-box` with a real model: TUI and web on one run, steer from the web, both clients closed, device restarted mid-tool, fork, TUI reattach | **pass**: 9 tool results, 1 interrupted by the restart, each prompt admitted once |
 | `just test smoke faux`: TUI streaming, steer, Esc, fork, exit and reattach by name | **pass** |
 | Proactive demo, end to end: incident opens at T+6 s, the deploy waits at T+27 to 30 s, the approved revision passes 3 guest checkouts with 0 errors | **pass** |
 | `just lsp check`: every file clean by the language servers' standard, one server per language | **pass**: 264 files |
