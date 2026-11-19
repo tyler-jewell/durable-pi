@@ -1,6 +1,5 @@
 // Tool definitions and handlers for dpi-mcp. The check → test → push cadence is deduped
 // by a per-app fingerprint: each check runs at most once per code state.
-import { spawn } from "node:child_process";
 import { existsSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
@@ -100,70 +99,17 @@ async function doCheck(app: string, state: PipelineState | undefined, fp: string
 
 /** Test: build + a browser smoke (renders, no horizontal overflow at phone/desktop, offline reload). <30s budget. */
 async function doTest(app: string, state: PipelineState | undefined, fp: string, p: Progress) {
-  const dir = appDir(app);
   if (state?.fingerprint === fp && state.test?.ok) {
     await p.emit("test", "cached", "tests already passed for this code state", 0);
     return state.test;
   }
-  // build (needed to serve the app in a browser)
-  await p.emit("test", "started", "build");
-  const build = run("npm", ["run", "-s", "build"], { cwd: dir, timeoutMs: 90_000 });
-  if (build.code !== 0) {
-    await p.emit("test", "error", clip(build.stdout || build.stderr, 1500), 0);
-    return { ok: false, ts: Date.now(), durMs: build.durMs, detail: clip(build.stderr || build.stdout, 1500) };
-  }
-  // browser smoke against the built app
-  const port = 4173 + Math.floor(Math.random() * 400);
-  const base = `http://127.0.0.1:${port}`;
-  const preview = spawn("npx", ["vite", "preview", "--port", String(port), "--strictPort", "--host", "127.0.0.1"], {
-    cwd: dir,
-    detached: true,
-    stdio: "ignore",
-  });
-  let browserDetail = "";
-  try {
-    let up = false;
-    for (let i = 0; i < 60 && !up; i++) {
-      up = await fetch(`${base}/`).then((r) => r.ok, () => false);
-      if (!up) await new Promise((r) => setTimeout(r, 400));
-    }
-    if (!up) throw new Error("preview server did not start");
-    const ab = (args: string[]) => {
-      const r = run("agent-browser", args, { cwd: dir, timeoutMs: 60_000 });
-      const last = r.stdout.split("\n").map((l) => l.trim()).filter(Boolean).at(-1) ?? "";
-      try {
-        return JSON.parse(last);
-      } catch {
-        return last;
-      }
-    };
-    ab(["open", `${base}/`]);
-    const title = ab(["eval", "document.title"]);
-    const h1 = ab(["eval", "document.querySelector('h1')?.textContent ?? ''"]);
-    ab(["set", "viewport", "320", "640"]);
-    const phoneOverflow = ab(["eval", "document.documentElement.scrollWidth <= window.innerWidth"]);
-    ab(["set", "viewport", "1440", "900"]);
-    const desktopOverflow = ab(["eval", "document.documentElement.scrollWidth <= window.innerWidth"]);
-    ab(["set", "offline", "on"]);
-    ab(["eval", "location.reload()"]);
-    await new Promise((r) => setTimeout(r, 1000));
-    const offlineH1 = ab(["eval", "document.querySelector('h1')?.textContent ?? ''"]);
-    ab(["set", "offline", "off"]);
-    const ok = typeof title === "string" && title.length > 0 && typeof h1 === "string" && h1.length > 0 && phoneOverflow === true && desktopOverflow === true && typeof offlineH1 === "string" && offlineH1.length > 0;
-    browserDetail = `title="${title}", h1="${h1}", phoneFits=${phoneOverflow}, desktopFits=${desktopOverflow}, offlineH1="${offlineH1}"`;
-    await p.emit("test", ok ? "done" : "error", browserDetail, 1);
-    return { ok, ts: Date.now(), durMs: build.durMs, detail: browserDetail };
-  } catch (e) {
-    await p.emit("test", "error", (e as Error).message, 1);
-    return { ok: false, ts: Date.now(), durMs: 0, detail: (e as Error).message };
-  } finally {
-    try {
-      process.kill(-preview.pid!, "SIGTERM");
-    } catch {
-      /* already gone */
-    }
-    run("agent-browser", ["close"], { cwd: dir });
-  }
+  await p.emit("test", "started", "build + browser smoke");
+  const r = run("npx", ["--yes", "tsx", "scripts/app-smoke.mts", app], { cwd: ROOT, timeoutMs: 120_000 });
+  const ok = r.code === 0;
+  const last = r.stdout.split("\n").map((l) => l.trim()).filter(Boolean).at(-1) ?? "";
+  const detail = last.replace(/^SMOKE (PASS|FAIL) /, "") || clip(r.stderr, 1500);
+  await p.emit("test", ok ? "done" : "error", detail, 1);
+  return { ok, ts: Date.now(), durMs: r.durMs, detail };
 }
 
 /** Ensure the app has the Cloudflare deploy files for a Workers static-assets deploy. */

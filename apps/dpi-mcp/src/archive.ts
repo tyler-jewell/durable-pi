@@ -72,9 +72,3 @@ export async function restoreApp(app: string): Promise<void> {
     rmSync(staged, { recursive: true, force: true });
   }
 }
-
-/** Remove the archive objects (optional cleanup path; R2 lifecycle is the normal expiry). */
-export async function dropArchive(app: string): Promise<void> {
-  await r2("DELETE", archiveKey(app));
-  await r2("DELETE", metaKey(app));
-}
