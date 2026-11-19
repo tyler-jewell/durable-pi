@@ -9,6 +9,9 @@ mod net 'just/net'
 # Web apps: scaffold from templates, add routes and pages, verify in a browser
 mod app 'just/app'
 
+# Language servers and the git gate: pre-commit checks, pinned install, tests
+mod lsp 'just/lsp'
+
 # This machine's dpi-backend
 mod backend 'just/backend'
 
@@ -27,6 +30,12 @@ mod proactive 'just/proactive'
 # List command groups
 default:
     @just --list
+
+# One-time setup for this clone: the pre-commit gate (every commit is checked by the language servers), and the servers
+setup:
+    git config core.hooksPath .githooks
+    sh pi/lsp/install.sh .
+    @echo "setup: pre-commit gate installed (core.hooksPath=.githooks); servers installed"
 
 # Install dependencies for every network app
 install:

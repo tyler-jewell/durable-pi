@@ -117,7 +117,7 @@ test("metered storage counts rows read and written for every consumption path", 
     },
   });
   const fake = {
-    sql: { exec: () => cursor(3, 1, [{ a: 1 }, { a: 2 }, { a: 3 }]), databaseSize: 4096 },
+    sql: { exec: (_query: string, ..._bindings: unknown[]) => cursor(3, 1, [{ a: 1 }, { a: 2 }, { a: 3 }]), databaseSize: 4096 },
     transactionSync: (fn: () => unknown) => fn(),
   };
   const wrapped = meterStorage(fake, (r, w) => reports.push([r, w]));

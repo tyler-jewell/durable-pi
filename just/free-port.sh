@@ -3,7 +3,8 @@
 port="$1"
 pids=$(lsof -ti "tcp:$port" -sTCP:LISTEN 2>/dev/null)
 [ -z "$pids" ] && exit 0
-echo "port $port in use; stopping pid $(echo $pids)" >&2
+echo "port $port in use; stopping pid $(echo "$pids")" >&2
+# shellcheck disable=SC2086
 kill $pids 2>/dev/null
 i=0
 while [ $i -lt 10 ]; do
@@ -11,5 +12,7 @@ while [ $i -lt 10 ]; do
   lsof -ti "tcp:$port" -sTCP:LISTEN >/dev/null 2>&1 || exit 0
   i=$((i + 1))
 done
-kill -9 $(lsof -ti "tcp:$port" -sTCP:LISTEN 2>/dev/null) 2>/dev/null
+leftover=$(lsof -ti "tcp:$port" -sTCP:LISTEN 2>/dev/null)
+# shellcheck disable=SC2086
+kill -9 $leftover 2>/dev/null
 exit 0

@@ -36,6 +36,6 @@ test("a model without a rate is an error, never a silent zero", () => {
 });
 
 test("the rate card names its source and date", () => {
-  assert.match(card.source, /^https:\/\/api-docs\.deepseek\.com\//);
-  assert.match(card.retrieved, /^\d{4}-\d{2}-\d{2}$/);
+  assert.match(card.source ?? "", /^https:\/\/api-docs\.deepseek\.com\//);
+  assert.match(card.retrieved ?? "", /^\d{4}-\d{2}-\d{2}$/);
 });

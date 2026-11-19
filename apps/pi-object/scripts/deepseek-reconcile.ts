@@ -21,7 +21,12 @@ import { readDeepseekBalance } from "../src/cost/deepseek.js";
 import type { DeepseekBalance } from "../src/cost/objects.js";
 
 export interface Rate { cacheHit: number; cacheMiss: number; output: number }
-export interface RateCard { models: Record<string, { offPeak: Rate; peak: Rate }>; peakWindowUtc: { hours: number[][] } }
+export interface RateCard {
+  source?: string;
+  retrieved?: string;
+  models: Record<string, { offPeak: Rate; peak: Rate }>;
+  peakWindowUtc: { hours: number[][] };
+}
 export interface Usage { input: number; cacheRead: number; output: number }
 
 /** True when the instant falls in DeepSeek's peak window: 01:00–04:00 and 06:00–10:00 UTC, Monday to Friday. */

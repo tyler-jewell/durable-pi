@@ -25,7 +25,7 @@ start() {
 }
 stop() {
   local pgid; pgid=$(cat "$LOG.pid" 2>/dev/null) || return 0
-  kill -- -$pgid 2>/dev/null || true
+  kill -- "-$pgid" 2>/dev/null || true
   for _ in $(seq 1 30); do curl -s -o /dev/null --max-time 1 "$BASE/" || return 0; sleep 1; done
   echo "port $PORT did not free after stop"; exit 1
 }

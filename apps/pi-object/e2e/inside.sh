@@ -6,7 +6,7 @@ IFS= read -r ARTIFACTS_TOKEN
 export GIT_TERMINAL_PROMPT=0
 export GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=http.extraHeader GIT_CONFIG_VALUE_0="Authorization: Bearer $ARTIFACTS_TOKEN"
 
-echo "PROFILE node=$(node -v) git=$(git --version | cut -d' ' -f3) wrangler=$(wrangler --version 2>/dev/null | tail -1) cf=$(cf --version 2>/dev/null | tail -1) pi=$(pi --version 2>/dev/null | tail -1) os=$(. /etc/os-release && echo "$PRETTY_NAME")"
+echo "PROFILE node=$(node -v) git=$(git --version | cut -d' ' -f3) wrangler=$(wrangler --version 2>/dev/null | tail -1) cf=$(cf --version 2>/dev/null | tail -1) pi=$(pi --version 2>/dev/null | tail -1) os=$(sed -n 's/^PRETTY_NAME="\(.*\)"/\1/p' /etc/os-release)"
 
 mkdir -p /work && cd /work
 git init -q -b main repo && cd repo

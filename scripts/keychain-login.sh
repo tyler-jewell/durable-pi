@@ -91,9 +91,11 @@ cmd_browser() {
   local account; account=$(account_of "$service"); [ -n "$account" ] || die "no item '$service'"
 
   # Password goes straight from the item to the sandbox's auth vault over stdin.
+  # shellcheck disable=SC2016  # \$1 to \$3 are the inner shell's arguments, passed after the script
+  AUTH_SAVE='cd /root && agent-browser auth save "$1" --url "$2" --username "$3" --password-stdin'
   item_json "$service" | parse_or_die | node -e '
     let d=""; process.stdin.on("data",c=>d+=c).on("end",()=>process.stdout.write(JSON.parse(d).password));' \
-    | container exec -i "${BROWSER_ENV[@]}" "$container" sh -c 'cd /root && agent-browser auth save "$1" --url "$2" --username "$3" --password-stdin' \
+    | container exec -i "${BROWSER_ENV[@]}" "$container" sh -c "$AUTH_SAVE" \
         _ "$profile" "$url" "$account" >/dev/null
   echo "saved profile '$profile' for account '$account' in $container"
 

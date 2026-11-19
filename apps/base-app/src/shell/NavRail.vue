@@ -1,11 +1,7 @@
 <script setup lang="ts">
 // The collapsible nav rail: pick which object the left panel renders. Generic — each DO app
 // declares its own object list (sessions, incidents, deploys, …).
-export interface NavItem {
-  id: string;
-  label: string;
-  kind?: string;
-}
+import type { NavItem } from "./types";
 
 defineProps<{ items: NavItem[]; selected?: string }>();
 const emit = defineEmits<{ select: [id: string] }>();

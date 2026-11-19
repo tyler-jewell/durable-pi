@@ -1,0 +1,10 @@
+{
+  "name": "dpi-scripts",
+  "private": true,
+  "type": "module",
+  "description": "Types for the repo's TypeScript scripts (run with tsx from the just recipes).",
+  "devDependencies": {
+    "@types/node": "24.10.1",
+    "tsx": "4.22.0"
+  }
+}

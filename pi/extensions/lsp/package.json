@@ -1,0 +1,11 @@
+{
+  "name": "dpi-lsp-extension",
+  "private": true,
+  "type": "module",
+  "description": "Development types for the LSP extension (pi provides the runtime imports). Installed by `just setup`; not copied to pi's extensions folder.",
+  "devDependencies": {
+    "@earendil-works/pi-coding-agent": "1.5.2",
+    "@types/node": "24.10.1",
+    "typebox": "1.1.38"
+  }
+}

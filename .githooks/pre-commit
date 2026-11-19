@@ -1,0 +1,10 @@
+#!/bin/sh
+# Pre-commit gate: the staged content of every changed file must be clean by the language servers' standard (no error,
+# warning or information). See pi/extensions/lsp/gate.mjs. Installed by `just setup`.
+set -eu
+ROOT="$(git rev-parse --show-toplevel)"
+if ! command -v node >/dev/null 2>&1; then
+  echo "pre-commit: node is not on PATH; the language gate cannot run, so the commit is refused." >&2
+  exit 1
+fi
+exec node "$ROOT/pi/extensions/lsp/gate.mjs" staged
