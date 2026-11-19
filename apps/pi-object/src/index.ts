@@ -485,7 +485,7 @@ async function secretsEqual(provided: string, expected: string): Promise<boolean
 }
 
 export default {
-  async fetch(request: Request, env: Env): Promise<Response> {
+  async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
     // Fail closed: every route needs the device token, so a public URL cannot spend the model key.
     if (!env.DPI_TOKEN) return new Response("DPI_TOKEN is not set\n", { status: 503 });
     const presented = request.headers.get("authorization") ?? "";
@@ -495,10 +495,9 @@ export default {
 
     const url = new URL(request.url);
     // One agent per name; the demo uses a single agent. Use ?agent=<name> to address another.
-    // cloudflare.config.ts binds this by Worker name, so the generated type is a bare stub. The class is this module's
-    // own export, so the cast is exact. KNOWN DEVIATION (README known issues): a same-Worker class has no typed binding
-    // that works without a cast; ctx.exports is typed as a generic union; see apps/pi-object/README.md.
-    const ns = env.PiAgent as unknown as DurableObjectNamespace<PiAgent>;
+    // Same-Worker access through the typed loopback binding (enable_ctx_exports). The entrypoint is imported as a
+    // module object in cloudflare.config.ts, so cf's inference resolves ctx.exports.PiAgent as a typed namespace.
+    const ns = ctx.exports.PiAgent;
     const agent = ns.get(ns.idFromName(url.searchParams.get("agent") ?? "demo"));
 
     if (request.method === "GET" && url.pathname === "/v1/cost") return json(await agent.costSnapshot());

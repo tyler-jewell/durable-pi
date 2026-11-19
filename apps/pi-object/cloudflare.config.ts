@@ -1,4 +1,5 @@
 import { bindings, defineConfig, exports } from "cf/config";
+import * as entrypoint from "./src/index" with { type: "cf-worker" };
 
 /**
  * Secret-like files were detected but not read or migrated: .dev.vars, .dev.vars.example, .env. Only `secrets.required` entries are migrated.
@@ -11,8 +12,9 @@ export default defineConfig({
 		compatibilityDate: "2026-11-18",
 		compatibilityFlags: [
 			"nodejs_compat",
+			"enable_ctx_exports",
 		],
-		entrypoint: "src/index.ts",
+		entrypoint,
 		workersDev: true,
 		previewUrls: false,
 		limits: {
@@ -30,10 +32,6 @@ export default defineConfig({
 			DPI_TOKEN: bindings.secret(),
 			CLOUDFLARE_API_TOKEN: bindings.secret(),
 			CLOUDFLARE_ACCOUNT_ID: bindings.secret(),
-			PiAgent: bindings.durableObject({
-				worker: "durable-pi-object",
-				exportName: "PiAgent",
-			}),
 			LOADER: bindings.workerLoader(),
 		},
 		exports: {
