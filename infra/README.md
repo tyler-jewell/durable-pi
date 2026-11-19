@@ -4,7 +4,13 @@ Declarative Cloudflare setup for the "access from anywhere" SSH mesh: tunnel,
 DNS, Access SSH app + policy, OTP login method, service token, and the per-app
 short-lived certificate CA.
 
-Recreate from nothing:
+> **Status (19 Nov 2026): resources are live but Terraform has no state for them.**
+> The tunnel `studio` and `studio.jewell-labs.com` exist in the personal account, but
+> there is no `backend` block, no `.terraform/` state, and R2 is not enabled on the
+> account. A plain `terraform apply` would create duplicates. The recovery plan
+> (R2 backend, `terraform import`, then the v5 and Access-policy fixes) is issue #11.
+
+Recreate from nothing (once state is imported per issue #11):
 
 ```bash
 brew install hashicorp/tap/terraform cloudflared   # terraform (HashiCorp tap; not in Homebrew core) on the operator Mac; cloudflared on each host
