@@ -14,7 +14,10 @@ Do not confuse them.
 | **R2 account API token** (S3 Access Key + Secret) | dashboard **R2 → Manage R2 API Tokens → Account API tokens** | no (derive instead, see below) | `durable-pi-terraform-state` |
 | **Cloudflare API token** (bearer for the API) | dashboard **My Profile → API Tokens** | create only (`cf user tokens create`) | `dpi-container` (account-owned), `durable-pi-terraform-tmp` |
 
-## Current state: what to keep vs delete
+## Current state (verified 2026-11-19)
+
+Cleanup is complete: the four junk tokens below were deleted in the dashboard,
+and the stale flagseeker Keychain items were removed. What remains is the keepers.
 
 ### Access service tokens (keep 1)
 
@@ -27,16 +30,16 @@ Do not confuse them.
 | Token | Scope | Fate |
 |---|---|---|
 | `durable-pi-terraform-state` | bucket `durable-pi-terraform-state`, Object R/W | **Keep** — Terraform state backend |
-| `durable-pi-object deploy` | All buckets, Admin R/W | **Delete** — pi-object uses Cloudflare Artifacts + a bearer token (`.env`), never R2 S3. Over-scoped. |
+| `durable-pi-object deploy` | All buckets, Admin R/W | ~~Delete~~ **Deleted** ✅ |
 
 ### R2 user API tokens / Cloudflare API tokens (My Profile → API Tokens)
 
 | Token | Scope | Fate |
 |---|---|---|
-| `durable-pi-terraform-tmp` | Tunnel / Access / DNS / Service Tokens | **Delete** — temp, served the state recovery |
-| `durable-pi-r2-derive-test` | R2 Read | **Delete** — 1-hour verification token; self-expires |
-| `studio-reset-pipeline` | All buckets, Admin R/W | **Delete** — no reference in this repo (external, Nov 14) |
-| `Workers Builds - 2026-11-07 13:35` | All buckets, Admin R/W | **Delete** — no Workers Builds config exists for `durable-pi-object` (checked `cf builds workers get`) |
+| `durable-pi-terraform-tmp` | Tunnel / Access / DNS / Service Tokens | ~~Delete~~ **Deleted** ✅ (temp, served the state recovery) |
+| `durable-pi-r2-derive-test` | R2 Read | ~~Delete~~ **Deleted** ✅ (1-hour verification token) |
+| `studio-reset-pipeline` | All buckets, Admin R/W | ~~Delete~~ **Deleted** ✅ (no reference in this repo) |
+| `Workers Builds - 2026-11-07 13:35` | All buckets, Admin R/W | ~~Delete~~ **Deleted** ✅ (no Workers Builds config existed) |
 | `dpi-container` (account-owned, `cfat_…`) | account | **Keep** — the container's API token for device/e2e runs |
 
 > `cf user tokens list` and `cf user tokens delete` return `403 [9109]` from the
