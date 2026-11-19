@@ -28,7 +28,8 @@ try {
   gate = (e.stdout || "") + (e.stderr || "");
 }
 const perLang = LANGS.map(([label, ext]) => ({ name: `agent asked the ${label} server about its file (${ext})`, ok: usedDiagnostics.some((c) => !c.args.path || String(c.args.path).endsWith(ext)), detail: perFile.join(", ") || "none" }));
-const BYPASS = /git\s+(commit|push)\b[^;&|]*--no-verify|git\s+(-c\s+core\.hooksPath=|config\s+(\S+\s+)*core\.hooksPath\s+\S)/;
+// The value must be a real token (not a shell operator), and a --get read is not a set.
+const BYPASS = /git\s+(commit|push)\b[^;&|]*--no-verify|git\s+(-c\s+core\.hooksPath=|config\s+(?!--get)(\S+\s+)*core\.hooksPath\s+[^\s|&;])/;
 const bypasses = bashCalls.filter((c) => BYPASS.test(c));
 const checks = [
   { name: "final repo passes the gate (every file clean)", ok: gatePass, detail: gatePass ? gate.trim().split("\n").pop() : gate.split("\n").filter((l) => l.startsWith("FAIL")).slice(0, 2).join(" | ") },
