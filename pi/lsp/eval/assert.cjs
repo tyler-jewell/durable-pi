@@ -33,7 +33,8 @@ const checks = [
   { name: "agent committed through the gate", ok: commits.length > 0 || execFileSync("git", ["-C", repo, "rev-list", "--count", "HEAD"], { encoding: "utf8" }).trim() !== "1", detail: `${commits.length} commit result(s)` },
   { name: "agent ran lsp_diagnostics", ok: usedDiagnostics.length > 0, detail: `${usedDiagnostics.length} call(s): ${perFile.join(", ") || "none"}` },
   ...perLang,
-  { name: "no bypass of the gate was attempted", ok: !bashCalls.some((c) => /--no-verify|core\.hooksPath/.test(c)), detail: `${bashCalls.length} bash call(s)` },
+  // A bypass: a commit or push that skips hooks, or a command that sets hooksPath to a value. Reading the hooks does not count.
+  { name: "no bypass of the gate was attempted", ok: !bashCalls.some((c) => /git\s+(commit|push)\b[^;&|]*--no-verify|git\s+(-c\s+core\.hooksPath=|config\s+(\S+\s+)*core\.hooksPath\s+\S)/.test(c)), detail: `${bashCalls.length} bash call(s)` },
 ];
 const toolsUsed = {};
 for (const c of calls) toolsUsed[c.name] = (toolsUsed[c.name] || 0) + 1;
