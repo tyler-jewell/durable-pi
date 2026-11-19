@@ -1,0 +1,10 @@
+{
+  "mcpServers": {
+    "dpi-mcp": {
+      "url": "http://127.0.0.1:4789/mcp",
+      "headers": { "Authorization": "Bearer ${DPI_MCP_TOKEN}" },
+      "exposure": "direct",
+      "description": "Create web apps (create_app) and run the check/test/push CI-CD cadence plus app-work tools for apps under apps/."
+    }
+  }
+}

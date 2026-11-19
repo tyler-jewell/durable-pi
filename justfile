@@ -50,6 +50,7 @@ install:
     cd apps/dpi-backend && npm install --no-audit --no-fund
     cd apps/dpi-playground && npm install --no-audit --no-fund
     cd apps/dpi-tui && npm install --no-audit --no-fund
+    cd apps/dpi-mcp && npm install --no-audit --no-fund
     cd apps/base-app && npm install --no-audit --no-fund
     cd apps/pi-object && npm install --no-audit --no-fund && npm run types
     cd apps/pi-object/e2e && npm install --no-audit --no-fund

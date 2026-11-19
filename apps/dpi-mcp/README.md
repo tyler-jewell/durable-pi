@@ -1,0 +1,89 @@
+# dpi-mcp
+
+The Durable Pi MCP server: a streamable-HTTP [Model Context Protocol](https://modelcontextprotocol.io)
+server that gives every agent the same app workflow — **create**, **check**, **test**, **push** —
+plus the app-work tools, all authenticated with one bearer token and driven with our Cloudflare
+API credentials.
+
+```
+pi (any agent) ──HTTP + SSE, Bearer DPI_MCP_TOKEN──► dpi-mcp ──► templates/pwa-vue, vue-tsc, agent-browser, wrangler
+```
+
+## Run it
+
+```bash
+cd apps/dpi-mcp && npm install
+DPI_MCP_TOKEN=<32+ chars> \
+CLOUDFLARE_API_TOKEN=<workers deploy token> \
+CLOUDFLARE_ACCOUNT_ID=09f27fe672991450d128a652b5fb4d73 \
+npm start            # http://127.0.0.1:4789/mcp
+```
+
+Every MCP request must carry `Authorization: Bearer <DPI_MCP_TOKEN>`. `CLOUDFLARE_API_TOKEN`
+and `CLOUDFLARE_ACCOUNT_ID` are only needed by `push` (Workers deploy); `check` and `test`
+run without them.
+
+## Tools
+
+| Tool | What it does | Budget | Cached? |
+|---|---|---|---|
+| `create_app` | scaffold an app from `templates/pwa-vue`, then run check → test (→ push when `deploy: true`) | — | steps are |
+| `check` | `npm run typecheck` (vue-tsc) — LSP-first | < 5 s | per fingerprint |
+| `test` | build + browser smoke (renders, no horizontal overflow at phone/desktop, offline reload) | < 30 s | per fingerprint |
+| `push` | build + `wrangler deploy` (Workers static assets); streams the build as events | — | per fingerprint |
+| `app_add_route` | add a page + route to an existing app | — | no |
+| `app_add_page` | add a page component (no route) | — | no |
+| `app_verify` | full Modern Web Guidance browser verification (`scripts/app-verify.mts`) | — | no |
+
+Every tool returns `structuredContent` with a full ordered `events` array
+(`{ step, status, ts, detail, durMs }`) so the caller sees the progress of each step, and
+`create_app` / `push` stream live MCP progress notifications while they run.
+
+## The cadence (nothing runs twice)
+
+The three CI/CD tools form one pipeline, deduped by a per-app **fingerprint** (hash of the
+app's source tree, ignoring `node_modules`/`dist`/`.wrangler`). State lives in
+`~/.dpi-mcp/pipelines/<app>.json`.
+
+- `check` re-runs only when the app changed since the last passing check.
+- `test` requires `check` to have passed on the current fingerprint, and re-runs only when
+  the app changed.
+- `push` requires `check` and `test` to have passed, and re-runs only when the app changed.
+
+So for 100% of changes in any app, running `check → test → push` (or just `push`, which runs
+the other two first) exercises each check exactly once per code state. Re-running on an
+unchanged app returns `cached` in a few milliseconds.
+
+## Wire pi to it
+
+Project config at `.pi/mcp.json` (committed):
+
+```json
+{
+  "mcpServers": {
+    "dpi-mcp": {
+      "url": "http://127.0.0.1:4789/mcp",
+      "headers": { "Authorization": "Bearer ${DPI_MCP_TOKEN}" },
+      "exposure": "direct",
+      "description": "Create web apps and run the check/test/push cadence."
+    }
+  }
+}
+```
+
+`DPI_MCP_TOKEN` comes from the environment. Start pi in the project (project trust) and the
+tools appear as `mcp__dpi_mcp__create_app`, `mcp__dpi_mcp__check`, `mcp__dpi_mcp__test`,
+`mcp__dpi_mcp__push`, `mcp__dpi_mcp__app_add_route`, `mcp__dpi_mcp__app_add_page`, and
+`mcp__dpi_mcp__app_verify`.
+
+For a bare-bones container, run the server where the container can reach it (for an Apple
+container that is the host bridge, `192.168.64.1:4789`), set `DPI_MCP_TOKEN` in the
+container, and use that URL in the container's `.pi/mcp.json`.
+
+## Notes
+
+- `push` deploys as a **Workers static-assets** site (it writes `wrangler.jsonc` + a trivial
+  `worker.mjs` on first push). The deploy token needs Workers Scripts Read+Write; see
+  `docs/cloudflare-credentials.md`.
+- Progress notifications and the `events` array are the event stream: `create_app` and
+  `push` emit a `started`/`done` event per step.

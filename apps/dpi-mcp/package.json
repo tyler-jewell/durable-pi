@@ -1,0 +1,21 @@
+{
+  "name": "dpi-mcp",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Durable Pi MCP server: create_app, check, test, push, and app-work tools over streamable HTTP.",
+  "scripts": {
+    "start": "tsx src/server.ts",
+    "dev": "tsx watch src/server.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.24.0"
+  },
+  "devDependencies": {
+    "@types/express": "^5.0.6",
+    "@types/node": "^26.0.0",
+    "tsx": "^4.22.0",
+    "typescript": "^5.9.3"
+  }
+}
