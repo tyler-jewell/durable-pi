@@ -84,11 +84,14 @@ Each item was researched in the official docs, changed on its own, and checked b
 
 Item 2 (done since): the offline Artifacts leg. `npm run e2e:offline` runs the scenario with the local simulator and no Cloudflare calls; see `apps/pi-object/e2e/README.md`.
 
-Still open after this pass:
+Still open, re-checked on 19 Nov 2026:
 
-- `vue-tsc` on TypeScript 7 (the three Vue apps). Re-run `just ts-probe` when `vue-tsc` releases support; a pass
-  there is the signal to move them, and the probe needs no change.
-- Repo-count charges: date and rate to be taken from the pricing page when Cloudflare announces them.
+- **`vue-tsc` on TypeScript 7 (the three Vue apps): blocked, with evidence.**
+  - `vue-tsc` 3.3.14 (latest) still needs the TypeScript 5 compiler API, and `@volar/typescript` still requires `typescript < 7`.
+  - TypeScript 7.0.2 and 7.1.0-beta export only the version (no `createProgram`, no `createSourceFile`).
+  - `@vue/language-core` 4.0.0-alpha.3 has parsing and analysis, but no SFC-to-TypeScript code generator: it has no virtual-code producer, and its `__VLS_` helpers are types only. `vue-tsc` 3.3.14 carries nine files of that generator.
+  - So a TypeScript 7 type check of `.vue` templates has no working path today. Re-check: `just ts-probe` (container) and `npm view @vue/language-core dist-tags` (a stable `4.x` with codegen is the signal).
+- **Repo-count charges: undated.** The pricing page still says "coming soon" and names no date. On demand: `npm run artifacts:billing` (in apps/pi-object) reads the official page and exits 3 only when a repository charge gets a start date. It stores no prices and runs on request, not on a schedule.
 
 ## Permissions and accounts (learned during the audit)
 

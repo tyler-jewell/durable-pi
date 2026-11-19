@@ -434,8 +434,8 @@ Every node is proved the same way: **test in a container → review code (remove
 - **Artifacts billing starts 19 Nov 2026** for operations and storage (per the pricing page). Repository-count billing comes later, with notice. Our 2026-10-01 changelog entry said 14 Oct; the pricing page supersedes it.
 - **Cloudflare spend limits are account-level, not per project.** Each product has one hard cap per account, and a cap is not an invoice guarantee. Details: [pi-object Known issues](apps/pi-object/README.md#known-issues).
 - **Jev via Workers AI and third-party models need AI Gateway prepaid credits or BYOK** (error 2021 on Free).
-- **`vue-tsc` does not run on TypeScript 7** (7.0.2 and 7.1 beta). The Vue apps stay on 5.9.3. `just ts-probe` re-checks it in a container; a pass is the signal to move.
-- **Artifacts repo-count billing is not dated.** Operations and storage billing starts 19 Nov 2026. Each cloud e2e run checks the account's repo count returns to its baseline.
+- **`vue-tsc` does not run on TypeScript 7** (7.0.2 and 7.1 beta), and no stable Vue type checker targets it yet: `@vue/language-core` 4 alpha has no SFC code generator. The Vue apps stay on 5.9.3. `just ts-probe` re-checks the container result; see [docs/latest-changes-2026-11-18.md](docs/latest-changes-2026-11-18.md).
+- **Artifacts repo-count billing is not dated.** Operations and storage billing starts 19 Nov 2026. Each cloud e2e run checks the account's repo count returns to its baseline, and `npm run artifacts:billing` checks the pricing page on demand.
 - **The local Artifacts simulator serves Git on loopback only.** Containers reach it through a bridge that `npm run e2e:offline` starts and stops.
 - **No Durable Object storage adapter for pi-durable yet** — today it is `openNodeSqliteStorage`; the DO target needs an adapter.
 - **`macos-vm` Lima vz portForwards don't publish for macOS guests** — the port is forwarded over SSH (`-L`).

@@ -15,7 +15,8 @@
     "spend-limits": "node scripts/ensure-spend-limits.mjs",
     "spend-limits:check": "node scripts/ensure-spend-limits.mjs --dry-run",
     "artifacts:inventory": "tsx e2e/inventory.mts",
-    "e2e:offline": "tsx e2e/e2e.mts --target=offline"
+    "e2e:offline": "tsx e2e/e2e.mts --target=offline",
+    "artifacts:billing": "tsx e2e/artifacts-billing-check.mts"
   },
   "dependencies": {
     "@cloudflare/computer": "0.11.3",

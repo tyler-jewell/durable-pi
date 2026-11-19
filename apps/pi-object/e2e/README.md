@@ -21,6 +21,7 @@ npm run e2e:remote           # remote (deploy first: npm run deploy)
 npm run e2e:offline          # offline (first run installs the simulator's dependency cache, ~1 minute)
 npm run e2e:compare          # the table below, from the newest run of each target
 npm run artifacts:inventory  # read-only: namespaces, jurisdictions, repo counts on the account
+npm run artifacts:billing    # on demand: does the pricing page now date repository charges? (exit 3 if so)
 ```
 
 Local image, once: `container build -t dpi-artifacts-dev:local -f e2e/Containerfile e2e`, then `container builder stop`.
