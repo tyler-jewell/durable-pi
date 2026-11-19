@@ -40,12 +40,12 @@ Local image, once: `container build -t dpi-artifacts-dev:local -f e2e/Containerf
 
 |  | Local (Apple container, Cloudflare Artifacts) | Remote (Cloudflare Durable Object) | Offline (Apple container, local Artifacts) |
 |---|---|---|---|
-| Run id | e2e-local-mwmsbqd4-d4d2 | e2e-remote-mwmsc0by-f750 | e2e-offline-mwmsca41-40ef |
+| Run id | e2e-local-mwmsbqd4-d4d2 | e2e-remote-mwmsc0by-f750 | e2e-offline-mwmscrmv-e501 |
 | Verdict | PASS | PASS | PASS |
 | Checks passed | 19/19 | 19/19 | 18/18 |
 | Wall time (whole run, host) | 12.5 s | 12.2 s | 7.3 s |
-| Agent run (container / Worker call) | 3.5 s | 3.3 s | 3.9 s |
-| Setup (namespace/simulator + repo create) | 1.4 s | 1.4 s | 2.5 s |
+| Agent run (container / Worker call) | 3.5 s | 3.3 s | 3.8 s |
+| Setup (namespace/simulator + repo create) | 1.4 s | 1.4 s | 2.4 s |
 | Host verification of the remote | 1.2 s | 1.3 s | 0.8 s |
 | Teardown | 5.7 s | 6.0 s | 0.1 s |
 | Token refused after repo delete | 1.59 s | 2.74 s | immediate (simulator) |
@@ -68,8 +68,7 @@ Local image, once: `container build -t dpi-artifacts-dev:local -f e2e/Containerf
 | Simulator state removed | n/a | n/a | yes |
 | Cloudflare cost (list, this run) | n/a (no Cloudflare run) | $0.0001570 | n/a (no Cloudflare run) |
 | Durable Object requests (this run) | n/a | 1 recorded; duration posts after the response | n/a |
-| Log directory | /Users/mbp/.dpi/e2e/e2e-local-mwmsbqd4-d4d2 | /Users/mbp/.dpi/e2e/e2e-remote-mwmsc0by-f750 | /Users/mbp/.dpi/e2e/e2e-offline-mwmsca41-40ef |
-
+| Log directory | /Users/mbp/.dpi/e2e/e2e-local-mwmsbqd4-d4d2 | /Users/mbp/.dpi/e2e/e2e-remote-mwmsc0by-f750 | /Users/mbp/.dpi/e2e/e2e-offline-mwmscrmv-e501 |
 
 ## Notes
 

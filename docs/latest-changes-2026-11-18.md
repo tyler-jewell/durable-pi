@@ -35,7 +35,7 @@ announcement for the Cloudflare CLI `cf` 1.0 (17 Nov 2026, posted by @MattieTK).
   "destructive commands need `--force` without a terminal" rule does not apply.
 - `apps/pi-object/e2e/e2e.mts`: uses the Artifacts REST paths from the quick start (namespace create, repo create,
   repo delete returning 202, namespace delete returning 204). These are unchanged.
-- `apps/pi-object/wrangler.jsonc`: `nodejs_compat`, `workers_dev`, `limits`, the DO migration and `worker_loaders` are
+- `apps/pi-object/wrangler.jsonc` (since replaced by `cloudflare.config.ts`): `nodejs_compat`, `workers_dev`, `limits`, the DO migration and `worker_loaders` are
   unchanged in 4.165.0. The `.dev.vars.example` file is ASCII, so the new UTF-8 check does not affect it.
 - `apps/pi-object/src/cost/cloudflare-rate-card.ts`: uses the Billing REST endpoints; `cf schema` still lists them.
 - `.dev.vars.example`, `.env.example`: no CLI behaviour involved.

@@ -332,7 +332,7 @@ just proactive take        # reset and run the proactive demo
 
 | Check | Result |
 |---|---|
-| `just check` (`just test unit`): SDK (23), backend (14), hub (1), TUI (8) and pi-object (40) tests with strict types; base-app type check and build; web build and lint | **pass** |
+| `just check` (`just test unit`): SDK (23), backend (14), hub (1), TUI (8) and pi-object (46) tests with strict types; base-app type check and build; web build and lint | **pass** |
 | `just test ui`: 28 web checks against two faux devices, including offline recovery, bad tokens, read only, extensions, durable jobs, the context bar, slash commands, keyboard and mobile | **28 of 28** |
 | `just test device` on a cloud VM with a real model: the web UI, steer, dedupe, subagents, jobs, compaction, reset, and quitting the browser mid-tool | **18 of 18** |
 | `just test e2e` on an ssh Mac: TUI and web on one run, steer from the web, both clients closed, device restarted mid-tool, fork, TUI reattach | **pass**: 9 tool results, 1 interrupted by the restart, each prompt admitted once |
@@ -384,35 +384,36 @@ Every node is proved the same way: **test in a container → review code (remove
 - [ ] A test asserting no configured secret value appears in any streamed/logged frame.
 
 ### Phase 0 — Baseline at latest versions
-- [x] Pin latest: `cf@1.0.0-rc.1` (the 1.0 release candidate, announced 17 Nov 2026), `wrangler@4.165.0`, `pi-*@1.5.2`, Node 26 LTS (`@cloudflare/vite-plugin@2.0.0-rc.0` and `@cloudflare/vitest-plugin@1.8.4` recorded as Phase 3 targets).
+- [x] Pin latest: `cf@1.0.0-rc.1` (the 1.0 release candidate, announced 17 Nov 2026), `wrangler@4.165.0`, `pi-*@1.5.2`, Node 26 LTS, TypeScript 7.0.2 where Vue tooling allows it (see Known issues). `pi-object` builds with the Wrangler bundler under `cf`, so the Vite plugin is not needed there; `@cloudflare/vite-plugin` 2.0 applies only to a future Vite-built app.
 - [x] Rebuild the test container on `node:26` (v26.13.1) and bump the YAML `node` default 24 → 26 (centralized `DEFAULT_CONTAINER_IMAGE`).
 - [x] Confirm the container has Git 2.32+ (git 2.39.5, installed by the new apple-container `provision` step).
 
 ### Phase 1 — Base app shell (shared UI)
-- [ ] Extract the proactive demo's shell (top bar · nav rail · two-pane · footer · toasts) into a shared `base-app` package.
-- [ ] Left panel = document-driven generated views + approval flow (port playground `StateEditor`/`JobCard` + proactive `AgentChat`/`IncidentCard`).
-- [ ] Right panel = unified system stream (logs + structured UI events) with a source selector: Cloudflare Logs (deployed) / local logs (local).
-- [ ] Local log source: harness + dev-server logs over the stream.
-- [ ] Deployed log source: `cf observability tail` / Workers Logs adapter.
-- [ ] Nav rail = object/session/app selector.
+- [x] Extract the proactive demo's shell (top bar · nav rail · two-pane · footer) into a shared `base-app` package (`AppShell`, `NavRail`). Toasts are not built.
+- [ ] Left panel = document-driven generated views + approval flow. `StateEditor`, `JobCard` and `Transcript` are ported and decoupled; document-driven generated views and `AgentChat`/`IncidentCard` are not.
+- [ ] Right panel = unified system stream (logs + structured UI events) with a source selector: Cloudflare Logs (deployed) / local logs (local). The stream component and its `local` / `cloudflare` selector exist; the structured UI events are not wired.
+- [ ] Local log source: harness + dev-server logs over the stream. Selector only; no adapter.
+- [ ] Deployed log source: `cf observability tail` / Workers Logs adapter. Selector only; no adapter.
+- [x] Nav rail = object/session/app selector (`NavRail`).
 
 ### Phase 2 — Component proofs in containers
-- [x] `dpi-sdk` (api/transcript/models/app-state/jobs/sse/client/errors + node drivers) — 16/16 unit tests green in the `apple-box` container (Node 26).
+- [x] `dpi-sdk` (api/transcript/models/app-state/jobs/sse/client/errors + node drivers) — 23/23 unit tests green (host, `just check`). The 16/16 container run predates the redaction and system-stream tests; re-run in the container is open.
 - [x] `dpi-backend` (store/harness/jobs/extensions/streams/shared-state/addons/providers/jev/history/idempotency/auth/errors + REST/SSE) — 14/14 tests green in the container.
 - [x] `dpi-playground` hub (guard/proxy/monitor/mux/seed) — 1/1 hub test green in the container.
 - [x] `dpi-playground` FE (generative UI) — `npm run build` green in the container (Playwright e2e still to run).
-- [x] `apps/pi-object` (Durable Object agent, cost objects, budget guard, Cloudflare rate card) — 40/40 tests in `just test unit`; deployed and checked live.
+- [x] `apps/pi-object` (Durable Object agent, cost objects, budget guard, Cloudflare rate card, e2e) — 46/46 tests in `just test unit`; deployed with `cf deploy`; local, remote and offline e2e pass.
+- [x] `dpi-tui` — 8/8 render tests (host, `just check`).
 - [ ] Base-app shell — render tests green in a container (Phase 1). Today it has a type check and a build, and no tests.
 - [x] AI Gateway inference — live smoke test in the container on free `@cf/*` models (`GATEWAY_OK`).
 
 ### Phase 3 — Cloudflare / Artifacts / DO integration (new)
-- [ ] Write `cloudflare.config.ts` for the base DO app.
-- [ ] Push the repo into an Artifacts repo (git-over-HTTPS, repo token) — no GitHub.
+- [x] `cloudflare.config.ts` for the Durable Object app (`apps/pi-object`, deployed with `cf deploy`). The base app is a Vue shell, not a Durable Object, so it has no Cloudflare config yet.
+- [ ] Push the repo into an Artifacts repo (git-over-HTTPS, repo token) — no GitHub. The e2e proves the push path with ephemeral repos; this repo itself is not mirrored yet.
 - [ ] Workers Builds deploy-on-push from the Artifacts repo.
 - [x] Artifacts local simulator via `wrangler dev` (isolated local repos): the offline e2e leg runs the same scenario with no Cloudflare calls (`npm run e2e:offline`). Available since 16 Nov 2026: the binding uses the local simulator by default, and `remote = true` uses deployed repos.
 - [ ] One Durable Object per app, thin Pi harness inside (DO storage adapter).
 - [ ] Move session/catalog state to D1 (KV/R2 where they fit).
-- [ ] cf CLI + MCP Code Mode + Cloudflare Skills wired for agent-driven Cloudflare ops.
+- [ ] cf CLI + MCP Code Mode + Cloudflare Skills wired for agent-driven Cloudflare ops. The `cf` CLI is in use (build, dev, deploy, spend limits, Artifacts); MCP Code Mode and the Cloudflare Skills are not.
 - [ ] AI Gateway routing for inference (Workers AI free models; third-party via BYOK/credits).
 
 ### Phase 4 — Live local + deployed acceptance
@@ -432,6 +433,9 @@ Every node is proved the same way: **test in a container → review code (remove
 - **Artifacts billing starts 19 Nov 2026** for operations and storage (per the pricing page). Repository-count billing comes later, with notice. Our 2026-10-01 changelog entry said 14 Oct; the pricing page supersedes it.
 - **Cloudflare spend limits are account-level, not per project.** Each product has one hard cap per account, and a cap is not an invoice guarantee. Details: [pi-object Known issues](apps/pi-object/README.md#known-issues).
 - **Jev via Workers AI and third-party models need AI Gateway prepaid credits or BYOK** (error 2021 on Free).
+- **`vue-tsc` does not run on TypeScript 7** (7.0.2 and 7.1 beta). The Vue apps stay on 5.9.3. `just ts-probe` re-checks it in a container; a pass is the signal to move.
+- **Artifacts repo-count billing is not dated.** Operations and storage billing starts 19 Nov 2026. Each cloud e2e run checks the account's repo count returns to its baseline.
+- **The local Artifacts simulator serves Git on loopback only.** Containers reach it through a bridge that `npm run e2e:offline` starts and stops.
 - **No Durable Object storage adapter for pi-durable yet** — today it is `openNodeSqliteStorage`; the DO target needs an adapter.
 - **`macos-vm` Lima vz portForwards don't publish for macOS guests** — the port is forwarded over SSH (`-L`).
 - **`apple-container` runs the backend via `nohup`** (no service manager inside the container).
