@@ -19,6 +19,7 @@ import {
 import { CodingTools, createBashTool, createEditTool, createReadTool, createWriteTool } from "@earendil-works/pi-durable/tools";
 import type { ToolRegistration } from "@earendil-works/pi-durable";
 import { loadTsfPrompts } from "./tsf.js";
+import { askJev, type JevAnswer, type JevQuestion } from "./jev.js";
 import { readState } from "../../dpi-sdk/src/app-state.js";
 import type { WireAssistantMessage, WireMessage, WireToolResultMessage } from "../../dpi-sdk/src/api.js";
 import { clip, messageText } from "../../dpi-sdk/src/transcript.js";
@@ -244,6 +245,35 @@ async function tsfPrompt(p: Phase, role: string, vars: Record<string, string>) {
 const WRITE_TOOLS = [createReadTool(), createBashTool(), createWriteTool(), createEditTool()];
 const READ_TOOLS = [createReadTool(), createBashTool()];
 
+/** The Jev questions for the `jev-quality` reviewer gate: one bounded `choice` on the plan + facts + model review. */
+const REVIEW_QUESTIONS: Record<string, JevQuestion> = {
+  verdict: {
+    type: "choice",
+    instructions: "Should this app ship as built?",
+    criteria: {
+      approve: "The work matches the plan and its checks passed; ship it",
+      revise: "Small, specific fixes are needed; loop back to the builder",
+      reject: "Broken, unsafe, or not what the plan asked for; block the run",
+    },
+  },
+};
+
+/**
+ * The `jev-quality` verdict. Jev is the judge when it answered; otherwise the model reviewer's
+ * verdict stands (fail-open, the same rule as the bash gate). Pure so it is unit-testable.
+ */
+export function reviewVerdict(answers: Record<string, JevAnswer> | undefined, modelVerdict: string): { ok: boolean; reason: string } {
+  const answer = answers?.verdict;
+  if (!answer || answer.type !== "choice") {
+    const v = modelVerdict.trim().toLowerCase();
+    if (v.startsWith("approve")) return { ok: true, reason: `Approved (model; Jev unavailable)` };
+    return { ok: false, reason: clip(modelVerdict, 200) || "Reviewer returned no verdict" };
+  }
+  const verdict = answer as Extract<JevAnswer, { type: "choice" }>;
+  const reason = `jev-quality ${verdict.choice} (${verdict.confidence.toFixed(2)})`;
+  return verdict.choice === "approve" ? { ok: true, reason } : { ok: false, reason: `${reason}: ${clip(modelVerdict, 160)}` };
+}
+
 
 const HANDLERS: Record<string, Record<string, Handler>> = {
   "workspace-snapshot": {
@@ -417,10 +447,19 @@ const HANDLERS: Record<string, Record<string, Handler>> = {
       return { done: "typecheck and build passed" };
     },
     review: async (p) => {
-      const pr = await tsfPrompt(p, "reviewer", { plan: String(p.data.plan ?? ""), facts: String(p.data.facts ?? "") });
-      const verdict = (await p.agent(pr.user, { tools: READ_TOOLS, instructions: pr.system })).trim().toLowerCase();
-      if (verdict.startsWith("approve")) return { done: "Approved" };
-      throw Error(verdict.slice(0, 200) || "Reviewer returned no verdict");
+      const plan = String(p.data.plan ?? "");
+      const facts = String(p.data.facts ?? "");
+      const pr = await tsfPrompt(p, "reviewer", { plan, facts });
+      const modelVerdict = (await p.agent(pr.user, { tools: READ_TOOLS, instructions: pr.system })).trim();
+      let jev: Record<string, JevAnswer> | undefined;
+      try {
+        jev = await askJev({ plan, facts, review: modelVerdict }, REVIEW_QUESTIONS);
+      } catch {
+        jev = undefined; // Jev unreachable: fail open to the model reviewer's verdict.
+      }
+      const verdict = reviewVerdict(jev, modelVerdict);
+      if (verdict.ok) return { done: verdict.reason };
+      throw Error(verdict.reason);
     },
     document: async (p) => {
       const name = String(p.data.name);

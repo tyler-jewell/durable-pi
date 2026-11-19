@@ -36,6 +36,15 @@ run without them.
 | `app_verify` | full Modern Web Guidance browser verification (`scripts/app-verify.mts`) | — | no |
 | `delete_app` | archive the source to R2, delete the Workers deployment, remove `apps/<app>` + pipeline state | — | no |
 | `revive_app` | restore an archived app (≤30 days) and redeploy it to Cloudflare | — | no |
+| `list_models` | read each host's discovered LLMs / decision models | — | yes |
+| `list_capabilities` | the settings surface: every capability's state, inputs and options | — | yes |
+| `discover_host` | probe a host and record its models | — | yes |
+| `inspect_host` | SSH a host: model-server config, launchd auto-start, and a live test | — | yes |
+| `recommend_capability` | turn a discovered model into a named capability (recommended) | — | no |
+| `enable_capability` | supply inputs/options and turn a capability on | — | yes |
+| `disable_capability` | toggle a capability off (kept in settings) | — | yes |
+| `run_llm` | chat completion on an enabled LLM capability | — | no |
+| `run_decision` | System One (Jev/Clef) decision on an enabled decision capability | — | no |
 
 Every tool returns `structuredContent` with a full ordered `events` array
 (`{ step, status, ts, detail, durMs }`) so the caller sees the progress of each step, and
@@ -76,7 +85,10 @@ Project config at `.pi/mcp.json` (committed):
 `DPI_MCP_TOKEN` comes from the environment. Start pi in the project (project trust) and the
 tools appear as `mcp__dpi_mcp__create_app`, `mcp__dpi_mcp__check`, `mcp__dpi_mcp__test`,
 `mcp__dpi_mcp__push`, `mcp__dpi_mcp__app_add_route`, `mcp__dpi_mcp__app_add_page`,
-`mcp__dpi_mcp__app_verify`, `mcp__dpi_mcp__delete_app`, and `mcp__dpi_mcp__revive_app`.
+`mcp__dpi_mcp__app_verify`, `mcp__dpi_mcp__delete_app`, `mcp__dpi_mcp__revive_app`,
+`mcp__dpi_mcp__list_models`, `mcp__dpi_mcp__list_capabilities`, `mcp__dpi_mcp__discover_host`,
+`mcp__dpi_mcp__inspect_host`, `mcp__dpi_mcp__recommend_capability`, `mcp__dpi_mcp__enable_capability`,
+`mcp__dpi_mcp__disable_capability`, `mcp__dpi_mcp__run_llm`, and `mcp__dpi_mcp__run_decision`.
 
 For a bare-bones container, run the server where the container can reach it (for an Apple
 container that is the host bridge, `192.168.64.1:4789`), set `DPI_MCP_TOKEN` in the
@@ -95,3 +107,38 @@ container, and use that URL in the container's `.pi/mcp.json`.
   expires the archive; `revive_app` restores + redeploys within that window and rejects
   older archives. Needs `R2_ARCHIVE_TOKEN` (Workers R2 Storage Read+Write) and
   `R2_ARCHIVE_BUCKET` in the server environment.
+
+## Capabilities (per-host LLMs and decision models)
+
+A second registry, `~/.dpi-mcp/capabilities.json` (override with `DPI_MCP_CAPABILITIES`),
+holds two layers and is driven entirely by MCP tools:
+
+- **`hosts`** — raw discovery: `discover_host` probes a host's `/health` and `/v1/models`
+  and records each model as a chat `llm` or a `decision` model (llama.cpp 1.0.0 reports each
+  model's `output_modalities`).
+- **`capabilities`** — what agents have made usable: a named thing with a
+  `recommended → enabled/disabled` state, the `inputs` it needs and the `options` it exposes.
+
+An agent loops the whole lifecycle with tools alone:
+
+```
+discover_host (host, address, ssh?)   # probe → hosts[]
+inspect_host (host)                   # ssh config + launchd auto-start + a live test
+list_models                           # see what was found
+recommend_capability (host, model, purpose, inputs?, options?)   # → recommended
+enable_capability (id, inputs?, options?, autoEnable?)           # turn it on now, or…
+list_capabilities                 # …it stays here in settings for a later toggle
+run_llm / run_decision            # use an enabled capability
+```
+
+`enable_capability` reports any missing required inputs and sets `autoEnable` (auto-turn-on:
+re-enable after startup/discovery without re-asking, default true); `disable_capability` keeps
+the capability (and its inputs/options) for re-enable. Secret input values are masked in every
+listing. `resolveCapability(registry, purpose)` is the in-process binding the factory uses — a
+`decision` capability with `purpose: ["jev-quality"]` is what the `create-app` reviewer
+gate should consume when enabled (see `docs/local-factory.md`).
+
+The **core eval** `tests/zero-agent.eval.ts` proves the loop offline: a zero-code-base agent,
+given only a host address + ssh target, identifies the decision models, the server, its config
+and launchd auto-start, tests it live, proposes the capability, and — only if the config is
+right — gets approved and validated with auto-turn-on set.

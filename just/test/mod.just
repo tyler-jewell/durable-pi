@@ -16,6 +16,7 @@ unit:
     cd apps/dpi-backend && npm run check && npm test
     cd apps/dpi-playground && npm run build && npm run lint && npm test
     cd apps/dpi-tui && npm run check && npm test
+    cd apps/dpi-mcp && npm run typecheck && npm test
     cd apps/pi-object && npm run typecheck && npm test
     cd apps/base-app && npm run check && npm run build
 

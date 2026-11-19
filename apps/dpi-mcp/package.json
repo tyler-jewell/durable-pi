@@ -7,7 +7,8 @@
   "scripts": {
     "start": "tsx src/server.ts",
     "dev": "tsx watch src/server.ts",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test": "tsx --test tests/*.test.ts tests/*.eval.ts"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.24.0"
