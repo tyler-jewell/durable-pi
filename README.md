@@ -312,7 +312,7 @@ durable-pi/
 │   └── lsp/                           # install.sh, gate and session tests, reload test, agent evals; README.md has the design
 ├── templates/pwa-vue/                 # the app scaffold behind `just app add`
 ├── scripts/                           # app scaffolding and verification, declared-copies check, ssh bootstrap helpers
-├── docs/                              # web-apps.md, and the dated Cloudflare alignment audit
+├── docs/                              # web-apps.md, the Cloudflare alignment audit, and the IndyDevDan deep-dive decision guide
 ├── infra/                             # Terraform for the SSH mesh (tunnel, DNS, Access)
 ├── images/                            # README diagrams, numbered in reading order
 ├── .githooks/                         # pre-commit: the language-server gate (installed by `just setup`)
