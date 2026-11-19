@@ -34,6 +34,8 @@ run without them.
 | `app_add_route` | add a page + route to an existing app | — | no |
 | `app_add_page` | add a page component (no route) | — | no |
 | `app_verify` | full Modern Web Guidance browser verification (`scripts/app-verify.mts`) | — | no |
+| `delete_app` | archive the source to R2, delete the Workers deployment, remove `apps/<app>` + pipeline state | — | no |
+| `revive_app` | restore an archived app (≤30 days) and redeploy it to Cloudflare | — | no |
 
 Every tool returns `structuredContent` with a full ordered `events` array
 (`{ step, status, ts, detail, durMs }`) so the caller sees the progress of each step, and
@@ -73,8 +75,8 @@ Project config at `.pi/mcp.json` (committed):
 
 `DPI_MCP_TOKEN` comes from the environment. Start pi in the project (project trust) and the
 tools appear as `mcp__dpi_mcp__create_app`, `mcp__dpi_mcp__check`, `mcp__dpi_mcp__test`,
-`mcp__dpi_mcp__push`, `mcp__dpi_mcp__app_add_route`, `mcp__dpi_mcp__app_add_page`, and
-`mcp__dpi_mcp__app_verify`.
+`mcp__dpi_mcp__push`, `mcp__dpi_mcp__app_add_route`, `mcp__dpi_mcp__app_add_page`,
+`mcp__dpi_mcp__app_verify`, `mcp__dpi_mcp__delete_app`, and `mcp__dpi_mcp__revive_app`.
 
 For a bare-bones container, run the server where the container can reach it (for an Apple
 container that is the host bridge, `192.168.64.1:4789`), set `DPI_MCP_TOKEN` in the
@@ -87,3 +89,9 @@ container, and use that URL in the container's `.pi/mcp.json`.
   `docs/cloudflare-credentials.md`.
 - Progress notifications and the `events` array are the event stream: `create_app` and
   `push` emit a `started`/`done` event per step.
+- **Archive**: `delete_app` tars the source and uploads it to the R2 bucket
+  `durable-pi-app-archive` (object `archive/<app>.tar.gz` + a `archive/<app>.json` marker),
+  then deletes the worker and the local app. R2's `delete-after-30-days` lifecycle rule
+  expires the archive; `revive_app` restores + redeploys within that window and rejects
+  older archives. Needs `R2_ARCHIVE_TOKEN` (Workers R2 Storage Read+Write) and
+  `R2_ARCHIVE_BUCKET` in the server environment.

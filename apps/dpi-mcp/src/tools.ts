@@ -1,14 +1,15 @@
 // Tool definitions and handlers for dpi-mcp. The check → test → push cadence is deduped
 // by a per-app fingerprint: each check runs at most once per code state.
 import { spawn } from "node:child_process";
-import { existsSync, writeFileSync } from "node:fs";
+import { existsSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { ServerNotification, ServerRequest } from "@modelcontextprotocol/sdk/types.js";
 import type { RequestHandlerExtra } from "@modelcontextprotocol/sdk/shared/protocol.js";
 import { z } from "zod";
-import { appDir, clip, fingerprint, loadState, saveState, run, ROOT } from "./util.js";
+import { appDir, clip, fingerprint, loadState, saveState, run, ROOT, STATE_DIR } from "./util.js";
 import type { PipelineState } from "./util.js";
+import { archiveApp, restoreApp } from "./archive.js";
 
 // ------------------------------------------------------------------ progress / events
 
@@ -189,19 +190,24 @@ function ensureDeployConfig(app: string): void {
   }
 }
 
-/** True when the Workers script exists. Fails open (true) on network/credential errors. */
+/** True when the Workers script exists. A 404 means definitively gone; transient statuses
+ * (429/5xx/network) retry and then fail open, so a flaky verification never blocks the cache. */
 async function workerExists(app: string): Promise<boolean> {
   const token = process.env.CLOUDFLARE_API_TOKEN ?? "";
   const account = process.env.CLOUDFLARE_ACCOUNT_ID ?? "";
   if (!token || !account) return true;
-  try {
-    const r = await fetch(`https://api.cloudflare.com/client/v4/accounts/${account}/workers/scripts/${app}`, {
-      headers: { Authorization: `Bearer ${token}` },
-    });
-    return r.status === 200;
-  } catch {
-    return true;
+  const url = `https://api.cloudflare.com/client/v4/accounts/${account}/workers/scripts/${app}`;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      const r = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
+      if (r.status === 200) return true;
+      if (r.status === 404) return false;
+    } catch {
+      /* retry below */
+    }
+    if (attempt < 2) await new Promise((res) => setTimeout(res, 200 * (attempt + 1)));
   }
+  return true;
 }
 
 /** Push: build (or reuse the test's fresh build) + deploy to Cloudflare Workers (static assets). Event stream of the build. */
@@ -231,7 +237,11 @@ async function doPush(app: string, state: PipelineState | undefined, fp: string,
   await p.emit("push", "started", "wrangler deploy");
   const token = process.env.CLOUDFLARE_API_TOKEN ?? "";
   const account = process.env.CLOUDFLARE_ACCOUNT_ID ?? "";
-  const dep = run("wrangler", ["deploy"], { cwd: dir, timeoutMs: 180_000, env: { CLOUDFLARE_API_TOKEN: token, CLOUDFLARE_ACCOUNT_ID: account } });
+  let dep = run("wrangler", ["deploy"], { cwd: dir, timeoutMs: 180_000, env: { CLOUDFLARE_API_TOKEN: token, CLOUDFLARE_ACCOUNT_ID: account } });
+  if (dep.code !== 0) {
+    await p.emit("push", "info", "deploy failed; retrying once", 1);
+    dep = run("wrangler", ["deploy"], { cwd: dir, timeoutMs: 180_000, env: { CLOUDFLARE_API_TOKEN: token, CLOUDFLARE_ACCOUNT_ID: account } });
+  }
   const url = dep.stdout.match(/https:\/\/[a-z0-9.-]+\.workers\.dev/)?.[0];
   const ok = dep.code === 0 && Boolean(url);
   await p.emit("push", ok ? "done" : "error", ok ? url : clip(dep.stderr || dep.stdout, 1500), 1);
@@ -426,6 +436,75 @@ export function registerTools(server: McpServer): void {
       const r = run("npx", ["--yes", "tsx", "scripts/app-verify.mts", args.app], { cwd: ROOT, timeoutMs: 600_000 });
       const last = r.stdout.split("\n").map((l) => l.trim()).filter(Boolean).at(-1) ?? "";
       return { content: [{ type: "text", text: `${last}\n${clip(r.stdout, 3000)}` }], isError: r.code !== 0 };
+    },
+  );
+
+  server.registerTool(
+    "delete_app",
+    {
+      title: "Delete an app and archive it in Cloudflare R2",
+      description:
+        "Delete an app completely: archive its source to Cloudflare R2 (30-day retention), delete the Cloudflare Workers deployment, remove apps/<app> and its pipeline state. Nothing is left locally or in Workers. Revive within 30 days with revive_app.",
+      inputSchema: { app: z.string().min(1).max(40).describe("app name under apps/") },
+      annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: false },
+    },
+    async (args, extra) => {
+      const p = new Progress(server, extra, 4);
+      const dir = appDir(args.app);
+      if (!existsSync(join(dir, "package.json"))) throw new Error(`no app at apps/${args.app}`);
+
+      await p.emit("archive", "started", "tar source + upload to R2");
+      await archiveApp(args.app);
+      await p.emit("archive", "done", "source archived to R2", 1);
+
+      await p.emit("worker", "started", "delete Workers deployment");
+      const token = process.env.CLOUDFLARE_API_TOKEN ?? "";
+      const account = process.env.CLOUDFLARE_ACCOUNT_ID ?? "";
+      const del = await fetch(`https://api.cloudflare.com/client/v4/accounts/${account}/workers/scripts/${args.app}`, {
+        method: "DELETE",
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!del.ok && del.status !== 404) {
+        await p.emit("worker", "error", `delete worker failed: ${del.status}`, 0);
+        throw new Error(`delete worker failed: ${del.status}`);
+      }
+      await p.emit("worker", "done", "Workers deployment deleted", 1);
+
+      await p.emit("dir", "started", "remove apps/<app> + pipeline state");
+      rmSync(dir, { recursive: true, force: true });
+      rmSync(join(STATE_DIR, `${args.app}.json`), { force: true });
+      await p.emit("dir", "done", "local app and pipeline state removed", 1);
+
+      return {
+        content: [{ type: "text", text: JSON.stringify({ app: args.app, deleted: true, archive: `archive/${args.app}.tar.gz`, reviveWith: "revive_app", retentionDays: 30, events: p.log }, null, 2) }],
+        structuredContent: { app: args.app, deleted: true, retentionDays: 30, events: p.log },
+      };
+    },
+  );
+
+  server.registerTool(
+    "revive_app",
+    {
+      title: "Revive a deleted app from its R2 archive",
+      description:
+        "Restore an archived app (from delete_app) within 30 days: extract the source, reinstall, and redeploy it to Cloudflare Workers. Rejects archives older than 30 days.",
+      inputSchema: { app: z.string().min(1).max(40).describe("app name to revive") },
+      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
+    },
+    async (args, extra) => {
+      const p = new Progress(server, extra, 8);
+      const dir = appDir(args.app);
+      if (existsSync(join(dir, "package.json"))) throw new Error(`apps/${args.app} already exists; revive only targets deleted apps`);
+
+      await p.emit("restore", "started", "download archive from R2 + extract");
+      await restoreApp(args.app);
+      await p.emit("restore", "done", `restored apps/${args.app}`, 1);
+
+      const cadence = await runCadence(args.app, true, p);
+      return {
+        content: [{ type: "text", text: JSON.stringify({ app: args.app, revived: true, ok: cadence.ok, url: cadence.push?.url, events: p.log }, null, 2) }],
+        structuredContent: { app: args.app, revived: true, ok: cadence.ok, url: cadence.push?.url, events: p.log },
+      };
     },
   );
 }

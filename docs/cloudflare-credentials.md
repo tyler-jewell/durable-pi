@@ -105,6 +105,18 @@ Give it to the device as `CLOUDFLARE_API_TOKEN`. Note: `wrangler delete` with th
 scope errors on a KV-namespace check even though the worker is deleted (issue #24);
 add `Workers KV Storage Read` (8b47d278…) to make delete exit cleanly.
 
+### R2 app archive token (for dpi-mcp delete_app / revive_app)
+`delete_app` archives app sources to the R2 bucket `durable-pi-app-archive` (a
+`delete-after-30-days` lifecycle rule expires them). The server needs an R2 token:
+
+```sh
+cf user tokens create --name durable-pi-r2-archive --expires-on <ISO> --policies @policies.json
+# permission groups: Workers R2 Storage Read (b4992e11…) + Write (bf7481a1…) — account scope
+```
+Stored in Keychain as `durable-pi-r2-archive` / `r2-archive-token`; the server reads it
+from `R2_ARCHIVE_TOKEN` (and `R2_ARCHIVE_BUCKET`, default `durable-pi-app-archive`).
+A freshly created token can 401 for a few seconds while it propagates — retry once.
+
 ## Admin work: config-driven or API, not the dashboard
 
 Before concluding any Cloudflare action is "dashboard-only", check `cf cli search`,
