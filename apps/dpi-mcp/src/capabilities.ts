@@ -73,6 +73,8 @@ export interface Capability {
   model: string; // model id to call
   /** How to call the endpoint: a local OpenAI-compatible server, or the CF Workers AI API. */
   transport: CapabilityTransport;
+  /** Canonical model family, shared by the local + cloud twins so costs can be paired. */
+  family: string;
   description: string;
   /** Roles this capability can fill, e.g. ["jev-quality"] or ["builder", "planner"]. */
   purpose: string[];
@@ -151,6 +153,7 @@ export function recommendCapability(reg: CapabilityRegistry, args: RecommendArgs
     address: host.address,
     model: args.model,
     transport: args.transport ?? "openai-compat",
+    family: args.name ?? args.model,
     description: args.description,
     purpose: args.purpose,
     state: "recommended",
@@ -238,12 +241,18 @@ export async function probeHost(host: string, address: string, timeoutMs = 5000)
 }
 
 /** Chat completion against an LLM endpoint. Returns the assistant's text. */
+export interface LlmResult {
+  text: string;
+  inToks: number;
+  outToks: number;
+}
+
 export async function runLlm(
   address: string,
   model: string,
   messages: { role: "system" | "user" | "assistant"; content: string }[],
   opts: { transport?: CapabilityTransport; apiKey?: string; timeoutMs?: number } = {},
-): Promise<string> {
+): Promise<LlmResult> {
   const timeoutMs = opts.timeoutMs ?? 120_000;
   const base = address.replace(/\/+$/, "");
   if (opts.transport === "cloudflare-workers-ai") {
@@ -256,9 +265,9 @@ export async function runLlm(
       redirect: "error",
     });
     if (!res.ok) throw new Error(`LLM ${model}: HTTP ${res.status}`);
-    const data = (await res.json()) as { choices?: { message?: { content?: string } }[]; errors?: { message?: string }[] };
+    const data = (await res.json()) as { choices?: { message?: { content?: string } }[]; usage?: { prompt_tokens?: number; completion_tokens?: number }; errors?: { message?: string }[] };
     if (data.errors?.length) throw new Error(`LLM ${model}: ${data.errors[0].message}`);
-    return data.choices?.[0]?.message?.content ?? "";
+    return { text: data.choices?.[0]?.message?.content ?? "", inToks: data.usage?.prompt_tokens ?? 0, outToks: data.usage?.completion_tokens ?? 0 };
   }
   const res = await fetch(`${base}/v1/chat/completions`, {
     method: "POST",
@@ -268,9 +277,9 @@ export async function runLlm(
     redirect: "error",
   });
   if (!res.ok) throw new Error(`LLM ${model}: HTTP ${res.status}`);
-  const data = (await res.json()) as { choices?: { message?: { content?: string } }[]; error?: { message?: string } };
+  const data = (await res.json()) as { choices?: { message?: { content?: string } }[]; usage?: { prompt_tokens?: number; completion_tokens?: number }; error?: { message?: string } };
   if (data.error) throw new Error(`LLM ${model}: ${data.error.message}`);
-  return data.choices?.[0]?.message?.content ?? "";
+  return { text: data.choices?.[0]?.message?.content ?? "", inToks: data.usage?.prompt_tokens ?? 0, outToks: data.usage?.completion_tokens ?? 0 };
 }
 
 /** A System One answer record, the same shape `dpi-backend/src/jev.ts` consumes. */
@@ -282,13 +291,19 @@ export type DecisionQuestion =
   | { type: "choice"; instructions: string; criteria: Record<string, string> };
 
 /** Run a System One decision (Jev/Clef style) against a decision endpoint. */
+export interface DecisionResult {
+  answers: Record<string, DecisionAnswer>;
+  inToks: number;
+  outToks: number;
+}
+
 export async function runDecision(
   address: string,
   model: string,
   state: unknown,
   questions: Record<string, DecisionQuestion>,
   opts: { transport?: CapabilityTransport; apiKey?: string; timeoutMs?: number } = {},
-): Promise<Record<string, DecisionAnswer>> {
+): Promise<DecisionResult> {
   const timeoutMs = opts.timeoutMs ?? 60_000;
   const base = address.replace(/\/+$/, "");
   if (opts.transport === "cloudflare-workers-ai") {
@@ -300,12 +315,11 @@ export async function runDecision(
       redirect: "error",
     });
     if (!res.ok) throw new Error(`Decision ${model}: HTTP ${res.status}`);
-    const data = (await res.json()) as { result?: { answers?: Record<string, DecisionAnswer>; state?: string; result?: { answers?: Record<string, DecisionAnswer> } }; errors?: { message?: string }[] };
+    const data = (await res.json()) as { result?: { answers?: Record<string, DecisionAnswer>; state?: string; result?: { answers?: Record<string, DecisionAnswer> }; usage?: { input_tokens?: number; output_tokens?: number } }; errors?: { message?: string }[] };
     if (data.errors?.length) throw new Error(`Decision ${model}: ${data.errors[0].message}`);
     // Cloudflare-hosted models (clef) return answers under result; third-party System One wraps once more.
-    if (data.result?.answers) return data.result.answers;
-    if (data.result?.result?.answers) return data.result.result.answers;
-    return {};
+    const answers = data.result?.answers ?? data.result?.result?.answers ?? {};
+    return { answers, inToks: data.result?.usage?.input_tokens ?? 0, outToks: data.result?.usage?.output_tokens ?? 0 };
   }
   const res = await fetch(`${base}/v1/systemone`, {
     method: "POST",
@@ -315,7 +329,7 @@ export async function runDecision(
     redirect: "error",
   });
   if (!res.ok) throw new Error(`Decision ${model}: HTTP ${res.status}`);
-  const data = (await res.json()) as { answers?: Record<string, DecisionAnswer>; error?: { message?: string } };
+  const data = (await res.json()) as { answers?: Record<string, DecisionAnswer>; usage?: { input_tokens?: number; output_tokens?: number }; error?: { message?: string } };
   if (data.error) throw new Error(`Decision ${model}: ${data.error.message}`);
-  return data.answers ?? {};
+  return { answers: data.answers ?? {}, inToks: data.usage?.input_tokens ?? 0, outToks: data.usage?.output_tokens ?? 0 };
 }

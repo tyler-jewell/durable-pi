@@ -71,6 +71,7 @@ test("capability lifecycle: recommended is not bound, enabled is", () => {
     address: "http://127.0.0.1:8080",
     model: "Clef-Flash-Q4_K_M",
     transport: "openai-compat" as const,
+    family: "clef-flash",
     description: "local judge",
     purpose: ["jev-quality"],
     state: "recommended" as const,
@@ -106,10 +107,10 @@ test("runLlm and runDecision call a host's OpenAI and System One endpoints", asy
   try {
     const port = (server.address() as { port: number }).port;
     const base = `http://127.0.0.1:${port}`;
-    assert.equal(await runLlm(base, "Coder-7B", [{ role: "user", content: "hi" }]), "hi");
-    const answers = await runDecision(base, "Clef-Flash-Q4_K_M", { x: 1 }, { verdict: { type: "choice", instructions: "ship?", criteria: { approve: "yes" } } });
-    assert.equal(answers.verdict.type, "choice");
-    if (answers.verdict.type === "choice") assert.equal(answers.verdict.choice, "approve");
+    assert.equal((await runLlm(base, "Coder-7B", [{ role: "user", content: "hi" }])).text, "hi");
+    const r = await runDecision(base, "Clef-Flash-Q4_K_M", { x: 1 }, { verdict: { type: "choice", instructions: "ship?", criteria: { approve: "yes" } } });
+    assert.equal(r.answers.verdict.type, "choice");
+    if (r.answers.verdict.type === "choice") assert.equal(r.answers.verdict.choice, "approve");
   } finally {
     server.close();
   }

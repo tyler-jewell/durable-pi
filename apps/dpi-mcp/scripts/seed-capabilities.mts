@@ -27,6 +27,9 @@ host.models = host.models.length
 
 const now = Date.now();
 const caps: Capability[] = [];
+const familyOf = (id: string, cloud = false) =>
+  cloud ? id.split("/").pop()!.replace(/-fp8$/i, "") : id.replace(/-(UD-)?(Q|IQ|MXFP|BF16|F16|F32|FP8)[0-9_]*(_K(_[MSXL])?|_0)?$/i, "").replace(/-Instruct-\d+$/i, "").toLowerCase();
+
 for (const m of host.models) {
   caps.push({
     id: `${hostName}-${m.kind}-${m.id}`.toLowerCase().replace(/[^a-z0-9]+/g, "-"),
@@ -36,6 +39,7 @@ for (const m of host.models) {
     address: base,
     model: m.id,
     transport: "openai-compat",
+    family: familyOf(m.id),
     description: `${m.kind === "decision" ? "Decision (System One)" : "Chat"} model served by ${hostName}'s llama-server`,
     purpose: m.kind === "decision" ? ["jev-quality"] : ["agent"],
     state: "enabled",
@@ -61,6 +65,7 @@ for (const [kind, ids] of [["llm", cloudLlm], ["decision", cloudDecision]] as co
       address: cfEndpoint,
       model: id,
       transport: "cloudflare-workers-ai",
+      family: familyOf(id, true),
       description: "Cloudflare Workers AI model (cloud fallback)",
       purpose: kind === "decision" ? ["jev-quality"] : ["agent"],
       state: "recommended",

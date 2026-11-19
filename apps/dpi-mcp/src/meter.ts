@@ -1,17 +1,20 @@
-// Local cost meter: robust kWh accounting for the Studio's power draw across model calls.
-// A call records its interval; the load seconds are the UNION of intervals (concurrent calls
-// share the load, so they never double-count). Cost = kWh x the global electricity price.
-// Settings (price/kWh, idle watts, load watts) are editable via the update_settings tool.
+// Local + cloud cost accounting. A call records its interval, tokens and (for cloud) the
+// billable token cost. Two reports close the loop:
+//   computeUsage  — local kWh (idle power + load power over the UNION of call intervals),
+//                   cost at the configured electricity price.
+//   compareCosts  — per model: the cloud $/min run rate (billable cost ÷ minutes), and the
+//                   local opportunity cost — the wait-time difference vs cloud, valued at the
+//                   cloud rate, credited when local is faster. Local electricity + opportunity
+//                   is the "effective local cost" to weigh against the cloud bill.
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 
+export type Transport = "openai-compat" | "cloudflare-workers-ai";
+
 export interface CostSettings {
-  /** Global electricity price, USD per kWh (editable in settings). */
   electricityUsdPerKwh: number;
-  /** System power draw when no model is generating. */
   idleWatts: number;
-  /** System power draw while a model is generating. */
   loadWatts: number;
 }
 
@@ -20,8 +23,12 @@ export const DEFAULT_SETTINGS: CostSettings = { electricityUsdPerKwh: 0.15, idle
 export interface UsageRecord {
   startedAt: number;
   endedAt: number;
-  model: string;
+  model: string; // canonical family name, shared by the local + cloud twin
   kind: "llm" | "decision";
+  transport: Transport;
+  inToks: number;
+  outToks: number;
+  costUsd: number; // billable token cost (cloud only); 0 for local
 }
 
 export interface UsageMeter {
@@ -46,11 +53,27 @@ export function saveMeter(meter: UsageMeter): void {
   writeFileSync(METER, JSON.stringify(meter, null, 2) + "\n");
 }
 
-/** Record one local model call and persist the meter. */
 export function recordUsage(meter: UsageMeter, call: UsageRecord): UsageMeter {
   meter.calls.push(call);
   saveMeter(meter);
   return meter;
+}
+
+/** Workers AI billing facts (USD per million tokens), the same catalog cf ai models list shows. */
+const CLOUD_PRICE: Record<string, { in: number; out: number; cachedIn?: number }> = {
+  "@cf/openai/gpt-oss-20b": { in: 0.2, out: 0.3 },
+  "@cf/mistralai/mistral-small-3.1-24b-instruct": { in: 0.351, out: 0.555 },
+  "@cf/qwen/qwen3.8-27b": { in: 0.45, out: 3.2, cachedIn: 0.05 },
+  "@cf/qwen/qwen3-30b-a3b-fp8": { in: 0.0509, out: 0.335 },
+  "@cf/deepseek-ai/deepseek-v4.1-flash-1017": { in: 0.3, out: 1.2, cachedIn: 0.006 },
+  "@cf/cloudflare/clef-flash": { in: 0.038, out: 0 },
+};
+
+/** Billable cost of one cloud call, from tokens x the catalog price. */
+export function cloudCostUsd(model: string, inToks: number, outToks: number): number {
+  const p = CLOUD_PRICE[model];
+  if (!p) return 0;
+  return (inToks * p.in + outToks * p.out) / 1_000_000;
 }
 
 export interface UsageSummary {
@@ -62,12 +85,9 @@ export interface UsageSummary {
   settings: CostSettings;
 }
 
-/**
- * Total kWh + cost from the power model. Load seconds are the union of call intervals, so
- * overlapping calls (parallel models) share the load instead of double-counting it.
- */
 export function computeUsage(meter: UsageMeter, now = Date.now()): UsageSummary {
-  const intervals = [...meter.calls].sort((a, b) => a.startedAt - b.startedAt).map((c) => [c.startedAt, c.endedAt] as const);
+  const local = meter.calls.filter((c) => c.transport === "openai-compat");
+  const intervals = [...local].sort((a, b) => a.startedAt - b.startedAt).map((c) => [c.startedAt, c.endedAt] as const);
   let loadSeconds = 0;
   let curStart = 0;
   let curEnd = 0;
@@ -83,5 +103,48 @@ export function computeUsage(meter: UsageMeter, now = Date.now()): UsageSummary 
   loadSeconds += (curEnd - curStart) / 1000;
   const elapsed = Math.max(0, now - meter.startedAt) / 1000;
   const kwh = (meter.settings.idleWatts * elapsed + (meter.settings.loadWatts - meter.settings.idleWatts) * loadSeconds) / 3_600_000;
-  return { loadSeconds, elapsedSeconds: elapsed, kwh, costUsd: kwh * meter.settings.electricityUsdPerKwh, callCount: meter.calls.length, settings: meter.settings };
+  return { loadSeconds, elapsedSeconds: elapsed, kwh, costUsd: kwh * meter.settings.electricityUsdPerKwh, callCount: local.length, settings: meter.settings };
+}
+
+export interface ModelCostComparison {
+  model: string;
+  kind: "llm" | "decision";
+  cloud: { calls: number; costUsd: number; avgMs: number; rateUsdPerMin: number };
+  local: { calls: number; electricityUsd: number; avgMs: number; opportunityUsd: number };
+  /** electricity + opportunity: what a local run really cost, to weigh against the cloud bill. */
+  effectiveLocalUsd: number;
+  verdict: "local" | "cloud" | "tie";
+}
+
+/** Compare local vs cloud per model family: cloud $/min rate, local wait-time opportunity cost. */
+export function compareCosts(meter: UsageMeter): ModelCostComparison[] {
+  const byModel = new Map<string, UsageRecord[]>();
+  for (const c of meter.calls) {
+    const list = byModel.get(c.model) ?? [];
+    list.push(c);
+    byModel.set(c.model, list);
+  }
+  const out: ModelCostComparison[] = [];
+  for (const [model, calls] of byModel) {
+    const cloud = calls.filter((c) => c.transport === "cloudflare-workers-ai");
+    const local = calls.filter((c) => c.transport === "openai-compat");
+    if (!cloud.length || !local.length) continue; // only compare when both twins ran
+    const cloudCost = cloud.reduce((a, c) => a + c.costUsd, 0);
+    const cloudMs = cloud.reduce((a, c) => a + (c.endedAt - c.startedAt), 0) / cloud.length;
+    const localMs = local.reduce((a, c) => a + (c.endedAt - c.startedAt), 0) / local.length;
+    const rateUsdPerMin = cloudMs > 0 ? (cloudCost / (cloudMs / 60_000)) : 0;
+    const marginalW = meter.settings.loadWatts - meter.settings.idleWatts;
+    const electricityUsd = local.reduce((a, c) => a + (marginalW * (c.endedAt - c.startedAt)) / 3_600_000_000, 0) * meter.settings.electricityUsdPerKwh;
+    const opportunityUsd = (rateUsdPerMin * (localMs - cloudMs)) / 60_000; // negative when local is faster (credit)
+    const effectiveLocalUsd = electricityUsd + opportunityUsd;
+    out.push({
+      model,
+      kind: calls[0].kind,
+      cloud: { calls: cloud.length, costUsd: cloudCost, avgMs: cloudMs, rateUsdPerMin },
+      local: { calls: local.length, electricityUsd, avgMs: localMs, opportunityUsd },
+      effectiveLocalUsd,
+      verdict: effectiveLocalUsd < cloudCost ? "local" : effectiveLocalUsd > cloudCost ? "cloud" : "tie",
+    });
+  }
+  return out.sort((a, b) => a.model.localeCompare(b.model));
 }

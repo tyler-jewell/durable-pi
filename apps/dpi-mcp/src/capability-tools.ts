@@ -14,7 +14,7 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import { inspectHost } from "./host-inspect.js";
-import { computeUsage, loadMeter, recordUsage, saveMeter, type UsageRecord } from "./meter.js";
+import { cloudCostUsd, compareCosts, computeUsage, loadMeter, recordUsage, saveMeter, type UsageRecord } from "./meter.js";
 import {
   disableCapability,
   enableCapability,
@@ -79,14 +79,14 @@ function apiKeyOf(cap: Capability): string | undefined {
   return cap.inputs.find((i) => i.secret)?.value;
 }
 
-/** Record a local call in the meter and mark the capability as most-recently-used. */
-function account(reg: CapabilityRegistry, cap: Capability, kind: "llm" | "decision", ms: number) {
-  if (cap.transport === "openai-compat") {
-    const meter = loadMeter();
-    const now = Date.now();
-    const record: UsageRecord = { startedAt: now - ms, endedAt: now, model: cap.model, kind };
-    recordUsage(meter, record);
-  }
+/** Record a call in the meter (tokens + cloud billable cost + local interval) and mark the
+ * capability as most-recently-used so automatic resolution reuses the hot model. */
+function account(reg: CapabilityRegistry, cap: Capability, kind: "llm" | "decision", ms: number, inToks: number, outToks: number) {
+  const meter = loadMeter();
+  const now = Date.now();
+  const costUsd = cap.transport === "cloudflare-workers-ai" ? cloudCostUsd(cap.model, inToks, outToks) : 0;
+  const record: UsageRecord = { startedAt: now - ms, endedAt: now, model: cap.family ?? cap.name, kind, transport: cap.transport, inToks, outToks, costUsd };
+  recordUsage(meter, record);
   cap.updatedAt = Date.now();
   saveRegistry(reg);
 }
@@ -310,11 +310,11 @@ export function registerCapabilityTools(server: McpServer): void {
       const reg = load();
       const cap = resolveForKind(reg, "llm", { capability: args.capability, prefer: args.prefer ?? "local" });
       const t0 = Date.now();
-      const text = await runLlm(cap.address, cap.model, args.messages, { transport: cap.transport, apiKey: apiKeyOf(cap) });
-      account(reg, cap, "llm", Date.now() - t0);
+      const r = await runLlm(cap.address, cap.model, args.messages, { transport: cap.transport, apiKey: apiKeyOf(cap) });
+      account(reg, cap, "llm", Date.now() - t0, r.inToks, r.outToks);
       return {
-        content: [{ type: "text", text }],
-        structuredContent: { capability: cap.id, model: cap.model, text },
+        content: [{ type: "text", text: r.text }],
+        structuredContent: { capability: cap.id, model: cap.model, text: r.text, inToks: r.inToks, outToks: r.outToks },
       };
     },
   );
@@ -337,11 +337,11 @@ export function registerCapabilityTools(server: McpServer): void {
       const reg = load();
       const cap = resolveForKind(reg, "decision", { capability: args.capability, prefer: args.prefer ?? "local" });
       const t0 = Date.now();
-      const answers = await runDecision(cap.address, cap.model, args.state, args.questions as Record<string, DecisionQuestion>, { transport: cap.transport, apiKey: apiKeyOf(cap) });
-      account(reg, cap, "decision", Date.now() - t0);
+      const r = await runDecision(cap.address, cap.model, args.state, args.questions as Record<string, DecisionQuestion>, { transport: cap.transport, apiKey: apiKeyOf(cap) });
+      account(reg, cap, "decision", Date.now() - t0, r.inToks, r.outToks);
       return {
-        content: [{ type: "text", text: JSON.stringify({ capability: cap.id, model: cap.model, answers }, null, 2) }],
-        structuredContent: { capability: cap.id, model: cap.model, answers },
+        content: [{ type: "text", text: JSON.stringify({ capability: cap.id, model: cap.model, answers: r.answers, inToks: r.inToks, outToks: r.outToks }, null, 2) }],
+        structuredContent: { capability: cap.id, model: cap.model, answers: r.answers, inToks: r.inToks, outToks: r.outToks },
       };
     },
   );
@@ -361,6 +361,24 @@ export function registerCapabilityTools(server: McpServer): void {
       return {
         content: [{ type: "text", text: JSON.stringify(summary, null, 2) }],
         structuredContent: summary as unknown as Record<string, unknown>,
+      };
+    },
+  );
+
+  server.registerTool(
+    "compare_costs",
+    {
+      title: "Compare local vs cloud cost per model (billable vs opportunity)",
+      description:
+        "For every model family that has run on both backends: the cloud billable cost and $/min run rate, and the local electricity + wait-time opportunity cost (the time difference vs cloud, valued at the cloud rate — credited when local is faster). This is how local and cloud are weighed apples-to-apples.",
+      inputSchema: {},
+      annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+    },
+    async () => {
+      const comparison = compareCosts(loadMeter());
+      return {
+        content: [{ type: "text", text: JSON.stringify(comparison, null, 2) }],
+        structuredContent: { models: comparison },
       };
     },
   );
