@@ -43,7 +43,7 @@ defaults:
   #   deepseek:               env_keys: [DEEPSEEK_API_KEY]
   #   cloudflare-ai-gateway:  env_keys: [CLOUDFLARE_API_KEY, CLOUDFLARE_ACCOUNT_ID, CLOUDFLARE_GATEWAY_ID]
   # env:                           # plain settings, written as-is
-  #   DPI_PROVIDER: faux           # the free deterministic model, for tests (openrouter | deepseek | cloudflare-ai-gateway | faux)
+  #   DPI_PROVIDER: faux           # the free deterministic model, for tests (openrouter | deepseek | cloudflare-ai-gateway | local | faux)
 
 devices:
   local:
@@ -58,6 +58,24 @@ devices:
   #   service: launchd               # systemd on Linux (needs passwordless sudo)
   #   url: http://my-mac-mini.local:4780
   #   start_dirs: ["~/dpi-work"]
+
+  # The Mac Studio: the local-only software factory. DPI_PROVIDER=local routes every coding
+  # agent to the Studio's llama-server (/v1); JEV_BASE_URL routes the factory's jev-quality
+  # gate to the local Clef decision model (/v1/systemone). Download the coding GGUF into
+  # /Users/Shared/studio-models/gguf so the local provider's model id matches a llama-server
+  # alias; see docs/local-factory.md.
+  # studio:
+  #   name: Studio
+  #   kind: ssh
+  #   ssh: studio@studio.tail9d6cad.ts.net   # or `studio` when ~/.ssh/config has Host studio
+  #   service: launchd
+  #   url: http://studio.tail9d6cad.ts.net:4780
+  #   start_dirs: ["~/dpi-work"]
+  #   env:
+  #     DPI_PROVIDER: local
+  #     LLAMA_BASE_URL: http://127.0.0.1:8080/v1
+  #     JEV_BASE_URL: http://127.0.0.1:62199/v1/systemone
+  #     JEV_MODEL: Clef-Flash-Q4_K_M
 
   # An Apple Container (the macOS `container` CLI): the backend runs in a Linux arm64
   # container published on this Mac's loopback. `just net up apple-box` creates, deploys

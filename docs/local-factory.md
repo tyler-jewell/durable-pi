@@ -63,6 +63,12 @@ Studio (127.0.0.1)
    identifies the decision models/server/config/launchd auto-start, tests it live, proposes,
    and — only if the config is right — is approved and validated with auto-turn-on set. 5 unit
    tests + 1 eval.
+3. **`local` provider** (`dpi-backend/src/providers.ts`): `DPI_PROVIDER=local` routes every
+   coding agent to an ambient OpenAI-compatible endpoint (`LLAMA_BASE_URL`, default
+   `http://127.0.0.1:8080/v1`) with two text-model aliases (Qwen3 Coder 8B, DeepSeek Coder V2
+   Lite). No credentials. The browser trigger is wired too: the Main agent's prompt maps
+   `create app: <description>` → `run_durable_job create-app`. `dpi-network.example.yaml`
+   shows the Studio device stanza that turns this on.
 
 ## Auto-discover / auto-implement
 
@@ -81,18 +87,17 @@ The registry is **data derived from the host's own API**, not hand-written confi
 ## Remaining work (ordered)
 
 1. **Add a coding LLM to the Studio.** Download a text+tool-calling GGUF (a ~8–14B Q4 model
-   fits the 32 GB box beside Clef-Flash; e.g. a Qwen/DeepSeek Coder instruct build) into
+   fits the 32 GB box beside Clef-Flash; the `local` provider lists Qwen3 Coder 8B and
+   DeepSeek Coder V2 Lite as the expected aliases) into
    `/Users/Shared/studio-models/gguf`, and let the 8080 router serve it. This is a deliberate
    choice (model, size, quantization); pick it explicitly before a multi-GB download.
-2. **`local` provider in `dpi-backend`.** Same shape as the existing providers:
-   `createProvider({ id: "local", baseUrl: env("LLAMA_BASE_URL") ?? "http://127.0.0.1:8080/v1",
-   auth: ambient, api: openAICompletionsApi(), models: <the downloaded text models> })`,
-   then `DPI_PROVIDER=local` on the Studio. This is a ~40-line addition to `providers.ts`.
+2. ~~`local` provider~~ — done (step 3 above).
 3. **Mesh reachability.** `llama-server` binds `127.0.0.1` today, so other hosts (MacBook,
    iPhone) cannot reach the Studio's models. For the factory itself this is fine (it runs on
    the Studio); to let *all* agents use the MCP `run_llm`/`run_decision` tools from anywhere,
-   run `tailscale serve --bg 8080` on the Studio (HTTPS + tailnet ACL) or restart the server
-   with `--host 0.0.0.0`. Then re-run `discover_host` with the mesh URL.
+   run `tailscale serve --bg --https 8443 8080` on the Studio (HTTPS + tailnet ACL) or restart
+   the server with `--host 0.0.0.0`. Then re-run `discover_host` with the mesh URL. Note the
+   Studio's existing serve already proxies `/` → 127.0.0.1:8464, so use a separate https port.
 4. **PWA on iOS.** Serve the hub UI (`apps/dpi-playground`) from the Studio over HTTPS
    (Tailscale Serve gives that), and add a web app manifest + service worker + Apple touch
    icon so "Add to Home Screen" installs it as a standalone app. The hub already serves the
