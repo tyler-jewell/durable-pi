@@ -290,8 +290,8 @@ Each device owns its agents and their data in SQLite. The hub only stores how to
 durable-pi/
 ├── dpi-network.example.yaml           # template for dpi-network.yaml (gitignored): devices, kinds, start_dirs
 ├── .env.example                       # provider keys (OpenRouter, DeepSeek or Cloudflare AI Gateway) + ELEVENLABS_API_KEY for the demo voice
-├── justfile                           # install, check, and one module per work area
-├── just/                              # net, backend, hub, tui, test, proactive (one mod.just each)
+├── justfile                           # install, setup, check, copies, and one module per work area
+├── just/                              # net, app, lsp, backend, hub, tui, test, proactive (one mod.just each)
 ├── apps/
 │   ├── dpi-sdk/                       # contract, client, reducers, transcript; node/ = registry, YAML config, ops drivers
 │   │   └── scripts/net.ts             # the ops CLI behind just net
@@ -307,16 +307,26 @@ durable-pi/
 │   ├── base-app/                      # shared Vue shell: left = views + approvals, right = system stream
 │   ├── pi-object/                     # pi agent in a Durable Object: telemetry, cost objects, budget guard
 │   └── proactive-dpi-demo/            # the hook: Jev log watcher, incident agents, durable deploy approval
+├── pi/                                # language servers for agents and the git gate
+│   ├── extensions/lsp/                # core.mjs (servers), index.ts (pi extension), gate.mjs (pre-commit gate)
+│   └── lsp/                           # install.sh, gate and session tests, reload test, agent evals; README.md has the design
+├── templates/pwa-vue/                 # the app scaffold behind `just app add`
+├── scripts/                           # app scaffolding and verification, declared-copies check, ssh bootstrap helpers
+├── docs/                              # web-apps.md, and the dated Cloudflare alignment audit
+├── infra/                             # Terraform for the SSH mesh (tunnel, DNS, Access)
 ├── images/                            # README diagrams, numbered in reading order
-└── .claude/                           # commands/ (prime, install), skills/ (installed skills, see skills-lock.json)
+├── .githooks/                         # pre-commit: the language-server gate (installed by `just setup`)
+├── .agents/                           # installed skills (skills-lock.json), loaded by pi
+└── .claude/                           # commands/ (prime, install), skills/ (symlinks into .agents/skills)
 ```
 
 ### Commands
 
 ```bash
-just                       # command groups: net, backend, hub, tui, test, proactive
-just install               # npm install for the four network apps
-just check                 # type checks and unit tests, every app (free, no network)
+just                       # command groups: net, app, lsp, backend, hub, tui, test, proactive
+just install               # npm install for every app
+just setup                 # once per clone: the pre-commit gate and the pinned language servers
+just check                 # declared copies match, then type checks and unit tests, every app (free, no network)
 just backend run           # this machine's device server on :4780
 just hub start             # web UI on :4781
 just tui attach <target>   # <device>[:<session>[:<agent>]]
@@ -326,6 +336,10 @@ just test device <id>      # UI, agent-feature and browser-close suites on one d
 just test e2e <id>         # TUI + web + restart mid-tool + fork on one device (real model)
 just test smoke faux       # TUI end to end in tmux against a faux backend
 just proactive take        # reset and run the proactive demo
+just lsp plan              # the file extensions in this repo and the language servers they call for
+just lsp check             # every file clean by the servers' standard (what the pre-commit gate enforces)
+just lsp test              # gate, extension session and /reload tests (free, no model)
+just lsp eval              # does DeepSeek Flash reach for the servers on its own? 3 cases in Apple containers
 ```
 
 ### What has been checked
@@ -338,6 +352,10 @@ just proactive take        # reset and run the proactive demo
 | `just test e2e` on an ssh Mac: TUI and web on one run, steer from the web, both clients closed, device restarted mid-tool, fork, TUI reattach | **pass**: 9 tool results, 1 interrupted by the restart, each prompt admitted once |
 | `just test smoke faux`: TUI streaming, steer, Esc, fork, exit and reattach by name | **pass** |
 | Proactive demo, end to end: incident opens at T+6 s, the deploy waits at T+27 to 30 s, the approved revision passes 3 guest checkouts with 0 errors | **pass** |
+| `just lsp check`: every file clean by the language servers' standard, one server per language | **pass**: 264 files |
+| `just lsp test` (no model): 17 gate cases with real servers, 19 session checks (plan, one process per language, every strategy, edit then re-check, bypass blocked, nothing left behind), and `/reload` with its control | **pass** |
+| `just lsp eval`: DeepSeek Flash, 3 coding tasks that never mention language servers, each in an Apple container; `CONTROL=none` (no extension) fails all 3 | **3 of 3** in 10 to 14 s each |
+| `apps/pi-object` `npm run e2e:offline`: scripted agent in an Apple container pushes to a local Artifacts simulator, then full teardown | **pass** in 14 s |
 | Every device: `/healthz` 200 and `/v1/*` without a token 401 (`just net probe <id>`) | **pass** |
 | `apple-container` and `macos-vm` devices: `just net up` from nothing, `/healthz` + tokenless 401, an agent round-trip, and the restart/down/up lifecycle | **pass** |
 
@@ -454,6 +472,7 @@ To add a skill: `npx skills add <owner/repo> -s <skill> -a pi -a claude-code`, c
 
 ## Known issues
 
+- **`just test device apple-box`: `agent-features` fails at its first assertion.** `device-ui` passes (11 of 11), but the free gateway model on that device leaves the goal unchanged when told to use `update_state` (3 of 3 runs, 19 Nov 2026). The suite needs a model that follows tool instructions; the 18 of 18 above was on a cloud VM. The apps involved were not changed.
 - **Artifacts needs the Workers Paid plan** (not Free); 1 GB/repo for repos created after 2026-09-29.
 - **`cf` is a 1.0 release candidate** (`1.0.0-rc.1`, announced 17 Nov 2026). The config format, Build Output, and the create/develop/deploy commands are declared stable. A few generated API commands may still be renamed (`cf workers secrets bulk` is now `bulk-edit`). See [`docs/latest-changes-2026-11-18.md`](docs/latest-changes-2026-11-18.md).
 - **Artifacts billing starts 19 Nov 2026** for operations and storage (per the pricing page). Repository-count billing comes later, with notice. Our 2026-10-01 changelog entry said 14 Oct; the pricing page supersedes it.

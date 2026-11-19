@@ -57,8 +57,12 @@ install:
     cd scripts && npm install --no-audit --no-fund
     cd pi/lsp/check && npm install --no-audit --no-fund
 
+# Declared copies of shared files must match their sources (scripts/check-copies.mts)
+copies:
+    node scripts/check-copies.mts
+
 # Type checks and unit tests, every app
-check: test::unit
+check: copies test::unit
 
 # Vue type check on another TypeScript, in a clean container (default 7.0.2; TS_VERSION=5.9.3 is the control)
 ts-probe *args:
