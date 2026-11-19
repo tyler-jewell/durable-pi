@@ -47,7 +47,7 @@ install:
     cd apps/dpi-playground && npm install --no-audit --no-fund
     cd apps/dpi-tui && npm install --no-audit --no-fund
     cd apps/base-app && npm install --no-audit --no-fund
-    cd apps/pi-object && npm install --no-audit --no-fund
+    cd apps/pi-object && npm install --no-audit --no-fund && npm run types
     cd apps/pi-object/e2e && npm install --no-audit --no-fund
     cd apps/proactive-dpi-demo && npm install --no-audit --no-fund
     cd scripts && npm install --no-audit --no-fund

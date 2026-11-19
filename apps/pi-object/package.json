@@ -5,6 +5,7 @@
   "scripts": {
     "dev": "cf dev --port 8788",
     "build": "cf build",
+    "types": "cf workers types",
     "deploy": "cf deploy",
     "typecheck": "tsc --noEmit",
     "dev:verify": "bash scripts/verify-do.sh",
