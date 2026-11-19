@@ -89,7 +89,7 @@ export async function inspectHost(
       const answers: Record<string, DecisionAnswer> = await runDecision(base, model.id, {}, question);
       sample = JSON.stringify(answers.probe);
     } else {
-      sample = await runLlm(base, model.id, [{ role: "user", content: "Reply with OK." }], 30_000);
+      sample = await runLlm(base, model.id, [{ role: "user", content: "Reply with OK." }], { timeoutMs: 30_000 });
     }
   } catch (e) {
     sample = `error: ${String((e as Error).message).slice(0, 120)}`;

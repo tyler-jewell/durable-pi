@@ -25,6 +25,7 @@ import {
   runLlm,
   saveRegistry,
   type Capability,
+  type CapabilityKind,
   type CapabilityRegistry,
   type DecisionQuestion,
 } from "./capabilities.js";
@@ -50,11 +51,28 @@ function publicCapability(c: Capability): Capability {
   };
 }
 
-function resolveTarget(reg: CapabilityRegistry, capability: string): Capability {
-  const cap = findCapability(reg, capability);
-  if (!cap) throw new Error(`capability "${capability}" is not in the registry; list_capabilities shows what is available`);
-  if (cap.state !== "enabled") throw new Error(`capability "${capability}" is ${cap.state}; enable it first (enable_capability)`);
+/** Resolve the capability to call: an explicit id (the agent decides), else the default — an
+ * enabled capability of the requested kind, local hosts first, cloud as fallback (or the
+ * reverse when `prefer` is "cloud"). */
+function resolveForKind(reg: CapabilityRegistry, kind: CapabilityKind, capability?: string, prefer: "local" | "cloud" = "local"): Capability {
+  if (capability) {
+    const cap = findCapability(reg, capability);
+    if (!cap) throw new Error(`capability "${capability}" is not in the registry; list_capabilities shows what is available`);
+    if (cap.state !== "enabled") throw new Error(`capability "${capability}" is ${cap.state}; enable it first (enable_capability)`);
+    if (cap.kind !== kind) throw new Error(`capability "${capability}" is ${cap.kind}, not ${kind}`);
+    return cap;
+  }
+  const enabled = reg.capabilities.filter((c) => c.state === "enabled" && c.kind === kind);
+  const local = enabled.filter((c) => c.host !== "cloudflare");
+  const cloud = enabled.filter((c) => c.host === "cloudflare");
+  const cap = (prefer === "cloud" ? cloud : local)[0] ?? (prefer === "cloud" ? local : cloud)[0] ?? enabled[0];
+  if (!cap) throw new Error(`no enabled ${kind} capability; list_capabilities + enable_capability first`);
   return cap;
+}
+
+/** The secret (api key) input of a capability, if any. */
+function apiKeyOf(cap: Capability): string | undefined {
+  return cap.inputs.find((i) => i.secret)?.value;
 }
 
 export function registerCapabilityTools(server: McpServer): void {
@@ -266,15 +284,15 @@ export function registerCapabilityTools(server: McpServer): void {
       title: "Run a chat completion on an enabled LLM capability",
       description: "Send messages to an enabled chat LLM capability (see list_capabilities) and return the assistant's reply.",
       inputSchema: {
-        capability: z.string().min(1).max(120).describe("capability id from list_capabilities"),
+        capability: z.string().min(1).max(120).optional().describe("capability id from list_capabilities (omit to use the default: local first, cloud fallback)"),
+        prefer: z.enum(["local", "cloud"]).optional().describe("when no capability id is given, prefer a local or cloud capability (default local)"),
         messages: z.array(z.object({ role: z.enum(["system", "user", "assistant"]), content: z.string() })).min(1).describe("conversation messages"),
       },
       annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: false, openWorldHint: false },
     },
     async (args) => {
-      const cap = resolveTarget(load(), args.capability);
-      if (cap.kind !== "llm") throw new Error(`capability "${args.capability}" is ${cap.kind}, not llm`);
-      const text = await runLlm(cap.address, cap.model, args.messages);
+      const cap = resolveForKind(load(), "llm", args.capability, args.prefer ?? "local");
+      const text = await runLlm(cap.address, cap.model, args.messages, { transport: cap.transport, apiKey: apiKeyOf(cap) });
       return {
         content: [{ type: "text", text }],
         structuredContent: { capability: cap.id, model: cap.model, text },
@@ -289,16 +307,16 @@ export function registerCapabilityTools(server: McpServer): void {
       description:
         "Judge a JSON state with bounded questions on an enabled decision capability (see list_capabilities), returning noul/choice answers. This is the same envelope the factory's jev-quality reviewer gate uses.",
       inputSchema: {
-        capability: z.string().min(1).max(120).describe("capability id from list_capabilities"),
+        capability: z.string().min(1).max(120).optional().describe("capability id from list_capabilities (omit to use the default: local first, cloud fallback)"),
+        prefer: z.enum(["local", "cloud"]).optional().describe("when no capability id is given, prefer a local or cloud capability (default local)"),
         state: z.record(z.string(), z.unknown()).describe("JSON state to judge"),
         questions: z.record(z.string(), z.unknown()).describe("System One questions: { name: { type: 'noul'|'choice', instructions, criteria? } }"),
       },
       annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: false, openWorldHint: false },
     },
     async (args) => {
-      const cap = resolveTarget(load(), args.capability);
-      if (cap.kind !== "decision") throw new Error(`capability "${args.capability}" is ${cap.kind}, not decision`);
-      const answers = await runDecision(cap.address, cap.model, args.state, args.questions as Record<string, DecisionQuestion>);
+      const cap = resolveForKind(load(), "decision", args.capability, args.prefer ?? "local");
+      const answers = await runDecision(cap.address, cap.model, args.state, args.questions as Record<string, DecisionQuestion>, { transport: cap.transport, apiKey: apiKeyOf(cap) });
       return {
         content: [{ type: "text", text: JSON.stringify({ capability: cap.id, model: cap.model, answers }, null, 2) }],
         structuredContent: { capability: cap.id, model: cap.model, answers },

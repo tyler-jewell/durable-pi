@@ -70,6 +70,7 @@ test("capability lifecycle: recommended is not bound, enabled is", () => {
     host: "studio",
     address: "http://127.0.0.1:8080",
     model: "Clef-Flash-Q4_K_M",
+    transport: "openai-compat" as const,
     description: "local judge",
     purpose: ["jev-quality"],
     state: "recommended" as const,

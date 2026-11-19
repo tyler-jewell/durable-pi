@@ -62,6 +62,8 @@ export interface CapabilityOption {
   choices?: string[]; // for enum
 }
 
+export type CapabilityTransport = "openai-compat" | "cloudflare-workers-ai";
+
 export interface Capability {
   id: string; // stable slug, e.g. studio-decision-clef-flash
   name: string; // display name
@@ -69,6 +71,8 @@ export interface Capability {
   host: string; // discovery source; "" for a manual capability
   address: string; // callable HTTP base (host.address or a manual URL)
   model: string; // model id to call
+  /** How to call the endpoint: a local OpenAI-compatible server, or the CF Workers AI API. */
+  transport: CapabilityTransport;
   description: string;
   /** Roles this capability can fill, e.g. ["jev-quality"] or ["builder", "planner"]. */
   purpose: string[];
@@ -125,6 +129,7 @@ export interface RecommendArgs {
   name?: string;
   description: string;
   purpose: string[];
+  transport?: CapabilityTransport;
   inputs?: { name: string; description?: string; required?: boolean; secret?: boolean; default?: string }[];
   options?: { name: string; description?: string; type: "string" | "number" | "boolean" | "enum"; default?: unknown; choices?: string[] }[];
 }
@@ -145,6 +150,7 @@ export function recommendCapability(reg: CapabilityRegistry, args: RecommendArgs
     host: host.host,
     address: host.address,
     model: args.model,
+    transport: args.transport ?? "openai-compat",
     description: args.description,
     purpose: args.purpose,
     state: "recommended",
@@ -232,8 +238,28 @@ export async function probeHost(host: string, address: string, timeoutMs = 5000)
 }
 
 /** Chat completion against an LLM endpoint. Returns the assistant's text. */
-export async function runLlm(address: string, model: string, messages: { role: "system" | "user" | "assistant"; content: string }[], timeoutMs = 120_000): Promise<string> {
-  const res = await fetch(`${address.replace(/\/+$/, "")}/v1/chat/completions`, {
+export async function runLlm(
+  address: string,
+  model: string,
+  messages: { role: "system" | "user" | "assistant"; content: string }[],
+  opts: { transport?: CapabilityTransport; apiKey?: string; timeoutMs?: number } = {},
+): Promise<string> {
+  const timeoutMs = opts.timeoutMs ?? 120_000;
+  const base = address.replace(/\/+$/, "");
+  if (opts.transport === "cloudflare-workers-ai") {
+    const res = await fetch(`${base}/ai/run`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...(opts.apiKey ? { Authorization: `Bearer ${opts.apiKey}` } : {}) },
+      body: JSON.stringify({ model, messages, max_tokens: 2048 }),
+      signal: AbortSignal.timeout(timeoutMs),
+      redirect: "error",
+    });
+    if (!res.ok) throw new Error(`LLM ${model}: HTTP ${res.status}`);
+    const data = (await res.json()) as { result?: { response?: string }; errors?: { message?: string }[] };
+    if (data.errors?.length) throw new Error(`LLM ${model}: ${data.errors[0].message}`);
+    return data.result?.response ?? "";
+  }
+  const res = await fetch(`${base}/v1/chat/completions`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ model, messages, temperature: 0, max_tokens: 2048 }),
@@ -260,9 +286,24 @@ export async function runDecision(
   model: string,
   state: unknown,
   questions: Record<string, DecisionQuestion>,
-  timeoutMs = 60_000,
+  opts: { transport?: CapabilityTransport; apiKey?: string; timeoutMs?: number } = {},
 ): Promise<Record<string, DecisionAnswer>> {
-  const res = await fetch(`${address.replace(/\/+$/, "")}/v1/systemone`, {
+  const timeoutMs = opts.timeoutMs ?? 60_000;
+  const base = address.replace(/\/+$/, "");
+  if (opts.transport === "cloudflare-workers-ai") {
+    const res = await fetch(`${base}/ai/run`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...(opts.apiKey ? { Authorization: `Bearer ${opts.apiKey}` } : {}) },
+      body: JSON.stringify({ model, input: { state, questions } }),
+      signal: AbortSignal.timeout(timeoutMs),
+      redirect: "error",
+    });
+    if (!res.ok) throw new Error(`Decision ${model}: HTTP ${res.status}`);
+    const data = (await res.json()) as { result?: { answers?: Record<string, DecisionAnswer> }; errors?: { message?: string }[] };
+    if (data.errors?.length) throw new Error(`Decision ${model}: ${data.errors[0].message}`);
+    return data.result?.answers ?? {};
+  }
+  const res = await fetch(`${base}/v1/systemone`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ model, state, questions }),
