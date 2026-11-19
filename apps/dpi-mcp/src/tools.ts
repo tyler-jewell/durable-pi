@@ -141,7 +141,7 @@ async function doTest(app: string, state: PipelineState | undefined, fp: string,
     const desktopOverflow = ab(["eval", "document.documentElement.scrollWidth <= window.innerWidth"]);
     ab(["set", "offline", "on"]);
     ab(["eval", "location.reload()"]);
-    await new Promise((r) => setTimeout(r, 2000));
+    await new Promise((r) => setTimeout(r, 1000));
     const offlineH1 = ab(["eval", "document.querySelector('h1')?.textContent ?? ''"]);
     ab(["set", "offline", "off"]);
     const ok = typeof title === "string" && title.length > 0 && typeof h1 === "string" && h1.length > 0 && phoneOverflow === true && desktopOverflow === true && typeof offlineH1 === "string" && offlineH1.length > 0;
@@ -185,20 +185,26 @@ function ensureDeployConfig(app: string): void {
   }
 }
 
-/** Push: build fresh + deploy to Cloudflare Workers (static assets). Event stream of the build. */
-async function doPush(app: string, state: PipelineState | undefined, fp: string, p: Progress) {
+/** Push: build (or reuse the test's fresh build) + deploy to Cloudflare Workers (static assets). Event stream of the build. */
+async function doPush(app: string, state: PipelineState | undefined, fp: string, p: Progress, buildFresh: boolean) {
   const dir = appDir(app);
   if (state?.fingerprint === fp && state.push?.ok) {
     await p.emit("push", "cached", `already deployed at ${state.push.url}`, 0);
     return state.push;
   }
-  await p.emit("push", "started", "build (vite)");
-  const build = run("npm", ["run", "-s", "build"], { cwd: dir, timeoutMs: 90_000 });
-  if (build.code !== 0) {
-    await p.emit("push", "error", clip(build.stderr || build.stdout, 1500), 0);
-    return { ok: false, ts: Date.now(), durMs: build.durMs, detail: clip(build.stderr, 1500) };
+  let buildMs = 0;
+  if (!buildFresh) {
+    await p.emit("push", "started", "build (vite)");
+    const build = run("npm", ["run", "-s", "build"], { cwd: dir, timeoutMs: 90_000 });
+    if (build.code !== 0) {
+      await p.emit("push", "error", clip(build.stderr || build.stdout, 1500), 0);
+      return { ok: false, ts: Date.now(), durMs: build.durMs, detail: clip(build.stderr, 1500) };
+    }
+    buildMs = build.durMs;
+    await p.emit("push", "done", `build ok (${build.durMs}ms)`, 1);
+  } else {
+    await p.emit("push", "info", "reusing build from test", 1);
   }
-  await p.emit("push", "done", `build ok (${build.durMs}ms)`, 1);
   ensureDeployConfig(app);
   await p.emit("push", "started", "wrangler deploy");
   const token = process.env.CLOUDFLARE_API_TOKEN ?? "";
@@ -207,7 +213,7 @@ async function doPush(app: string, state: PipelineState | undefined, fp: string,
   const url = dep.stdout.match(/https:\/\/[a-z0-9.-]+\.workers\.dev/)?.[0];
   const ok = dep.code === 0 && Boolean(url);
   await p.emit("push", ok ? "done" : "error", ok ? url : clip(dep.stderr || dep.stdout, 1500), 1);
-  return { ok, ts: Date.now(), durMs: build.durMs + dep.durMs, url, detail: clip(dep.stderr || dep.stdout, 1500) };
+  return { ok, ts: Date.now(), durMs: buildMs + dep.durMs, url, detail: clip(dep.stderr || dep.stdout, 1500) };
 }
 
 /** Run the full cadence check → test → (push), each step deduped by fingerprint. */
@@ -231,7 +237,7 @@ async function runCadence(app: string, includePush: boolean, p: Progress) {
   }
   let push;
   if (includePush) {
-    push = await doPush(app, state, fp, p);
+    push = await doPush(app, state, fp, p, !(state?.fingerprint === fp && state?.test?.ok));
     next.push = { ...push };
   }
   saveState(app, next);
@@ -342,7 +348,7 @@ export function registerTools(server: McpServer): void {
       if (!test.ok) {
         return { content: [{ type: "text", text: JSON.stringify({ app: args.app, ok: false, test, events: p.log }) }], isError: true };
       }
-      const push = await doPush(args.app, state, fp, p);
+      const push = await doPush(args.app, state, fp, p, !(state?.fingerprint === fp && state?.test?.ok));
       const next: PipelineState = { app: args.app, fingerprint: fp, check, test, push };
       saveState(args.app, next);
       return {
