@@ -421,7 +421,7 @@ async function containerCreate(device: NetDevice, ctx: DriverContext) {
 async function containerDeploy(device: NetDevice, ctx: DriverContext) {
   const code = containerAbs(device.codeDir);
   const tgz = `/tmp/dpi-apps-${device.id}.tgz`;
-  await containerExec(device, `mkdir -p "${code}/apps" "${containerAbs(device.homeDir)}" && chmod 700 "${containerAbs(device.homeDir)}"`);
+  await containerExec(device, `mkdir -p "${code}/apps" "${code}/e2e" "${containerAbs(device.homeDir)}" && chmod 700 "${containerAbs(device.homeDir)}"`);
   ctx.log(`deploy ${device.id}: package apps/dpi-backend + apps/dpi-sdk`);
   await run(
     "tar",
@@ -452,10 +452,11 @@ async function containerProvision(device: NetDevice, ctx: DriverContext) {
 async function containerStart(device: NetDevice, ctx: DriverContext) {
   const code = containerAbs(device.codeDir);
   const log = `${containerAbs(device.homeDir)}/backend.log`;
-  // Stop any previous backend first: the SQLite lock names its pid, and tsx/npm may linger.
+  // Stop any previous backend first; a stale lock is reclaimed by the new process (its pid is the lock's first field).
   await containerExec(
     device,
     `PID=$(cat "${containerAbs(device.homeDir)}/backend/catalog.sqlite.lock" 2>/dev/null || true)
+PID="\${PID%% *}"
 [ -n "$PID" ] && kill "$PID" 2>/dev/null || true
 pkill -f 'src/main.ts' 2>/dev/null || true
 pkill -f 'node_modules/.bin/tsx' 2>/dev/null || true
