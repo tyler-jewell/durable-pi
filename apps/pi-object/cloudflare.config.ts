@@ -19,6 +19,12 @@ export default defineConfig({
 			cpuMs: 30000,
 			subrequests: 500,
 		},
+		// Workers Logs and Traces (workers-best-practices). Logs every request; traces 1% to bound volume.
+		observability: {
+			enabled: true,
+			logs: { enabled: true, headSamplingRate: 1 },
+			traces: { enabled: true, headSamplingRate: 0.01 },
+		},
 		env: {
 			DEEPSEEK_API_KEY: bindings.secret(),
 			DPI_TOKEN: bindings.secret(),

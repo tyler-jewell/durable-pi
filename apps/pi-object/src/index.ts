@@ -471,18 +471,33 @@ function costStream(agent: DurableObjectStub<PiAgent>): Response {
   });
 }
 
+/**
+ * Constant-time comparison of two secrets. Both sides are hashed to a fixed size first, so neither the content nor the
+ * length leaks through timing (workers-best-practices: secret comparison).
+ */
+async function secretsEqual(provided: string, expected: string): Promise<boolean> {
+  const encoder = new TextEncoder();
+  const [a, b] = await Promise.all([
+    crypto.subtle.digest("SHA-256", encoder.encode(provided)),
+    crypto.subtle.digest("SHA-256", encoder.encode(expected)),
+  ]);
+  return crypto.subtle.timingSafeEqual(a, b);
+}
+
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     // Fail closed: every route needs the device token, so a public URL cannot spend the model key.
     if (!env.DPI_TOKEN) return new Response("DPI_TOKEN is not set\n", { status: 503 });
-    if (request.headers.get("authorization") !== `Bearer ${env.DPI_TOKEN}`) {
+    const presented = request.headers.get("authorization") ?? "";
+    if (!(await secretsEqual(presented, `Bearer ${env.DPI_TOKEN}`))) {
       return new Response("unauthorized\n", { status: 401 });
     }
 
     const url = new URL(request.url);
     // One agent per name; the demo uses a single agent. Use ?agent=<name> to address another.
     // cloudflare.config.ts binds this by Worker name, so the generated type is a bare stub. The class is this module's
-    // own export, so the cast is exact.
+    // own export, so the cast is exact. KNOWN DEVIATION (README known issues): a same-Worker class has no typed binding
+    // that works without a cast; ctx.exports is typed as a generic union; see apps/pi-object/README.md.
     const ns = env.PiAgent as unknown as DurableObjectNamespace<PiAgent>;
     const agent = ns.get(ns.idFromName(url.searchParams.get("agent") ?? "demo"));
 

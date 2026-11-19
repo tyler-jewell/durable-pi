@@ -41,8 +41,13 @@ function meterCursor(cursor: CursorLike, report: RowsReport): CursorLike {
   }) as CursorLike;
 }
 
-export function meterStorage<S extends object>(storage: S, report: RowsReport): S {
-  const sql = (storage as unknown as { sql: { exec: (q: string, ...b: unknown[]) => CursorLike } }).sql;
+// The storage's SQL surface, structurally: the real DurableObjectStorage and a test fake both satisfy it.
+interface SqlLike {
+  exec: (query: string, ...bindings: unknown[]) => CursorLike;
+}
+
+export function meterStorage<S extends { sql: SqlLike }>(storage: S, report: RowsReport): S {
+  const sql = storage.sql;
   const meteredSql = new Proxy(sql, {
     get(target, key) {
       if (key === "exec") return (query: string, ...bindings: unknown[]) =>
