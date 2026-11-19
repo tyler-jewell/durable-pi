@@ -1,6 +1,6 @@
 ---
 name: durable-pi-browser
-description: Browser automation rules for this repo. Use before any browser work in this repo: agent-browser, playwright-cli, the browser-box device, or the UI tests. Browsers run headless inside containers; never headed, never over VNC or a forwarded display.
+description: "Browser automation rules for this repo. Use before any browser work in this repo: agent-browser, playwright-cli, the browser-box device, or the UI tests. Browsers run headless inside containers; never headed, never over VNC or a forwarded display."
 ---
 
 # Browser automation in durable-pi
