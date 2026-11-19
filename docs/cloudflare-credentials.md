@@ -93,6 +93,18 @@ create a new account token from the dashboard (My Profile → API Tokens → acc
 tokens) or reuse the R2 derivation above for R2-scoped needs. Store under
 `durable-pi.cloudflare` / `dpi-container`.
 
+### Workers deploy token (for agents that deploy to Cloudflare)
+`dpi-container` has Workers **Read** but not **Write**, so an agent cannot deploy
+with it (see issue #23). For a deploy token, mint a temporary scoped one:
+
+```sh
+cf user tokens create --name durable-pi-e2e-deploy --expires-on <ISO> --policies @policies.json
+# permission groups: Workers Scripts Read (1a71c399…) + Write (e086da7e…), Workers Routes Write (28f4b596…)
+```
+Give it to the device as `CLOUDFLARE_API_TOKEN`. Note: `wrangler delete` with this
+scope errors on a KV-namespace check even though the worker is deleted (issue #24);
+add `Workers KV Storage Read` (8b47d278…) to make delete exit cleanly.
+
 ## Admin work: config-driven or API, not the dashboard
 
 Before concluding any Cloudflare action is "dashboard-only", check `cf cli search`,
