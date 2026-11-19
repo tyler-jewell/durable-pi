@@ -68,7 +68,7 @@ baked into the code rather than loaded):
 | `dpi-mcp` `app_add_route` / `app_add_page` / `app_verify` | Not part of the create→delete→revive→delete lifecycle. |
 | Durable harness (`dpi-backend`, `pi-durable`, hub, `dpi-tui`, `dpi-sdk`) | The run drove the MCP server via its SDK client directly, not through a durable agent/session on a device. |
 | LSP extension / `pi/lsp` gate | `check` uses one-shot `vue-tsc`, not the in-process language server. |
-| `just` recipes (`net`, `hub`, `tui`, `app`, `lsp`, `proactive`) | The server calls `scripts/app.mts` and raw commands; no `just` recipe was needed this run. |
+| `just` recipes (`net`, `hub`, `tui`, `app`, `lsp`) | The server calls `scripts/app.mts` and raw commands; no `just` recipe was needed this run. |
 | `scripts/app-verify.mts` | `app_verify` was not called; the `test` step runs its own lighter browser smoke. |
 
 ## Timing notes

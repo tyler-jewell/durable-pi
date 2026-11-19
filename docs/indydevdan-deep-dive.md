@@ -55,7 +55,7 @@ How to read the decision column:
 | `agent-sandboxes` (94) | E2B sandboxes + Claude Code (obox / ibox / sandbox CLI / MCP). | We already have our own device kinds (`exe-dev`, `apple-container`) and the `agent-sandboxes-exe-dev` skill. E2B specifically adds nothing over exe.dev + Cloudflare. | **skip** (have the pattern) |
 | `agent-sandbox-skill` (394) | One skill for isolated execution environments; full-stack scaffold, browser automation, lifecycle management. | Same as above; the lifecycle-management verbs (mount, exec, teardown, reboot) are already `just net up/status/logs/destroy`. | **skip** (have the pattern) |
 | `inkwell-agent-sandboxes-and-software-factory` (169) | "Factory in a box": three tiers — host orchestrator, in-sandbox orchestrator, ADW agents — all inside a throwaway exe.dev VM. Two scripts mount/teardown; each sandbox gets a **fresh OpenRouter key with a hard spend cap**, revoked at teardown; live app URL + live factory observability URL; **Best of N** (one prompt, five sandboxes, pick the winner). | This is the closest thing to our stated end-state (phase 3: one Durable Object per app, spend caps, deployed via Workers Builds). The "factory in a box" framing, disposable credentials, and Best-of-N are the transfers. Note: our **per-DO budget guard ($5) + account caps** already implement "bounded blast radius" more strictly than his fresh-key approach. | **adopt the framing, adapt Best-of-N** — see items A, B, E |
-| `agentic-drop-zones` (204) | Watchdog watches folders; a dropped file loads a prompt template and fires an agent. | Our **proactive demo** (Jev log watcher → incident brief → durable deploy approval) is a strictly more capable version of "event → proactive agent". | **skip** (proactive demo generalizes it) |
+| `agentic-drop-zones` (204) | Watchdog watches folders; a dropped file loads a prompt template and fires an agent. | We already have the event→agent pattern as durable jobs on `dpi-backend` (a job can start an agent from an event). | **skip** (durable jobs generalize it) |
 
 ### Browser / computer use
 
@@ -143,7 +143,7 @@ concrete change it implies.
 
 ### I. Validation of "remaining work"
 - What proves the system? The LSP suites (`just lsp test`, `just lsp eval`), the device suite (`just test device`), the
-  e2e (`just test e2e`), the proactive demo, and pi-object's e2e (local/remote/offline). Each discussion item above
+  e2e (`just test e2e`) and pi-object's e2e (local/remote/offline). Each discussion item above
   should name the test that proves it before it is "done" — matching his "observable" and "gate-first" principles.
 
 ---

@@ -23,7 +23,7 @@ Open the repository in Claude Code (or Pi, or your favorite agentic coding tool)
 /install
 ```
 
-The command lives in [`.claude/commands/install.md`](.claude/commands/install.md). It checks Node 26, npm, just and zsh, confirms a model-provider key in `.env` without printing it, runs `just install`, writes this machine's device config with `just net up local`, builds the web UI, offers to set up the proactive demo and finishes with `just check`. It never starts a server and never touches a device other than `local`. Run `/prime` afterwards to load the project context into your agent.
+The command lives in [`.claude/commands/install.md`](.claude/commands/install.md). It checks Node 26, npm, just and zsh, confirms a model-provider key in `.env` without printing it, runs `just install`, writes this machine's device config with `just net up local`, builds the web UI and finishes with `just check`. It never starts a server and never touches a device other than `local`. Run `/prime` afterwards to load the project context into your agent.
 
 ### Manual Install
 
@@ -56,7 +56,6 @@ just hub start                                 # web UI on http://localhost:4781
 just tui attach local                          # or attach from the terminal (third terminal)
 ```
 
-The proactive demo has its own dependencies: `just proactive install` (then `npm install-scripts approve esbuild fsevents @google/genai protobufjs` in `apps/proactive-dpi-demo`, as for the apps above), `just proactive build`, then `just proactive take`.
 
 ---
 
@@ -73,47 +72,6 @@ Can't you just `/resume`? Resume restores a chat transcript. It does not know wh
 </p>
 
 Replay-safe tools rerun after a crash. A tool that may have partially run, like a `bash` call cut off by a restart, comes back as an interrupted result, so the agent decides what happens next instead of silently repeating a side effect. Once a run survives its own process, it no longer needs the window that started it. So the agent moves to the device, and every interface becomes a thin client of one HTTP API. **The device owns the run. Clients only watch and steer.**
-
----
-
-## The hook: a proactive durable agent
-
-<p align="center">
-  <img src="images/04_fix_ready_before_you_arrive.svg" alt="Timeline: a bad deploy at T+5 s, the incident agent detects, investigates, finds the root cause, fixes and is ready for review by T+25 s, then waits for your deploy approval at T+30 s" width="800">
-</p>
-
-A durable agent doesn't have to wait for your prompt. [`apps/proactive-dpi-demo`](apps/proactive-dpi-demo) watches a mock production log stream: Google Cloud Run entries for an online store. When guest checkouts start failing, code opens an incident and starts a durable agent on its own. By the time you show up, the agent has sized the impact from the logs, found the commit that broke checkout, written the fix and a regression test, and proved the test fails on `main` and passes on its branch. **Then it waits for you to approve the deploy.** It doesn't wait for you to work. It works for you, then waits.
-
-<p align="center">
-  <img src="images/05_judge_every_row.svg" alt="Jev labels every log row normal, suspicious or incident; code counts three incident verdicts with one fingerprint within 120 seconds; the incident agent works every stage and waits for approval" width="800">
-</p>
-
-[Jev](https://typesafe.ai) judges every log row, and each layer does the one job it is best at:
-
-| Layer | Decides | In the demo |
-|---|---|---|
-| **Code** | thresholds and side effects | 3 incident verdicts with one fingerprint within 120 s open an incident |
-| **Jev** | bounded judgments, one call per row | `normal`, `suspicious` or `incident` plus an impact score, in a few hundred milliseconds for about $0.00003 a row |
-| **Agent** | open-ended work | investigate, fix, prove, deploy: about $0.09 per incident with Sonnet 5.5 |
-
-<p align="center">
-  <img src="images/06_proactive_ui.png" alt="The proactive demo: the incident agent is ready for review and its deploy waits for approval, next to the Jev-judged event stream with incident rows highlighted" width="800">
-</p>
-
-You stay near the loop. The deploy is a durable task owned by the agent's tool call:
-
-- **Decline or interrupt it**, and nothing ships.
-- **Question it.** Ask the agent about the change before you decide.
-- **Approve it.** A new checkout-api revision built from the agent's commit rolls out and is verified on live checkouts.
-- **Restart through it.** Kill the backend while the deploy waits. After the restart, the same task is still waiting and nothing runs twice.
-
-```bash
-just proactive take   # fresh take: prints the URL; the bug deploys at 5 s and the agent asks to deploy at about 30 s
-just proactive bug    # deploy the bad commit now instead
-just proactive stop   # end the demo
-```
-
-The playbook, tools, hooks, Jev questions, thresholds and model are all yours to change. The timeline, flags and recovery checks are in [`apps/proactive-dpi-demo/README.md`](apps/proactive-dpi-demo/README.md).
 
 ---
 
@@ -289,9 +247,9 @@ Each device owns its agents and their data in SQLite. The hub only stores how to
 ```text
 durable-pi/
 ├── dpi-network.example.yaml           # template for dpi-network.yaml (gitignored): devices, kinds, start_dirs
-├── .env.example                       # provider keys (OpenRouter, DeepSeek or Cloudflare AI Gateway) + ELEVENLABS_API_KEY for the demo voice
+├── .env.example                       # provider keys (OpenRouter, DeepSeek or Cloudflare AI Gateway) + optional Jev keys
 ├── justfile                           # install, setup, check, copies, and one module per work area
-├── just/                              # net, app, lsp, backend, hub, tui, test, proactive (one mod.just each)
+├── just/                              # net, app, lsp, backend, hub, tui, test (one mod.just each)
 ├── apps/
 │   ├── dpi-sdk/                       # contract, client, reducers, transcript; node/ = registry, YAML config, ops drivers
 │   │   └── scripts/net.ts             # the ops CLI behind just net
@@ -306,7 +264,6 @@ durable-pi/
 │   ├── dpi-tui/                       # pi-like terminal client on @earendil-works/pi-tui
 │   ├── base-app/                      # shared Vue shell: left = views + approvals, right = system stream
 │   ├── pi-object/                     # pi agent in a Durable Object: telemetry, cost objects, budget guard
-│   └── proactive-dpi-demo/            # the hook: Jev log watcher, incident agents, durable deploy approval
 ├── pi/                                # language servers for agents and the git gate
 │   ├── extensions/lsp/                # core.mjs (servers), index.ts (pi extension), gate.mjs (pre-commit gate)
 │   └── lsp/                           # install.sh, gate and session tests, reload test, agent evals; README.md has the design
@@ -323,7 +280,7 @@ durable-pi/
 ### Commands
 
 ```bash
-just                       # command groups: net, app, lsp, backend, hub, tui, test, proactive
+just                       # command groups: net, app, lsp, backend, hub, tui, test
 just install               # npm install for every app
 just setup                 # once per clone: the pre-commit gate and the pinned language servers
 just check                 # declared copies match, then type checks and unit tests, every app (free, no network)
@@ -335,7 +292,6 @@ just test ui               # web UI suite against two faux devices (free)
 just test device <id>      # UI, agent-feature and browser-close suites on one device (real model)
 just test e2e <id>         # TUI + web + restart mid-tool + fork on one device (real model)
 just test smoke faux       # TUI end to end in tmux against a faux backend
-just proactive take        # reset and run the proactive demo
 just lsp plan              # the file extensions in this repo and the language servers they call for
 just lsp check             # every file clean by the servers' standard (what the pre-commit gate enforces)
 just lsp test              # gate, extension session and /reload tests (free, no model)
@@ -351,7 +307,6 @@ just lsp eval              # does DeepSeek Flash reach for the servers on its ow
 | `just test device apple-box` with a real model (DeepSeek V4 Flash via the gateway): the web UI, steer, dedupe, subagents, jobs, compaction, reset, and quitting the browser mid-tool | **18 of 18** |
 | `just test e2e apple-box` with a real model: TUI and web on one run, steer from the web, both clients closed, device restarted mid-tool, fork, TUI reattach | **pass**: 9 tool results, 1 interrupted by the restart, each prompt admitted once |
 | `just test smoke faux`: TUI streaming, steer, Esc, fork, exit and reattach by name | **pass** |
-| Proactive demo, end to end: incident opens at T+6 s, the deploy waits at T+27 to 30 s, the approved revision passes 3 guest checkouts with 0 errors | **pass** |
 | `just lsp check`: every file clean by the language servers' standard, one server per language | **pass**: 264 files |
 | `just lsp test` (no model): 17 gate cases with real servers, 19 session checks (plan, one process per language, every strategy, edit then re-check, bypass blocked, nothing left behind), and `/reload` with its control | **pass** |
 | `just lsp eval`: DeepSeek Flash, 3 coding tasks that never mention language servers, each in an Apple container; `CONTROL=none` (no extension) fails all 3 | **3 of 3** in 10 to 14 s each |
@@ -373,7 +328,6 @@ just lsp eval              # does DeepSeek Flash reach for the servers on its ow
 - **The hub holds every token.** It binds `127.0.0.1` and checks Host and Origin headers. Binding it to the LAN exposes every device it can reach.
 - **`dpi-backend` binds `127.0.0.1` unless told otherwise.** For `ssh` and `exe-dev` devices, `just net up` writes `DPI_HOST=0.0.0.0` (the default for the YAML's `host`) so clients can reach them, and the token guards everything under `/v1`.
 - **`jev-damage-control` is a guard, not a sandbox.** It sends each command to a third-party API, and when Jev is unreachable the command runs.
-- **The proactive demo has no login** and its agents run `bash`. It binds `127.0.0.1` unless you pass `--host 0.0.0.0`.
 - **macOS devices run as a LaunchAgent** in the logged-in session, so unattended reboots need auto-login.
 - **pi-durable is experimental.** This repo pins 1.5.2.
 
@@ -408,7 +362,7 @@ Every node is proved the same way: **test in a container → review code (remove
 
 ### Phase 1 — Base app shell (shared UI)
 - [x] Web app generator (`just app add app|route|page`, `just app verify`): offline-first PWA, responsive, verified in a browser against Modern Web Guidance. See [docs/web-apps.md](docs/web-apps.md).
-- [x] Extract the proactive demo's shell (top bar · nav rail · two-pane · footer) into a shared `base-app` package (`AppShell`, `NavRail`). Toasts are not built.
+- [x] Shared `base-app` shell (`AppShell`, `NavRail`): top bar · nav rail · two-pane · footer. Toasts are not built.
 - [ ] Left panel = document-driven generated views + approval flow. `StateEditor`, `JobCard` and `Transcript` are ported and decoupled; document-driven generated views and `AgentChat`/`IncidentCard` are not.
 - [ ] Right panel = unified system stream (logs + structured UI events) with a source selector: Cloudflare Logs (deployed) / local logs (local). The stream component and its `local` / `cloudflare` selector exist; the structured UI events are not wired.
 - [ ] Local log source: harness + dev-server logs over the stream. Selector only; no adapter.

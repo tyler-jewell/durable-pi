@@ -25,16 +25,6 @@ const COPIES: Array<{ source: string; copies: string[]; why: string }> = [
     copies: ["apps/base-app/src/left/markdown.ts"],
     why: "the same shell, the same markdown renderer",
   },
-  {
-    source: "apps/dpi-backend/src/model-catalog.ts",
-    copies: ["apps/proactive-dpi-demo/apps/proactive-dpi-be/src/model-catalog.ts"],
-    why: "the proactive demo runs without the device backend, so it carries its own model list",
-  },
-  {
-    source: "apps/dpi-playground/apps/dpi-playground-fe/public/icons/durable-pi.svg",
-    copies: ["apps/proactive-dpi-demo/apps/proactive-dpi-fe/public/icons/durable-pi.svg"],
-    why: "each front end serves its own icon",
-  },
 ];
 
 const read = (path: string) => readFileSync(join(root, path), "utf8");

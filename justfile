@@ -24,8 +24,6 @@ mod tui 'just/tui'
 # Unit, UI, device and e2e suites
 mod test 'just/test'
 
-# Proactive DPI demo: just proactive <command>
-mod proactive 'just/proactive'
 
 # List command groups
 default:
@@ -54,7 +52,6 @@ install:
     cd apps/base-app && npm install --no-audit --no-fund
     cd apps/pi-object && npm install --no-audit --no-fund && npm run types
     cd apps/pi-object/e2e && npm install --no-audit --no-fund
-    cd apps/proactive-dpi-demo && npm install --no-audit --no-fund
     cd scripts && npm install --no-audit --no-fund
     cd pi/lsp/check && npm install --no-audit --no-fund
 
