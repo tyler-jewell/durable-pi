@@ -103,6 +103,31 @@ if [ "$code" = 1 ]; then pass "missing server blocks (fails closed)"; else fail 
 cd "$SRC" || exit 1; rm -rf "$D"
 
 echo
+# 9. REGRESSION: a server that publishes an empty list first and the real list after a delay must block. Taking the first
+#    list reads the file as clean. The fake server (gate-fixtures) does exactly that, so this fails on any gate that
+#    does not wait for the settled list.
+new_repo slow-semantic
+printf 'export function twice(x) {\n  return x * 2;\n}\n' > src/loose.ts
+export DPI_LSP_TS_COMMAND="$SRC/pi/lsp/gate-fixtures/slow-semantic-ls"
+expect "a server that answers twice blocks on the second answer" fail "error" src/loose.ts
+unset DPI_LSP_TS_COMMAND
+cd "$SRC" || exit 1; rm -rf "$D"
+
+# 9b. A strict-only error (implicit any) with the real server must block.
+new_repo strict-only
+printf 'export function twice(x) {\n  return x * 2;\n}\n' > src/loose.ts
+expect "strict-only error (implicit any) blocks" fail "error" src/loose.ts
+cd "$SRC" || exit 1; rm -rf "$D"
+
+# 10. A server that dies must fail the gate, never pass it: a file no server answered is not clean. The server here is a
+#     command that exits at once, so the check fails closed. The file itself is clean.
+new_repo dead-server
+printf 'export const n: number = 1;\n' > src/fine.ts
+export DPI_LSP_TS_COMMAND=/usr/bin/false
+expect "a server that exits blocks (fails closed)" fail "" src/fine.ts
+unset DPI_LSP_TS_COMMAND
+cd "$SRC" || exit 1; rm -rf "$D"
+
 if [ "$FAILS" = 0 ]; then
   echo "GATE_TEST_PASS"
 else

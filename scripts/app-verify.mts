@@ -57,7 +57,8 @@ function ab(args: string[], timeoutMs = 120_000): string {
   const last = lines.filter((l) => !l.startsWith("✓")).at(-1) ?? "";
   return last;
 }
-const evalJs = (expr: string): string => {
+// The page returns JSON: a boolean, a number or a string. The caller narrows it (=== true, template text).
+const evalJs = (expr: string): unknown => {
   const raw = ab(["eval", expr]);
   try {
     return JSON.parse(raw);

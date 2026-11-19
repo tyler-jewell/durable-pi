@@ -11,18 +11,23 @@
 // affected tsconfig is checked, with staged text overlaid for the files being committed.
 
 import { execFileSync } from "node:child_process";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { dirname, join, relative, resolve } from "node:path";
-import { existsSync } from "node:fs";
 import { LANGUAGES, SEVERITY, checkDocuments, startServer, listFiles, killAllLiveServers } from "./core.mjs";
+
+/** @typedef {import("./core.mjs").LangId} LangId */
 
 const started = Date.now();
 const mode = process.argv[2] ?? "staged";
+/** @param {string[]} args */
 const git = (args) => execFileSync("git", args, { encoding: "utf8", maxBuffer: 256 << 20 });
+/** @param {string[]} args */
 const gitBytes = (args) => execFileSync("git", args, { maxBuffer: 256 << 20 });
 const root = git(["rev-parse", "--show-toplevel"]).trim();
+/** @param {string} abs */
 const rel = (abs) => relative(root, abs) || abs;
 // Fixtures that are not standalone code (overlays, composed at runtime). Listed with reasons in gate-exclude.txt.
+/** @type {string[]} */
 const EXCLUDE = (() => {
   try {
     return readFileSync(join(root, "pi/lsp/gate-exclude.txt"), "utf8").split("\n").map((l) => l.replace(/#.*/, "").trim()).filter(Boolean);
@@ -30,11 +35,14 @@ const EXCLUDE = (() => {
     return [];
   }
 })();
+/** @param {string} abs */
 const excluded = (abs) => EXCLUDE.some((prefix) => rel(abs).startsWith(prefix));
 
 /** Files to check, and the text to check for each. */
+/** @type {Map<string, string>} */
 const staged = new Map();
-let files;
+/** @type {string[] | null} */
+let files = null;
 if (mode === "staged") {
   const names = git(["diff", "--cached", "--name-only", "--diff-filter=ACMR", "-z"]).split("\0").filter(Boolean);
   for (const name of names) {
@@ -50,9 +58,10 @@ if (mode === "staged") {
   console.error("usage: gate.mjs [staged|all|files <paths>]");
   process.exit(2);
 }
+/** @param {string} abs */
 const textFor = (abs) => staged.get(abs) ?? readFileSync(abs, "utf8");
 
-/** Nearest directory above a file that holds a tsconfig or jsconfig, or null: a file with no project is a finding. */
+/** Nearest directory above a file that holds a tsconfig or jsconfig, or null: a file with no project is a finding. @param {string} abs @returns {string | null} */
 function projectOf(abs) {
   let dir = dirname(abs);
   while (dir.startsWith(root)) {
@@ -63,15 +72,19 @@ function projectOf(abs) {
   return null;
 }
 
-// Which (language, server root) groups to check, and their files.
+/** A group is one server run: a language, and the server root it starts at. */
+/** @type {Map<string, { lang: LangId, serverRoot: string, files: Set<string> }>} */
 const groups = new Map();
+/** @param {LangId} lang @param {string} serverRoot @param {string} file */
 const addTo = (lang, serverRoot, file) => {
   if (excluded(file)) return;
   const key = `${lang}\0${serverRoot}`;
   if (!groups.has(key)) groups.set(key, { lang, serverRoot, files: new Set() });
-  groups.get(key).files.add(file);
+  groups.get(key)?.files.add(file);
 };
-for (const lang of Object.keys(LANGUAGES)) {
+/** @type {LangId[]} */
+const LANG_IDS = /** @type {LangId[]} */ (Object.keys(LANGUAGES));
+for (const lang of LANG_IDS) {
   if (mode === "all") {
     for (const f of LANGUAGES[lang].files(root)) {
       if (LANGUAGES[lang].perFile) addTo(lang, f, f);
@@ -80,7 +93,7 @@ for (const lang of Object.keys(LANGUAGES)) {
     }
     continue;
   }
-  const mine = files.filter((f) => LANGUAGES[lang].languageId(f) !== undefined);
+  const mine = (files ?? []).filter((f) => LANGUAGES[lang].languageId(f) !== undefined);
   if (mine.length === 0) continue;
   if (lang === "typescript") {
     // Every TypeScript file under each affected project, so breakage in callers is caught.
@@ -94,6 +107,7 @@ for (const lang of Object.keys(LANGUAGES)) {
   }
 }
 
+/** @type {string[]} */
 const failures = [];
 // A TypeScript or JavaScript file that no tsconfig or jsconfig covers has no project: the standard requires one.
 for (const [key, g] of groups) {
@@ -102,6 +116,7 @@ for (const [key, g] of groups) {
     groups.delete(key);
   }
 }
+/** @type {string[]} */
 const notes = [];
 let checkedFiles = 0;
 let errors = 0;
@@ -114,7 +129,9 @@ if (groups.size === 0) {
 }
 
 const JOBS = Math.max(1, Number(process.env.DPI_GATE_JOBS ?? 3));
+/** Runs fn over items, at most n at a time. @template T, R @param {T[]} items @param {number} n @param {(item: T) => Promise<R>} fn @returns {Promise<R[]>} */
 async function pool(items, n, fn) {
+  /** @type {R[]} */
   const out = new Array(items.length);
   let next = 0;
   await Promise.all(Array.from({ length: Math.min(n, items.length) }, async () => {
@@ -125,18 +142,24 @@ async function pool(items, n, fn) {
   }));
   return out;
 }
+
+/**
+ * @typedef {{ label: string, fatal: string } | { label: string, server: import("./core.mjs").Running, outcomes: Map<string, import("./core.mjs").Diagnostic[] | Error>, info: string }} GroupResult
+ */
+/** @type {GroupResult[]} */
 const results = await pool(
   [...groups.values()],
   JOBS,
   async (g) => {
     const label = `${LANGUAGES[g.lang].label}${g.lang === "typescript" ? ` (${rel(g.serverRoot) || "."})` : ""}`;
+    /** @type {Awaited<ReturnType<typeof startServer>>} */
     let server;
     try {
       server = await startServer(g.lang, LANGUAGES[g.lang].perFile ? root : g.serverRoot);
     } catch (e) {
-      return { label, fatal: `server did not start: ${e.message}` };
+      return { label, fatal: `server did not start: ${/** @type {Error} */ (e).message}` };
     }
-    if (server.missing) return { label, fatal: server.missing };
+    if (!("client" in server)) return { label, fatal: server.missing };
     const list = [...g.files];
     const t0 = Date.now();
     const outcomes = await checkDocuments(server, list, textFor, 15_000);
@@ -146,7 +169,7 @@ const results = await pool(
 );
 
 for (const r of results) {
-  if (r.fatal) {
+  if ("fatal" in r) {
     failures.push(`${r.label}: ${r.fatal}`);
     continue;
   }
@@ -176,7 +199,7 @@ for (const r of results) {
       }
     }
   }
-  r.server.client && (await r.server.client.shutdown());
+  await r.server.client.shutdown();
 }
 
 const seconds = ((Date.now() - started) / 1000).toFixed(1);

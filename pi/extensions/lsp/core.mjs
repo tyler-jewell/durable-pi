@@ -13,11 +13,21 @@ import { homedir } from "node:os";
 import { basename, extname, join } from "node:path";
 import { pathToFileURL } from "node:url";
 
+/** @typedef {{ line: number, character: number }} Position */
+/** @typedef {{ start: Position, end: Position }} Range */
+/** @typedef {{ range: Range, severity?: number, code?: string | number, source?: string, message: string }} Diagnostic */
+/** @typedef {"typescript" | "json" | "css" | "html" | "bash" | "python"} LangId */
+/** @typedef {{ missing: string } | { command: string, args: string[], initializationOptions?: object }} ServerSpec */
+/** @typedef {{ label: string, perFile?: boolean, detect: (root: string) => boolean, files: (root: string) => string[], languageId: (p: string) => string | undefined, spec: (root: string) => ServerSpec }} Language */
+/** @typedef {{ client: LspClient, info: string, versions: Map<string, number>, lang: LangId }} Running */
+/** @typedef {(list: Diagnostic[] | undefined, err?: Error) => void} Listener */
+
 /** Our own install of the servers (pi/lsp/install.sh). Preferred over anything on PATH. */
 export const TOOLS_BIN = join(homedir(), ".dpi", "lsp-tools", "node_modules", ".bin");
 const TOOLS_MODULES = join(homedir(), ".dpi", "lsp-tools", "node_modules");
 
 /** Default settings a server asks for, by section. Validation is on everywhere. */
+/** @param {string | undefined} section */
 export function settingsFor(section) {
   if (section === "css" || section === "scss" || section === "less") return { validate: true, lint: {}, completion: {}, hover: {} };
   if (section === "json") return { validate: true, allowComments: true, schemas: [] };
@@ -39,19 +49,27 @@ export function killAllLiveServers() {
 process.once("exit", killAllLiveServers);
 
 export class LspClient {
+  /** @param {string} command @param {string[]} args @param {string} cwd */
   constructor(command, args, cwd) {
     this.command = command;
     this.args = args;
     this.cwd = cwd;
+    /** @type {import("node:child_process").ChildProcessWithoutNullStreams | undefined} */
+    this.child = undefined;
     this.nextId = 1;
+    /** @type {Map<number, { resolve: (v: unknown) => void, reject: (e: Error) => void, timer: ReturnType<typeof setTimeout> }>} */
     this.pending = new Map();
+    /** @type {Map<string, Diagnostic[]>} */
     this.diagnostics = new Map();
-    this.waiters = new Map();
+    /** @type {Map<string, Set<Listener>>} */
+    this.listeners = new Map();
     this.buffer = Buffer.alloc(0);
+    /** @type {string[]} */
     this.stderrTail = [];
     this.exited = false;
   }
 
+  /** @returns {number | undefined} */
   get pid() {
     return this.child?.pid;
   }
@@ -76,6 +94,7 @@ export class LspClient {
     this.child.on("error", (e) => this.failAll(e));
   }
 
+  /** @param {string} method @param {unknown} params @param {number} [timeoutMs] @returns {Promise<any>} */
   request(method, params, timeoutMs = 30_000) {
     const id = this.nextId++;
     return new Promise((resolve, reject) => {
@@ -88,32 +107,83 @@ export class LspClient {
     });
   }
 
+  /** @param {string} method @param {unknown} [params] */
   notify(method, params) {
     this.send({ jsonrpc: "2.0", method, params });
   }
 
   /** Diagnostics the server last published for a document; undefined until it has published once. */
+  /** @param {string} uri @returns {Diagnostic[] | undefined} */
   diagnosticsFor(uri) {
     return this.diagnostics.get(uri);
   }
 
+  /** @param {string} uri */
   clearDiagnostics(uri) {
     this.diagnostics.delete(uri);
   }
 
-  /** Resolves with the next publish for the document. Register before sending the change that causes it. */
-  waitForDiagnostics(uri, timeoutMs) {
+  /** @param {string} uri @param {Listener} fn */
+  listen(uri, fn) {
+    const set = this.listeners.get(uri) ?? new Set();
+    set.add(fn);
+    this.listeners.set(uri, set);
+  }
+
+  /** @param {string} uri @param {Listener} fn */
+  unlisten(uri, fn) {
+    this.listeners.get(uri)?.delete(fn);
+  }
+
+  /**
+   * The settled diagnostics for a document. Servers publish more than once per change: TypeScript sends an early list
+   * (often empty) and the semantic list after it. So the first publish only starts the wait; the answer is the last
+   * list once no publish has arrived for quietMs. If no publish comes within firstMs, a fallback (an edited document
+   * the server did not republish) keeps its last known list; otherwise the wait fails.
+   */
+  /** @param {string} uri @param {{ firstMs: number, quietMs: number, fallback?: boolean }} opts @returns {Promise<Diagnostic[]>} */
+  settledDiagnostics(uri, { firstMs, quietMs, fallback = false }) {
     return new Promise((resolve, reject) => {
-      const timer = setTimeout(() => reject(new Error(`no diagnostics for ${uri} in ${timeoutMs} ms`)), timeoutMs);
-      const list = this.waiters.get(uri) ?? [];
-      list.push((d) => {
-        clearTimeout(timer);
-        resolve(d);
-      });
-      this.waiters.set(uri, list);
+      /** @type {Diagnostic[] | undefined} */
+      let latest;
+      let got = false;
+      /** @type {ReturnType<typeof setTimeout> | undefined} */
+      let quiet;
+      /** @type {ReturnType<typeof setTimeout> | undefined} */
+      let first;
+      /** @type {ReturnType<typeof setTimeout> | undefined} */
+      let hard;
+      /** @param {Error} [err] */
+      const done = (err) => {
+        clearTimeout(first);
+        clearTimeout(quiet);
+        clearTimeout(hard);
+        this.unlisten(uri, onPublish);
+        if (err) return reject(err);
+        const out = latest ?? this.diagnostics.get(uri);
+        // Never answer "clean" without a list from the server.
+        if (out) resolve(out);
+        else reject(new Error(`no diagnostics for ${uri}`));
+      };
+      /** @type {Listener} */
+      const onPublish = (list, err) => {
+        if (err) return done(err);
+        got = true;
+        latest = list;
+        clearTimeout(quiet);
+        quiet = setTimeout(() => done(), quietMs);
+      };
+      first = setTimeout(() => {
+        if (got) return;
+        if (fallback && this.diagnostics.has(uri)) return done();
+        done(new Error(`no diagnostics for ${uri} in ${firstMs} ms`));
+      }, firstMs);
+      hard = setTimeout(() => done(got ? undefined : new Error(`no settled diagnostics for ${uri}`)), firstMs + 4 * quietMs);
+      this.listen(uri, onPublish);
     });
   }
 
+  /** @returns {Promise<void>} */
   async shutdown() {
     if (!this.child || this.exited) return;
     try {
@@ -123,7 +193,7 @@ export class LspClient {
       /* the server may already be gone; the kill below still runs */
     }
     const child = this.child;
-    await new Promise((resolve) => {
+    await new Promise((/** @type {(v?: unknown) => void} */ resolve) => {
       const timer = setTimeout(() => {
         child.kill("SIGKILL");
         resolve();
@@ -139,12 +209,14 @@ export class LspClient {
     });
   }
 
+  /** @param {object} msg */
   send(msg) {
     if (!this.child || this.exited) throw new Error("language server is not running");
     const body = JSON.stringify(msg);
     this.child.stdin.write(`Content-Length: ${Buffer.byteLength(body, "utf8")}\r\n\r\n${body}`);
   }
 
+  /** @param {Buffer} chunk */
   onData(chunk) {
     this.buffer = Buffer.concat([this.buffer, chunk]);
     for (;;) {
@@ -164,10 +236,11 @@ export class LspClient {
     }
   }
 
+  /** @param {any} msg */
   dispatch(msg) {
     if (msg.method !== undefined && msg.id !== undefined) {
       // Servers ask for their settings. Answer with the defaults an editor would send: null turns validation off in some servers.
-      const result = msg.method === "workspace/configuration" ? (msg.params?.items ?? []).map((item) => settingsFor(item.section)) : null;
+      const result = msg.method === "workspace/configuration" ? (/** @type {{ section?: string }[]} */ (msg.params?.items ?? [])).map((item) => settingsFor(item.section)) : null;
       this.send({ jsonrpc: "2.0", id: msg.id, result });
       return;
     }
@@ -182,29 +255,33 @@ export class LspClient {
     }
     if (msg.method === "textDocument/publishDiagnostics") {
       const uri = msg.params.uri;
+      /** @type {Diagnostic[]} */
       const list = msg.params.diagnostics ?? [];
       this.diagnostics.set(uri, list);
-      const waiting = this.waiters.get(uri) ?? [];
-      this.waiters.delete(uri);
-      for (const w of waiting) w(list);
+      for (const fn of [...(this.listeners.get(uri) ?? [])]) fn(list);
     }
   }
 
+  /** @param {Error} err */
   failAll(err) {
     for (const [, p] of this.pending) {
       clearTimeout(p.timer);
       p.reject(err);
     }
     this.pending.clear();
-    for (const [, list] of this.waiters) for (const w of list) w([]);
-    this.waiters.clear();
+    // A dead server answers nothing: every waiter fails, so a document is never reported clean by default.
+    for (const [, set] of this.listeners) for (const fn of [...set]) fn(undefined, err);
+    this.listeners.clear();
   }
 }
 
 /** Files under a project root, skipping dependencies and build output. Depth-limited so a repo scan stays fast. */
 const SKIP = new Set(["node_modules", "dist", ".git", ".cloudflare", ".wrangler", "coverage", "__pycache__", ".venv", "venv"]);
+/** @param {string} root @param {(name: string) => boolean} accept @param {{ depth?: number, limit?: number }} [opts] @returns {string[]} */
 export function listFiles(root, accept, { depth = 6, limit = 2000 } = {}) {
+  /** @type {string[]} */
   const out = [];
+  /** @param {string} dir @param {number} d */
   const walk = (dir, d) => {
     if (out.length >= limit) return;
     let names;
@@ -233,11 +310,15 @@ export function listFiles(root, accept, { depth = 6, limit = 2000 } = {}) {
   return out;
 }
 
+/** @param {string} root @param {string[]} names */
 const hasFile = (root, names) => names.some((n) => existsSync(join(root, n)));
+/** @param {string} p */
 const extOf = (p) => extname(p).toLowerCase();
+/** @param {...string} exts @returns {(name: string) => boolean} */
 const extSet = (...exts) => (name) => exts.includes(extname(name).toLowerCase());
 
 /** Finds a server binary: ours first, then PATH. */
+/** @param {string} name */
 export function binary(name) {
   const own = join(TOOLS_BIN, name);
   if (existsSync(own)) return own;
@@ -245,6 +326,7 @@ export function binary(name) {
 }
 
 /** The TypeScript library the language server reads: the project's own, else ours, else the global one. */
+/** @param {string} root @returns {string | undefined} */
 export function resolveTsserver(root) {
   try {
     return createRequire(join(root, "package.json")).resolve("typescript/lib/tsserver.js");
@@ -266,6 +348,7 @@ export function resolveTsserver(root) {
  * The languages. `detect` decides whether a project calls for a server; `spec` returns how to start it (or why it cannot);
  * `files` lists what it checks; `languageId` names a file for the server.
  */
+/** @type {Record<LangId, Language>} */
 export const LANGUAGES = {
   typescript: {
     label: "TypeScript / JavaScript",
@@ -322,9 +405,10 @@ export const LANGUAGES = {
 export const SEVERITY = ["error", "warning", "information", "hint"];
 
 /** Starts a language's server for a project, and completes the initialize handshake. */
+/** @param {LangId} lang @param {string} root @returns {Promise<Running | { missing: string }>} */
 export async function startServer(lang, root) {
   const spec = LANGUAGES[lang].spec(root);
-  if (spec.missing) return { missing: spec.missing };
+  if ("missing" in spec) return { missing: spec.missing };
   const client = new LspClient(spec.command, spec.args, root);
   client.start();
   const rootUri = pathToFileURL(root).href;
@@ -355,15 +439,11 @@ export async function startServer(lang, root) {
 }
 
 /**
- * Checks a set of documents on a running server, concurrently: every document is opened (or updated) first, then all
- * the answers are awaited together. `textFor(file)` gives the text to check (the staged text, or the working copy).
- * Returns Map<file, Diagnostic[]> or the error per file.
- */
-/**
  * Opens a document, or sends its new text. Returns the URI and whether this call opened it.
  * Protocol (measured against typescript-language-server 6.1.0): a server publishes diagnostics when a document is opened,
  * and after an edit only when its diagnostics change. A save (textDocument/didSave) after a change makes it re-analyse.
  */
+/** @param {Running} running @param {string} file @param {string} text @returns {{ uri: string, opened: boolean }} */
 export function syncDocument(running, file, text) {
   const { client, versions, lang } = running;
   const uri = pathToFileURL(file).href;
@@ -380,25 +460,28 @@ export function syncDocument(running, file, text) {
 }
 
 /**
- * Diagnostics for the given documents, concurrently. A new document waits for its first publish (up to timeoutMs). An
- * edited one waits for a publish for settleMs; if none comes, its diagnostics did not change, so the last published list
- * still stands. Returns Map<file, Diagnostic[] | Error>.
+ * Diagnostics for the given documents, concurrently. A new document starts its wait with its first publish (up to
+ * timeoutMs). An edited one starts it within settleMs; if the server does not republish, its diagnostics did not change,
+ * so the last published list stands. Then every list is settled for QUIET_MS. Returns Map<file, Diagnostic[] | Error>.
+ */
+export const QUIET_MS = 4_000;
+/**
+ * Checks a set of documents on a running server, concurrently: every document is opened (or updated) first, then all
+ * the answers are awaited together. `textFor(file)` gives the text to check (the staged text, or the working copy).
+ * @param {Running} running @param {string[]} files @param {(file: string) => string} textFor
+ * @returns {Promise<Map<string, Diagnostic[] | Error>>}
  */
 export async function checkDocuments(running, files, textFor, timeoutMs = 15_000, settleMs = 1_500) {
   const pending = files.map((file) => {
     const text = textFor(file);
     const uri = pathToFileURL(file).href;
     const edited = running.versions.has(uri);
-    const waiting = running.client.waitForDiagnostics(uri, edited ? settleMs : timeoutMs).then(
-      (d) => d,
-      (e) => {
-        const last = edited ? running.client.diagnosticsFor(uri) : undefined;
-        if (last) return last;
-        throw e;
-      },
-    );
+    const waiting = running.client.settledDiagnostics(uri, { firstMs: edited ? settleMs : timeoutMs, quietMs: QUIET_MS, fallback: edited });
     syncDocument(running, file, text);
-    return waiting.then((d) => [file, d], (e) => [file, e]);
+    return waiting.then(
+      (d) => /** @type {[string, Diagnostic[] | Error]} */ ([file, d]),
+      (e) => /** @type {[string, Diagnostic[] | Error]} */ ([file, e]),
+    );
   });
   return new Map(await Promise.all(pending));
 }

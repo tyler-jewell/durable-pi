@@ -2,3 +2,4 @@
 apps/proactive-dpi-demo/mock-repo-template/  # overlays: 01-initial is the base, 02 and 03 patch it at runtime (npm run reset). The composed repo is what the agent works on, and it is checked there.
 pi/lsp/check/fixture/  # deliberately broken: the planted type error the LSP check asserts on.
 templates/  # scaffolds: their imports resolve only after `just app add` installs them. `just app verify` checks each generated app.
+pi/lsp/gate-fixtures/  # a fake language server for gate-test.sh: it speaks LSP so the gate can be tested against a server that publishes twice.

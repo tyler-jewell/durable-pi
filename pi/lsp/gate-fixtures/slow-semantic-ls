@@ -1,0 +1,3 @@
+#!/bin/sh
+# Runs the fake server with node. The gate starts it as its TypeScript server (DPI_LSP_TS_COMMAND).
+exec node "$(dirname "$0")/slow-semantic-ls.mjs" "$@"
