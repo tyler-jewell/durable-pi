@@ -20,7 +20,9 @@ for (const signal of ["SIGTERM", "SIGHUP"] as const) {
 }
 
 /** Commands that would skip the git gate. Blocked before they run; the gate itself is the only way in. */
-const BYPASS = /--no-verify|core\.hooksPath|hooksPath|\bSKIP=|\bgit\s+-c\s+core\./;
+// The same definition the eval scores: a commit or push that skips hooks, or a command that sets hooksPath to a value.
+// Reading the hooks (git config --get core.hooksPath) is allowed.
+const BYPASS = /git\s+(commit|push)\b[^;&|]*--no-verify|git\s+(-c\s+core\.hooksPath=|config\s+(?!--get)(\S+\s+)*core\.hooksPath\s+[^\s|&;])|\bSKIP=/;
 const DIAGNOSTIC_TIMEOUT_MS = 15_000;
 const MAX_FILES = 200;
 
@@ -62,7 +64,7 @@ export default function (pi: ExtensionAPI) {
 
   pi.on("tool_call", async (event) => {
     if (isToolCallEventType("bash", event) && BYPASS.test(event.input.command)) {
-      return { block: true, reason: "This command would skip the git gate (hooks). Commit without skipping hooks; fix what the gate reports." };
+      return { block: true, reason: "This would bypass the git gate. Leave hooks alone and commit normally: fix what the gate reports." };
     }
   });
 
