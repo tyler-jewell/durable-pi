@@ -2,7 +2,7 @@
   "name": "dpi-lsp-check",
   "private": true,
   "type": "module",
-  "description": "Deterministic check of the LSP extension: pi's real CLI with a scripted model. Installed by run.sh.",
+  "description": "Deterministic checks of the LSP extension (a session and a reload): pi's real CLI with a scripted model. Installed by run.sh and reload.sh.",
   "dependencies": {
     "@earendil-works/pi-ai": "1.5.2"
   },

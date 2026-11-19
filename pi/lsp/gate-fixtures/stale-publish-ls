@@ -1,0 +1,3 @@
+#!/bin/sh
+# Runs the fake server with node. The gate starts it as its Bash server (DPI_LSP_BASH_COMMAND).
+exec node "$(dirname "$0")/stale-publish-ls.mjs" "$@"

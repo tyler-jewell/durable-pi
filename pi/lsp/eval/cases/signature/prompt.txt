@@ -1,0 +1,1 @@
+Change `formatPrice` in src/money.ts so it takes the currency code as a required second argument and prints the matching symbol ($ for "USD", € for "EUR"). Update the callers; every existing price is in USD.

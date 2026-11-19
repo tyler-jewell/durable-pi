@@ -1,0 +1,7 @@
+{
+  "lsp": "\\.ts$",
+  "files": [
+    { "path": "src/users.ts", "must": ["admin@example\\.com", "guest@example\\.com"] },
+    { "path": "src/types.ts", "must": ["email: string"] }
+  ]
+}

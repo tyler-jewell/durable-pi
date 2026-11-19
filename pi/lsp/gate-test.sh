@@ -9,6 +9,11 @@ SRC="${1:?usage: gate-test.sh <src-dir>}"
 SRC="$(cd "$SRC" && pwd)" || exit 2
 GATE="$SRC/pi/extensions/lsp/gate.mjs"
 FAILS=0
+# tsconfig.json for a test repo: tsconfig <strict|loose> [extra compiler option]. Every project includes only src/.
+tsconfig() {
+  printf '{"compilerOptions":{"strict":%s,"noEmit":true,"target":"es2022","module":"esnext","moduleResolution":"bundler"%s},"include":["src"]}\n' \
+    "$([ "$1" = strict ] && echo true || echo false)" "${2:+,$2}"
+}
 pass() { echo "PASS $1"; }
 fail() { echo "FAIL $1: $2"; FAILS=$((FAILS + 1)); }
 
@@ -18,7 +23,7 @@ new_repo() {
   cd "$D" || exit 1
   git init -q -b main .
   git config user.email t@t.invalid && git config user.name gate-test
-  printf '{"compilerOptions":{"strict":true,"noEmit":true,"target":"es2022","module":"esnext","moduleResolution":"bundler"},"include":["src"]}\n' > tsconfig.json
+  tsconfig strict > tsconfig.json
   mkdir -p src
   printf '{"name":"gate-test","private":true}\n' > package.json
   git add -A && git commit -q -m init --no-verify
@@ -98,19 +103,20 @@ cd "$SRC" || exit 1; rm -rf "$D"
 new_repo missing
 printf 'export const n: number = 1;\n' > src/ok.ts
 git add -A >/dev/null
-out=$(DPI_LSP_TS_COMMAND=/nonexistent/typescript-language-server node "$GATE" staged 2>&1); code=$?
+out=$(DPI_LSP_TYPESCRIPT_COMMAND=/nonexistent/typescript-language-server node "$GATE" staged 2>&1); code=$?
 if [ "$code" = 1 ]; then pass "missing server blocks (fails closed)"; else fail "missing server blocks" "exit $code: $(echo "$out" | tail -2 | tr '\n' ' ')"; fi
 cd "$SRC" || exit 1; rm -rf "$D"
 
 echo
-# 9. REGRESSION: a server that publishes an empty list first and the real list after a delay must block. Taking the first
-#    list reads the file as clean. The fake server (gate-fixtures) does exactly that, so this fails on any gate that
-#    does not wait for the settled list.
-new_repo slow-semantic
-printf 'export function twice(x) {\n  return x * 2;\n}\n' > src/loose.ts
-export DPI_LSP_TS_COMMAND="$SRC/pi/lsp/gate-fixtures/slow-semantic-ls"
-expect "a server that answers twice blocks on the second answer" fail "error" src/loose.ts
-unset DPI_LSP_TS_COMMAND
+# 9. REGRESSION: a publishing server that answers about an older text first, and the real list after a delay, must block.
+#    Taking the first publish reads the file as clean. The fake server (gate-fixtures) does exactly that, so this fails on
+#    any gate that does not wait for the publish that carries the version it sent.
+new_repo stale-publish
+# shellcheck disable=SC2016  # the file under test must contain literal shell text
+printf '#!/bin/sh\necho hi\n' > run.sh
+export DPI_LSP_BASH_COMMAND="$SRC/pi/lsp/gate-fixtures/stale-publish-ls"
+expect "a stale publish is not an answer: the versioned one blocks" fail "planted finding" run.sh
+unset DPI_LSP_BASH_COMMAND
 cd "$SRC" || exit 1; rm -rf "$D"
 
 # 9b. A strict-only error (implicit any) with the real server must block.
@@ -123,9 +129,9 @@ cd "$SRC" || exit 1; rm -rf "$D"
 #     command that exits at once, so the check fails closed. The file itself is clean.
 new_repo dead-server
 printf 'export const n: number = 1;\n' > src/fine.ts
-export DPI_LSP_TS_COMMAND=/usr/bin/false
+export DPI_LSP_TYPESCRIPT_COMMAND=/usr/bin/false
 expect "a server that exits blocks (fails closed)" fail "" src/fine.ts
-unset DPI_LSP_TS_COMMAND
+unset DPI_LSP_TYPESCRIPT_COMMAND
 cd "$SRC" || exit 1; rm -rf "$D"
 
 # 11. A Vue template that names something undefined must block. The fixture links the pinned vue from our tools folder
@@ -134,7 +140,7 @@ cd "$SRC" || exit 1; rm -rf "$D"
 new_repo vue-template
 printf 'node_modules/\n' > .gitignore
 mkdir -p node_modules && ln -s "$HOME/.dpi/lsp-tools/node_modules/vue" node_modules/vue
-printf '{"compilerOptions":{"strict":true,"noEmit":true,"target":"es2022","module":"esnext","moduleResolution":"bundler","jsx":"preserve"},"include":["src"]}\n' > tsconfig.json
+tsconfig strict '"jsx":"preserve"' > tsconfig.json
 printf '<script setup lang="ts">\nconst n = 1;\n</script>\n\n<template>\n  <p>{{ n }} {{ missingThing.value }}</p>\n</template>\n' > src/Broken.vue
 expect "a Vue template error blocks" fail "error" src/Broken.vue
 cd "$SRC" || exit 1; rm -rf "$D"
@@ -143,7 +149,7 @@ cd "$SRC" || exit 1; rm -rf "$D"
 new_repo vue-clean
 printf 'node_modules/\n' > .gitignore
 mkdir -p node_modules && ln -s "$HOME/.dpi/lsp-tools/node_modules/vue" node_modules/vue
-printf '{"compilerOptions":{"strict":true,"noEmit":true,"target":"es2022","module":"esnext","moduleResolution":"bundler","jsx":"preserve"},"include":["src"]}\n' > tsconfig.json
+tsconfig strict '"jsx":"preserve"' > tsconfig.json
 printf '<script setup lang="ts">\nconst n: number = 1;\n</script>\n\n<template>\n  <p>{{ n }}</p>\n</template>\n' > src/Fine.vue
 expect "a clean Vue component passes" pass "" src/Fine.vue
 cd "$SRC" || exit 1; rm -rf "$D"
@@ -152,6 +158,38 @@ cd "$SRC" || exit 1; rm -rf "$D"
 new_repo vue-no-vue
 printf '<script setup lang="ts">\nconst n = 1;\n</script>\n\n<template>\n  <p>{{ n }} {{ missingThing.value }}</p>\n</template>\n' > src/NoVue.vue
 expect "a Vue project without vue installed fails closed" fail "" src/NoVue.vue
+cd "$SRC" || exit 1; rm -rf "$D"
+
+# 14. ONE TypeScript server serves every project, each by its own tsconfig: the same loose code fails under the strict
+#     project and passes under the loose one. Staged together, only the strict one is reported.
+new_repo monorepo
+mkdir -p strict/src loose/src
+tsconfig strict > strict/tsconfig.json
+tsconfig loose > loose/tsconfig.json
+printf 'export function twice(x) {\n  return x * 2;\n}\n' > strict/src/a.ts
+printf 'export function twice(x) {\n  return x * 2;\n}\n' > loose/src/b.ts
+git add -A >/dev/null 2>&1
+out=$(DPI_GATE_DEBUG=1 node "$GATE" staged 2>&1); code=$?
+if [ "$code" = 1 ] && echo "$out" | grep -q "strict/src/a.ts" && ! echo "$out" | grep -q "FAIL loose/"; then pass "each file is checked by its own tsconfig"; else fail "per-project tsconfig" "exit $code: $(echo "$out" | grep -E 'FAIL|gate:' | head -3 | tr '\n' ' ')"; fi
+if echo "$out" | grep -q '"typescript":1'; then pass "two projects, one TypeScript server"; else fail "one server" "$(echo "$out" | grep gate-debug)"; fi
+git reset -q
+cd "$SRC" || exit 1; rm -rf "$D"
+
+# 15. A file that no tsconfig includes is a finding: tsserver would check it with default settings, which is no check.
+new_repo orphan
+mkdir -p other
+printf 'export const n: number = 1;\n' > other/orphan.ts
+expect "a file no tsconfig includes blocks" fail "no tsconfig.json or jsconfig.json includes" other/orphan.ts
+cd "$SRC" || exit 1; rm -rf "$D"
+
+# 16. The files decide the servers: `plan` lists the extensions, and names a server only for languages that have files.
+new_repo plan
+printf 'export const n = 1;\n' > src/ok.ts
+printf '{}\n' > data.json
+printf 'plain\n' > notes.md
+git add -A >/dev/null 2>&1
+out=$(node "$GATE" plan 2>&1)
+if echo "$out" | grep -q "^servers: typescript (1 files), json (" && ! echo "$out" | grep -qi "css\|python\|vue\|html\|bash (" ; then pass "plan: only the languages with files"; else fail "plan" "$(echo "$out" | tail -2 | tr '\n' ' ')"; fi
 cd "$SRC" || exit 1; rm -rf "$D"
 
 if [ "$FAILS" = 0 ]; then

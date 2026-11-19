@@ -1,0 +1,9 @@
+# The agent eval's image: Node 26, git, shellcheck, and every language server pinned by install.sh (so a run installs only
+# the extension, from the source that is mounted). Built once by run.sh; rebuilt when REBUILD=1.
+FROM docker.io/library/node:26-bookworm-slim
+RUN apt-get update && apt-get install -y --no-install-recommends git ca-certificates shellcheck python3 \
+ && rm -rf /var/lib/apt/lists/*
+COPY pi/lsp/install.sh /src/pi/lsp/install.sh
+COPY pi/extensions/lsp/core.mjs pi/extensions/lsp/index.ts /src/pi/extensions/lsp/
+RUN sh /src/pi/lsp/install.sh /src && ln -s /root/.dpi/lsp-tools/node_modules/.bin/pi /usr/local/bin/pi
+ENV GIT_TERMINAL_PROMPT=0

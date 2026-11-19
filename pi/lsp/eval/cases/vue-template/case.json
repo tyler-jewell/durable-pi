@@ -1,0 +1,7 @@
+{
+  "vue": true,
+  "lsp": "\\.vue$",
+  "files": [
+    { "path": "src/UserCard.vue", "must": ["user\\.avatarUrl", "user\\.name"], "mustNot": ["user\\.avatar[^U]", "user\\.fullName"] }
+  ]
+}

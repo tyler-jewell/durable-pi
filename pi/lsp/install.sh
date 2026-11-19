@@ -25,11 +25,15 @@ fi
 for need in python3 shellcheck; do
   command -v "$need" >/dev/null 2>&1 || echo "lsp: warning: $need is not on PATH (needed for $( [ $need = python3 ] && echo Python || echo Bash ) diagnostics)" >&2
 done
-EXT="$HOME/.pi/agent/extensions"
-mkdir -p "$EXT"
-rm -rf "$EXT/lsp"
-# Copy the runtime files only: the folder's node_modules and package.json are for type checks, not for pi.
-mkdir -p "$EXT/lsp"
-cp "$SRC"/pi/extensions/lsp/*.ts "$SRC"/pi/extensions/lsp/*.mjs "$EXT/lsp/"
-echo "lsp: installed to $TOOLS and $EXT/lsp"
+# The extension goes to pi's extensions folder (PI_CODING_AGENT_DIR, when set, moves it: the tests install in isolation).
+# core.mjs is installed under a name that carries its content hash, and index.ts is pointed at that name. Pi caches a
+# module by path for the life of the process, so a /reload that finds core.mjs again would run the old one under the new
+# index.ts. A new hash is a new path, so a reload always runs what was installed. The hash is the build id, kept in $EXT/BUILD.
+EXT="${PI_CODING_AGENT_DIR:-$HOME/.pi/agent}/extensions/lsp"
+HASH="$(node -p "require('crypto').createHash('sha256').update(require('fs').readFileSync('$SRC/pi/extensions/lsp/core.mjs')).digest('hex').slice(0, 12)")"
+rm -rf "$EXT" && mkdir -p "$EXT"
+sed "s#LSP_BUILD = \"dev\"#LSP_BUILD = \"$HASH\"#" "$SRC/pi/extensions/lsp/core.mjs" > "$EXT/core.$HASH.mjs"
+sed "s#\"./core.mjs\"#\"./core.$HASH.mjs\"#" "$SRC/pi/extensions/lsp/index.ts" > "$EXT/index.ts"
+printf '%s\n' "$HASH" > "$EXT/BUILD"
+echo "lsp: installed to $TOOLS and $EXT (build $HASH)"
 echo "lsp: typescript-language-server $("$TOOLS/node_modules/.bin/typescript-language-server" --version 2>/dev/null | head -1), typescript $(node -p "require('$TOOLS/node_modules/typescript/package.json').version"), pyright $(node -p "require('$TOOLS/node_modules/pyright/package.json').version")"
