@@ -24,6 +24,9 @@ mod tui 'just/tui'
 # Unit, UI, device and e2e suites
 mod test 'just/test'
 
+# The .tsf software factory: stamp the roster + prompts
+mod tsf 'just/tsf'
+
 
 # List command groups
 default:

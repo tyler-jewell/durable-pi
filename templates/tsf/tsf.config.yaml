@@ -1,0 +1,57 @@
+# .tsf — the durable-pi software factory. This file is the agent roster: one agent,
+# one purpose, one bounded toolset. Stamped into a repo by `just tsf install`.
+#
+# `defaults` apply to every agent; each agent may override any of them. `writes` are
+# repo paths the agent may change ([] = read-only with respect to the repo). `protected`
+# is never editable by any agent.
+
+defaults:
+  provider: cloudflare-ai-gateway
+  model: "@cf/deepseek-ai/deepseek-v4-flash-0731"
+  thinking: low
+  tools: [read, bash, edit, write]
+  writes: []
+  protected: [".tsf/"]
+
+agents:
+  - name: planner
+    purpose: Turn a request into a plan the builder can implement without questions.
+    thinking: high
+    tools: [read, bash]
+    writes: []
+    prompt:
+      system: prompts/planner/system.md
+      user: prompts/planner/user.md
+
+  - name: builder
+    purpose: Implement the plan, then run check and test until green.
+    tools: [read, bash, edit, write]
+    writes: ["*"]
+    prompt:
+      system: prompts/builder/system.md
+      user: prompts/builder/user.md
+
+  - name: scout
+    purpose: Read-only recon: verify the plan's facts against the repo.
+    tools: [read, bash]
+    writes: []
+    prompt:
+      system: prompts/scout/system.md
+      user: prompts/scout/user.md
+
+  - name: reviewer
+    purpose: Review the change and return an approve/revise/reject verdict (Jev-assisted).
+    tools: [read, bash]
+    writes: []
+    jev: true
+    prompt:
+      system: prompts/reviewer/system.md
+      user: prompts/reviewer/user.md
+
+  - name: documenter
+    purpose: Write the README from the run trace.
+    tools: [read, write, bash]
+    writes: ["README.md"]
+    prompt:
+      system: prompts/documenter/system.md
+      user: prompts/documenter/user.md
