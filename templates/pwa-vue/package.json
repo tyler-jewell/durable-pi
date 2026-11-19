@@ -1,0 +1,25 @@
+{
+  "name": "__APP_NAME__",
+  "private": true,
+  "type": "module",
+  "version": "0.1.0",
+  "scripts": {
+    "dev": "vite",
+    "build": "vue-tsc --noEmit && vite build",
+    "preview": "vite preview --strictPort",
+    "typecheck": "vue-tsc --noEmit",
+    "icons": "pwa-assets-generator --preset minimal-2023 public/icon.svg"
+  },
+  "dependencies": {
+    "vue": "3.5.45",
+    "vue-router": "5.5.1"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-vue": "6.0.11",
+    "@vite-pwa/assets-generator": "2.0.0",
+    "typescript": "5.9.3",
+    "vite": "8.3.8",
+    "vite-plugin-pwa": "2.0.0",
+    "vue-tsc": "3.3.14"
+  }
+}

@@ -1,0 +1,91 @@
+/* Responsive, themed, reduced-motion aware. Sizes are rem-based so the OS text scale is respected. */
+:root {
+  color-scheme: light dark;
+  --bg: #ffffff;
+  --fg: #111827;
+  --accent: #1d4ed8;
+  --surface: #f3f4f6;
+  --motion: 300ms;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #0b1020;
+    --fg: #e5e7eb;
+    --accent: #93c5fd;
+    --surface: #1f2937;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --motion: 0.1s;
+  }
+}
+
+/* Fluid type: 100% of the user's default at phone width, growing to 150% on a large screen. */
+html {
+  font-size: clamp(100%, 0.9rem + 0.4vw, 150%);
+}
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--fg);
+  font-family: system-ui, sans-serif;
+  line-height: 1.5;
+}
+.shell {
+  min-height: 100dvh;
+}
+.top {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 1rem;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.75rem clamp(1rem, 4vw, 3rem);
+  background: var(--surface);
+}
+.top a {
+  color: var(--accent);
+  font-weight: 600;
+}
+main {
+  width: min(100% - 2rem, 90rem);
+  margin-inline: auto;
+  padding-block: clamp(1rem, 3vw, 3rem);
+}
+.cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 14rem), 1fr));
+  gap: 1rem;
+  padding: 0;
+  list-style: none;
+}
+.cards li {
+  padding: 1rem;
+  border-radius: 0.75rem;
+  background: var(--surface);
+}
+button {
+  font: inherit;
+  padding: 0.5rem 1rem;
+  border-radius: 0.5rem;
+  border: 1px solid var(--accent);
+  background: var(--accent);
+  color: var(--bg);
+  cursor: pointer;
+}
+.app-dialog {
+  width: min(90vw, 36rem);
+  max-height: 90dvh;
+  border: 0;
+  border-radius: 0.75rem;
+  background: var(--bg);
+  color: var(--fg);
+  opacity: 1;
+  transform: translateY(0);
+  transition: opacity var(--motion) ease, transform var(--motion) ease;
+}
+.app-dialog:not([open]) {
+  opacity: 0;
+  transform: translateY(0.5rem);
+}

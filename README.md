@@ -389,6 +389,7 @@ Every node is proved the same way: **test in a container → review code (remove
 - [x] Confirm the container has Git 2.32+ (git 2.39.5, installed by the new apple-container `provision` step).
 
 ### Phase 1 — Base app shell (shared UI)
+- [x] Web app generator (`just app add app|route|page`, `just app verify`): offline-first PWA, responsive, verified in a browser against Modern Web Guidance. See [docs/web-apps.md](docs/web-apps.md).
 - [x] Extract the proactive demo's shell (top bar · nav rail · two-pane · footer) into a shared `base-app` package (`AppShell`, `NavRail`). Toasts are not built.
 - [ ] Left panel = document-driven generated views + approval flow. `StateEditor`, `JobCard` and `Transcript` are ported and decoupled; document-driven generated views and `AgentChat`/`IncidentCard` are not.
 - [ ] Right panel = unified system stream (logs + structured UI events) with a source selector: Cloudflare Logs (deployed) / local logs (local). The stream component and its `local` / `cloudflare` selector exist; the structured UI events are not wired.

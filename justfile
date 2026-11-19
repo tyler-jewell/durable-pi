@@ -6,6 +6,9 @@ set shell := ["zsh", "-cu"]
 # Devices: up, deploy, status, logs, restart
 mod net 'just/net'
 
+# Web apps: scaffold from templates, add routes and pages, verify in a browser
+mod app 'just/app'
+
 # This machine's dpi-backend
 mod backend 'just/backend'
 
