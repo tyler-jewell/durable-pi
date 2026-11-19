@@ -11,7 +11,24 @@ import { join } from "node:path";
 const root = join(homedir(), ".dpi", "e2e");
 type Target = "local" | "remote" | "offline";
 
-function newest(target: Target): any {
+/** The parts of a run's result.json this table reads. */
+interface Result {
+  runId: string;
+  target: Target;
+  passed: boolean;
+  total_ms?: number;
+  tokenRevokeSeconds?: number;
+  phase_ms?: Record<string, number | undefined>;
+  checks: Array<{ name: string; ok: boolean; detail?: string }>;
+  agent: {
+    turns?: number;
+    toolCalls?: number;
+    cost?: { objects?: Array<{ id: string; listUsd?: number }>; usage?: { rows?: Array<{ sku: string; quantity?: number }> } };
+  };
+  profile: Record<"runtime" | "cf" | "cpus" | "git" | "image" | "image_digest" | "memory" | "node" | "pi" | "worker" | "wrangler", string>;
+}
+
+function newest(target: Target): Result {
   const runs = readdirSync(root)
     .filter((d) => d.startsWith(`e2e-${target}-`))
     .map((d) => join(root, d, "result.json"))
@@ -30,30 +47,30 @@ function newest(target: Target): any {
   return runs[0];
 }
 
-const runs: Record<Target, any> = { local: newest("local"), remote: newest("remote"), offline: newest("offline") };
+const runs: Record<Target, Result> = { local: newest("local"), remote: newest("remote"), offline: newest("offline") };
 const cols: Target[] = ["local", "remote", "offline"];
 
 const secs = (ms?: number) => (ms === undefined ? "n/a" : `${(ms / 1000).toFixed(1)} s`);
-const passed = (r: any) => `${r.checks.filter((c: any) => c.ok).length}/${r.checks.length}`;
-const detail = (r: any, name: string) => r.checks.find((c: any) => c.name.startsWith(name))?.detail ?? "n/a";
-const yesNo = (r: any, name: string) => {
-  const c = r.checks.find((x: any) => x.name.startsWith(name));
+const passed = (r: Result) => `${r.checks.filter((c) => c.ok).length}/${r.checks.length}`;
+const detail = (r: Result, name: string) => r.checks.find((c) => c.name.startsWith(name))?.detail ?? "n/a";
+const yesNo = (r: Result, name: string) => {
+  const c = r.checks.find((x) => x.name.startsWith(name));
   return c ? (c.ok ? "yes" : "NO") : "n/a";
 };
 const usd = (n: number | undefined | null) => (n === undefined || n === null ? "n/a" : `$${n.toFixed(7)}`);
-const cfObj = (r: any) => r.agent?.cost?.objects?.find((o: any) => o.id === "cloudflare-do");
-const usageRow = (r: any, sku: string) => r.agent?.cost?.usage?.rows?.find((x: any) => x.sku === sku)?.quantity;
-const phase = (r: any, k: string) => r.phase_ms?.[k];
-const sumPhase = (r: any, ks: string[]) => (ks.every((k) => phase(r, k) !== undefined) ? ks.reduce((n, k) => n + phase(r, k), 0) : undefined);
+const cfObj = (r: Result) => r.agent?.cost?.objects?.find((o) => o.id === "cloudflare-do");
+const usageRow = (r: Result, sku: string) => r.agent?.cost?.usage?.rows?.find((x) => x.sku === sku)?.quantity;
+const phase = (r: Result, k: string) => r.phase_ms?.[k];
+const sumPhase = (r: Result, ks: string[]) => (ks.every((k) => phase(r, k) !== undefined) ? ks.reduce((n, k) => n + (phase(r, k) ?? 0), 0) : undefined);
 
-type Row = [string, (r: any) => string];
+type Row = [string, (r: Result) => string];
 const rows: Row[] = [
   ["Run id", (r) => r.runId],
   ["Verdict", (r) => (r.passed ? "PASS" : "FAIL")],
   ["Checks passed", passed],
   ["Wall time (whole run, host)", (r) => secs(r.total_ms)],
   ["Agent run (container / Worker call)", (r) => secs(phase(r, "agent_ms"))],
-  ["Setup (namespace/simulator + repo create)", (r) => secs(sumPhase(r, ["namespace_ms", "repo_create_ms"]) ?? (phase(r, "simulator_start_ms") !== undefined ? phase(r, "simulator_start_ms") + phase(r, "repo_create_ms") : undefined))],
+  ["Setup (namespace/simulator + repo create)", (r) => secs(sumPhase(r, ["namespace_ms", "repo_create_ms"]) ?? (phase(r, "simulator_start_ms") !== undefined ? (phase(r, "simulator_start_ms") ?? 0) + (phase(r, "repo_create_ms") ?? 0) : undefined))],
   ["Host verification of the remote", (r) => secs(phase(r, "verify_ms"))],
   ["Teardown", (r) => secs(phase(r, "teardown_ms"))],
   ["Token refused after repo delete", (r) => (r.tokenRevokeSeconds !== undefined ? `${r.tokenRevokeSeconds} s` : "immediate (simulator)")],

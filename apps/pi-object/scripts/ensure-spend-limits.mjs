@@ -13,6 +13,7 @@ import { execFile } from "node:child_process";
 import { readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 
+/** @param {string[]} args @returns {Promise<string>} */
 const run = (args) =>
   new Promise((resolve, reject) =>
     execFile("cf", args, { maxBuffer: 16 << 20 }, (err, stdout, stderr) =>
@@ -23,8 +24,10 @@ const run = (args) =>
 const dry = process.argv.includes("--dry-run");
 const specPath = process.env.SPEND_LIMITS_FILE ?? fileURLToPath(new URL("./spend-limits.json", import.meta.url));
 const { limits: desired } = JSON.parse(await readFile(specPath, "utf8"));
+/** @type {Array<{ product_id: string, action: string, enabled: boolean, name: string, threshold_cents: number, id: string, version?: string | number }>} */
 const existing = JSON.parse(await run(["billing", "spend-policies", "list"]));
 
+/** @param {number} cents */
 const dollars = (cents) => `$${(cents / 100).toFixed(2)}`;
 const pending = [];
 for (const want of desired) {
