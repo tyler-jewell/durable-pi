@@ -46,6 +46,7 @@ run without them.
 | `run_llm` | chat completion on an enabled LLM capability (auto: local hot-first, cloud fallback) | — | no |
 | `run_decision` | System One (Jev/Clef) decision on an enabled decision capability | — | no |
 | `list_usage` | local kWh + cost at the configured electricity price | — | yes |
+| `compare_costs` | per model: cloud $/min rate vs local electricity + wait-time opportunity | — | yes |
 | `update_settings` | edit electricity price/kWh and idle/load watts | — | yes |
 
 Every tool returns `structuredContent` with a full ordered `events` array
