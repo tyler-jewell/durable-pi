@@ -15,19 +15,13 @@ variable "hostname" {
   default     = "studio.jewell-labs.com"
 }
 
-variable "service_token_duration" {
-  description = "Service token lifetime before rotation (Go duration)"
-  type        = string
-  default     = "720h"
-}
-
 variable "ssh_emails" {
   description = "Emails allowed to authenticate (Access maps the cert principal to the email PREFIX)"
   type        = list(string)
 }
 
-variable "tunnel_secret" {
-  description = "Secret for the remotely-managed studio tunnel (sensitive, rotated; unknown for the live tunnel until rotated)"
+variable "service_token_id" {
+  description = "ID (UUID) of the Access service token for the non-interactive lane. Managed outside Terraform (cf CLI / rotation script) because its client secret cannot be imported."
   type        = string
   sensitive   = true
 }

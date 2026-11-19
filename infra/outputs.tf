@@ -1,26 +1,14 @@
-# Feed the host bootstrap (scripts/bootstrap-studio-ssh.sh). The tokens and keys are sensitive: read them with
+# Feed the host bootstrap (scripts/bootstrap-studio-ssh.sh). Tokens and keys are sensitive: read them with
 # `terraform output -raw <name>`, never paste them into a log.
 
 output "tunnel_id" {
-  description = "ID of the studio tunnel (cloudflared runs with its token)"
-  value       = cloudflare_tunnel.studio.id
+  description = "ID of the studio tunnel"
+  value       = cloudflare_zero_trust_tunnel_cloudflared.studio.id
 }
 
 output "tunnel_token" {
   description = "Token for cloudflared to run the studio tunnel (sensitive)"
-  value       = cloudflare_tunnel.studio.tunnel_token
-  sensitive   = true
-}
-
-output "service_token_client_id" {
-  description = "Client ID of the agent service token, for the non-interactive SSH lane (sensitive)"
-  value       = cloudflare_access_service_token.agent.client_id
-  sensitive   = true
-}
-
-output "service_token_client_secret" {
-  description = "Client secret of the agent service token (sensitive)"
-  value       = cloudflare_access_service_token.agent.client_secret
+  value       = data.cloudflare_zero_trust_tunnel_cloudflared_token.studio.token
   sensitive   = true
 }
 
