@@ -8,7 +8,7 @@ output "tunnel_id" {
 
 output "tunnel_token" {
   description = "Token for cloudflared to run the studio tunnel (sensitive)"
-  value       = cloudflare_tunnel.studio.token
+  value       = cloudflare_tunnel.studio.tunnel_token
   sensitive   = true
 }
 

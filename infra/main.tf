@@ -5,6 +5,7 @@
 resource "cloudflare_tunnel" "studio" {
   account_id = var.cloudflare_account_id
   name       = "studio"
+  secret     = var.tunnel_secret
   config_src = "cloudflare"
 }
 

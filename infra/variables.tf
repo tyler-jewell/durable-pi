@@ -25,3 +25,9 @@ variable "ssh_emails" {
   description = "Emails allowed to authenticate (Access maps the cert principal to the email PREFIX)"
   type        = list(string)
 }
+
+variable "tunnel_secret" {
+  description = "Secret for the remotely-managed studio tunnel (sensitive, rotated; unknown for the live tunnel until rotated)"
+  type        = string
+  sensitive   = true
+}
