@@ -128,8 +128,16 @@ list_models                           # see what was found
 recommend_capability (host, model, purpose, inputs?, options?)   # → recommended
 enable_capability (id, inputs?, options?, autoEnable?)           # turn it on now, or…
 list_capabilities                 # …it stays here in settings for a later toggle
-run_llm / run_decision            # use an enabled capability
+run_llm / run_decision            # use an enabled capability (local default, cloud fallback)
 ```
+
+Model access is one surface: `run_llm`/`run_decision` call a capability by id (the agent
+decides), or, with no id, resolve the default — an enabled capability of that kind, **local
+hosts first, cloud as fallback** (`prefer: "local" | "cloud"`). A capability carries a
+`transport` (`openai-compat` for a local llama-server/Ollama, `cloudflare-workers-ai` for the
+Cloudflare Workers AI API), so the same tool reaches both. `scripts/seed-capabilities.mts`
+probes `LLAMA_BASE_URL` and seeds one enabled capability per local model plus recommended
+cloud fallbacks — the registry always reflects the current system.
 
 `enable_capability` reports any missing required inputs and sets `autoEnable` (auto-turn-on:
 re-enable after startup/discovery without re-asking, default true); `disable_capability` keeps
