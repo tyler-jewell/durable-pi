@@ -5,3 +5,4 @@ pi/lsp/gate-fixtures/  # a fake language server for gate-test.sh: it speaks LSP 
 .agents/skills/  # installed skills (skills-lock.json: third-party, pinned by hash), and the exe.dev operator CLI in them, which has its own uv environment and is not part of the apps. Repo-owned skill docs are not code.
 .claude/skills/  # symlinks into .agents/skills/ (Claude Code reads this folder), so the same exclusion applies.
 pi/lsp/eval/cases/  # eval fixtures: small repos with a task the agent must finish, broken on purpose until it does.
+apps/dpi-playground/apps/dpi-playground-fe/public/  # Vite-served static assets: sw.js is a plain service-worker script (browser globals), not TS.
