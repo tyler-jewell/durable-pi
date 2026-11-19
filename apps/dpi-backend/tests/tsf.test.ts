@@ -82,3 +82,10 @@ test("reviewVerdict: fail open to the model reviewer when Jev is absent", () => 
   assert.equal(reviewVerdict(undefined, "").ok, false);
   assert.equal(reviewVerdict({ verdict: { type: "noul", noul: 0.5 } }, "approve").ok, true); // wrong-typed answer → model stands
 });
+
+test("reviewVerdict: a low-confidence non-approve is inconclusive and falls back to the model", () => {
+  assert.equal(reviewVerdict(choice("reject", 0.3), "approve").ok, true); // noisy reject + model approves → ships
+  assert.match(reviewVerdict(choice("reject", 0.3), "approve").reason, /Approved \(model/);
+  assert.equal(reviewVerdict(choice("reject", 0.3), "reject: broken").ok, false); // noisy reject + model rejects → fails
+  assert.equal(reviewVerdict(choice("reject", 0.92), "approve").ok, false); // confident reject always fails, even if the model approves
+});

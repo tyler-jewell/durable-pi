@@ -194,6 +194,10 @@ test("custom extensions: jev-damage-control blocks rm -rf only while on; system-
     assert.match(JSON.stringify((await store.entries(c, undefined, 5)).items), /jev-damage-control blocked this command/);
     await turn("!ls");
     assert.match(JSON.stringify((await store.entries(c, undefined, 5)).items), /doomed/);
+    // Reversible → the three-way middle path: needs human approval, so it is held, not run.
+    await turn("!touch approved-file");
+    assert.ok(!existsSync(join(t.work, "approved-file")), "reversible command is held for approval");
+    assert.match(JSON.stringify((await store.entries(c, undefined, 5)).items), /needs human approval/);
     ext = await store.setExtension(row, c, { name: "jev-damage-control", enabled: false });
     assert.equal(ext.extensions[1].enabled, false);
     await turn("!rm -rf doomed");

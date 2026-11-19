@@ -259,8 +259,9 @@ const REVIEW_QUESTIONS: Record<string, JevQuestion> = {
 };
 
 /**
- * The `jev-quality` verdict. Jev is the judge when it answered; otherwise the model reviewer's
- * verdict stands (fail-open, the same rule as the bash gate). Pure so it is unit-testable.
+ * The `jev-quality` verdict. Jev is the judge when it answered with confidence; a low-confidence
+ * non-approve is inconclusive, so the model reviewer's verdict stands (fail-open, the same rule
+ * as the bash gate). Pure so it is unit-testable.
  */
 export function reviewVerdict(answers: Record<string, JevAnswer> | undefined, modelVerdict: string): { ok: boolean; reason: string } {
   const answer = answers?.verdict;
@@ -270,6 +271,13 @@ export function reviewVerdict(answers: Record<string, JevAnswer> | undefined, mo
     return { ok: false, reason: clip(modelVerdict, 200) || "Reviewer returned no verdict" };
   }
   const verdict = answer as Extract<JevAnswer, { type: "choice" }>;
+  // A non-approve Jev must be confident to fail the run; below 0.5 it is noise, so the model stands.
+  if (verdict.choice !== "approve" && verdict.confidence < 0.5) {
+    const v = modelVerdict.trim().toLowerCase();
+    if (v.startsWith("approve"))
+      return { ok: true, reason: `Approved (model; Jev ${verdict.choice} at ${verdict.confidence.toFixed(2)} confidence)` };
+    return { ok: false, reason: clip(modelVerdict, 200) || "Reviewer returned no verdict" };
+  }
   const reason = `jev-quality ${verdict.choice} (${verdict.confidence.toFixed(2)})`;
   return verdict.choice === "approve" ? { ok: true, reason } : { ok: false, reason: `${reason}: ${clip(modelVerdict, 160)}` };
 }

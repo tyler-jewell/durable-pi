@@ -39,7 +39,7 @@ export const PromptChecklist = defineDoc<{ enabled: string[] }>({
 // ------------------------------------------------------------------ jev-damage-control
 
 /** The jev-bash gate's questions and thresholds (harness/extensions/jev-bash/bash-gate.ts). */
-const BASH_QUESTIONS: Record<string, JevQuestion> = {
+export const BASH_QUESTIONS: Record<string, JevQuestion> = {
   effect: {
     type: "choice",
     instructions: "What does running `command` do to the machine?",
@@ -60,24 +60,35 @@ const BASH_QUESTIONS: Record<string, JevQuestion> = {
   },
 };
 
-type Verdict = { block: boolean; reason: string };
+type Verdict = { action: "allow" | "approve" | "block"; reason: string };
 
-function gate(a: Record<string, JevAnswer>): Verdict {
+/**
+ * Map Jev's answers for a bash command to the three-way gate:
+ *   allow   — read-only, runs automatically;
+ *   approve — changes state (edits, installs, deploys) that git/reinstall can restore: needs a human;
+ *   block   — irreversible or destructive: refused.
+ */
+export function gate(a: Record<string, JevAnswer>): Verdict {
   const effect = a.effect as Extract<JevAnswer, { type: "choice" }>;
   const destructive = (a.destructive_intent as Extract<JevAnswer, { type: "noul" }>).noul;
   if (effect.choice === "irreversible" && effect.confidence >= 0.6)
-    return { block: true, reason: `irreversible (${effect.confidence.toFixed(2)}): nothing would restore what this removes or overwrites` };
+    return { action: "block", reason: `irreversible (${effect.confidence.toFixed(2)}): nothing would restore what this removes or overwrites` };
   if (destructive >= 0.7)
-    return { block: true, reason: `destructive intent (${destructive.toFixed(2)}): this command aims to wipe something` };
-  return { block: false, reason: `${effect.choice} (${effect.confidence.toFixed(2)}), destructive ${destructive.toFixed(2)}` };
+    return { action: "block", reason: `destructive intent (${destructive.toFixed(2)}): this command aims to wipe something` };
+  if (effect.choice === "reversible")
+    return { action: "approve", reason: `reversible (${effect.confidence.toFixed(2)}): changes files or state git/reinstall can restore — needs human approval` };
+  return { action: "allow", reason: `${effect.choice} (${effect.confidence.toFixed(2)}), destructive ${destructive.toFixed(2)}` };
 }
 
 /** The faux provider's stand-in for Jev, so tests and offline demos never call the network. */
 const OFFLINE_DANGER = /\brm\s+-[a-z]*[rf]|\bgit\s+push\b.*--force|\bgit\s+reset\s+--hard|\bdropdb\b|\bmkfs|\bdd\s+.*of=|\btruncate\b/;
-async function judgeOffline(command: string): Promise<Verdict> {
-  return OFFLINE_DANGER.test(command)
-    ? { block: true, reason: "destructive intent (offline rules): this command aims to wipe something" }
-    : { block: false, reason: "allowed (offline rules)" };
+const OFFLINE_REVERSIBLE = /\b(git\s+commit|npm\s+i(nstall)?|pip\s+install|brew\s+install|touch|mkdir|mv|cp|sed\s+-i|wrangler\s+deploy|pnpm\s+install)\b/;
+export async function judgeOffline(command: string): Promise<Verdict> {
+  if (OFFLINE_DANGER.test(command))
+    return { action: "block", reason: "destructive intent (offline rules): this command aims to wipe something" };
+  if (OFFLINE_REVERSIBLE.test(command))
+    return { action: "approve", reason: "reversible (offline rules): changes files or installs — needs human approval" };
+  return { action: "allow", reason: "read-only (offline rules)" };
 }
 
 // ------------------------------------------------------------------ the extensions
@@ -92,7 +103,7 @@ export const ADDON_INFO: Omit<HarnessExtensionInfo, "enabled" | "prompts">[] = [
     name: "jev-damage-control",
     title: "Jev damage control",
     description:
-      "Before every bash call, Jev judges the command in about 300 ms and blocks irreversible or destructive ones. The decision is a durable memo, so a restart never re-asks. If Jev is down, commands run.",
+      "Before every bash call, Jev judges the command and decides in three ways: allow (read-only), needs human approval (reversible changes), or block (irreversible/destructive). The decision is a durable memo, so a restart never re-asks. If Jev is down, commands run.",
   },
 ];
 
@@ -123,12 +134,17 @@ export function createAddons(opts: { offline: boolean }) {
           let verdict = await api.memo<Verdict>("jev-damage-control", ctx);
           if (!verdict) {
             try {
-              verdict = await api.memo<Verdict>("jev-damage-control", await judge(command), ctx);
+              verdict = await judge(command);
+              // Memoize deterministic verdicts only; an "approve" re-asks each attempt so a human can approve it.
+              if (verdict.action !== "approve") await api.memo<Verdict>("jev-damage-control", verdict, ctx);
             } catch {
               return; // Fails open: a Jev outage must not stop bash.
             }
           }
-          if (verdict.block) return { block: `jev-damage-control blocked this command: ${verdict.reason}` };
+          if (verdict.action === "block") return { block: `jev-damage-control blocked this command: ${verdict.reason}` };
+          if (verdict.action === "approve")
+            return { block: `jev-damage-control needs human approval for this command: ${verdict.reason}` };
+          // allow: the command runs.
         },
       }),
     ],
