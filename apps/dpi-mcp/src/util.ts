@@ -40,6 +40,10 @@ export function clip(s: string, max = 6000): string {
 }
 
 const SKIP_DIRS = new Set(["node_modules", "dist", ".wrangler", ".git", ".vite", "coverage"]);
+// Generated deploy artifacts written by the push step (ensureDeployConfig). They are not
+// app source, so they stay out of the fingerprint — otherwise a deploy would change the
+// fingerprint and make the next check/test re-run needlessly.
+const SKIP_FILES = new Set(["wrangler.jsonc", "worker.mjs"]);
 
 /** A stable hash of an app's source tree (paths + contents), excluding build output and deps. */
 export function fingerprint(appDir: string): string {
@@ -48,7 +52,7 @@ export function fingerprint(appDir: string): string {
     if (!existsSync(dir)) return;
     for (const f of readdirSync(dir)) {
       const p = join(dir, f);
-      if (SKIP_DIRS.has(f)) continue;
+      if (SKIP_DIRS.has(f) || SKIP_FILES.has(f)) continue;
       const st = statSync(p);
       if (st.isDirectory()) walk(p);
       else {

@@ -14,6 +14,10 @@ import type { PipelineState } from "./util.js";
 
 type Extra = RequestHandlerExtra<ServerRequest, ServerNotification>;
 
+/** Save pipeline state with a fresh fingerprint, so generated files written during a run
+ * (package-lock.json from npm install, deploy files) don't make the next run re-check. */
+const persist = (app: string, next: PipelineState) => saveState(app, { ...next, fingerprint: fingerprint(appDir(app)) });
+
 export interface Event {
   step: string;
   status: "started" | "done" | "error" | "info" | "cached";
@@ -185,12 +189,30 @@ function ensureDeployConfig(app: string): void {
   }
 }
 
+/** True when the Workers script exists. Fails open (true) on network/credential errors. */
+async function workerExists(app: string): Promise<boolean> {
+  const token = process.env.CLOUDFLARE_API_TOKEN ?? "";
+  const account = process.env.CLOUDFLARE_ACCOUNT_ID ?? "";
+  if (!token || !account) return true;
+  try {
+    const r = await fetch(`https://api.cloudflare.com/client/v4/accounts/${account}/workers/scripts/${app}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    return r.status === 200;
+  } catch {
+    return true;
+  }
+}
+
 /** Push: build (or reuse the test's fresh build) + deploy to Cloudflare Workers (static assets). Event stream of the build. */
 async function doPush(app: string, state: PipelineState | undefined, fp: string, p: Progress, buildFresh: boolean) {
   const dir = appDir(app);
   if (state?.fingerprint === fp && state.push?.ok) {
-    await p.emit("push", "cached", `already deployed at ${state.push.url}`, 0);
-    return state.push;
+    if (state.push.url && (await workerExists(app))) {
+      await p.emit("push", "cached", `already deployed at ${state.push.url}`, 0);
+      return state.push;
+    }
+    await p.emit("push", "info", "cached deployment is stale (worker gone); re-deploying", 0);
   }
   let buildMs = 0;
   if (!buildFresh) {
@@ -226,13 +248,13 @@ async function runCadence(app: string, includePush: boolean, p: Progress) {
   const check = await doCheck(app, state, fp, p);
   next.check = { ...check };
   if (!check.ok) {
-    saveState(app, next);
+    persist(app, next);
     return { fp, check, test: undefined, push: undefined, ok: false };
   }
   const test = await doTest(app, state, fp, p);
   next.test = { ...test };
   if (!test.ok) {
-    saveState(app, next);
+    persist(app, next);
     return { fp, check, test, push: undefined, ok: false };
   }
   let push;
@@ -240,7 +262,7 @@ async function runCadence(app: string, includePush: boolean, p: Progress) {
     push = await doPush(app, state, fp, p, !(state?.fingerprint === fp && state?.test?.ok));
     next.push = { ...push };
   }
-  saveState(app, next);
+  persist(app, next);
   return { fp, check, test, push, ok: includePush ? Boolean(push?.ok) : true };
 }
 
@@ -294,7 +316,7 @@ export function registerTools(server: McpServer): void {
       const state = loadState(args.app);
       const check = await doCheck(args.app, state, fp, p);
       const next: PipelineState = { app: args.app, fingerprint: fp, check, test: state?.test, push: state?.push };
-      saveState(args.app, next);
+      persist(args.app, next);
       return {
         content: [{ type: "text", text: JSON.stringify({ app: args.app, ...check, fingerprint: fp, events: p.log }, null, 2) }],
         structuredContent: { app: args.app, ok: check.ok, fingerprint: fp, durMs: check.durMs, cached: p.log.some((e) => e.status === "cached"), detail: check.detail, events: p.log },
@@ -320,7 +342,7 @@ export function registerTools(server: McpServer): void {
       }
       const test = await doTest(args.app, state, fp, p);
       const next: PipelineState = { app: args.app, fingerprint: fp, check, test, push: state?.push };
-      saveState(args.app, next);
+      persist(args.app, next);
       return {
         content: [{ type: "text", text: JSON.stringify({ app: args.app, ok: test.ok, check, test, fingerprint: fp, events: p.log }, null, 2) }],
         structuredContent: { app: args.app, ok: test.ok, fingerprint: fp, durMs: test.durMs, detail: test.detail, events: p.log },
@@ -350,7 +372,7 @@ export function registerTools(server: McpServer): void {
       }
       const push = await doPush(args.app, state, fp, p, !(state?.fingerprint === fp && state?.test?.ok));
       const next: PipelineState = { app: args.app, fingerprint: fp, check, test, push };
-      saveState(args.app, next);
+      persist(args.app, next);
       return {
         content: [{ type: "text", text: JSON.stringify({ app: args.app, ok: push.ok, url: push.url, events: p.log }, null, 2) }],
         structuredContent: { app: args.app, ok: push.ok, fingerprint: fp, url: push.url, events: p.log },
