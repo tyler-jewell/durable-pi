@@ -76,7 +76,7 @@ export function gate(a: Record<string, JevAnswer>): Verdict {
   if (destructive >= 0.7)
     return { action: "block", reason: `destructive intent (${destructive.toFixed(2)}): this command aims to wipe something` };
   if (effect.choice === "reversible")
-    return { action: "approve", reason: `reversible (${effect.confidence.toFixed(2)}): changes files or state git/reinstall can restore — needs human approval` };
+    return { action: "approve", reason: `reversible (${effect.confidence.toFixed(2)}): changes files or state git/reinstall can restore` };
   return { action: "allow", reason: `${effect.choice} (${effect.confidence.toFixed(2)}), destructive ${destructive.toFixed(2)}` };
 }
 
@@ -87,7 +87,7 @@ export async function judgeOffline(command: string): Promise<Verdict> {
   if (OFFLINE_DANGER.test(command))
     return { action: "block", reason: "destructive intent (offline rules): this command aims to wipe something" };
   if (OFFLINE_REVERSIBLE.test(command))
-    return { action: "approve", reason: "reversible (offline rules): changes files or installs — needs human approval" };
+    return { action: "approve", reason: "reversible (offline rules): changes files or installs" };
   return { action: "allow", reason: "read-only (offline rules)" };
 }
 

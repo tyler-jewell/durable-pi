@@ -13,7 +13,7 @@ test("gate: read-only runs, reversible needs approval, irreversible/destructive 
   assert.equal(gate(answers("reversible", 0.1)).action, "approve");
   assert.equal(gate(answers("irreversible", 0.1)).action, "block");
   assert.equal(gate(answers("read_only", 0.8)).action, "block"); // destructive intent overrides read-only effect
-  assert.match(gate(answers("reversible", 0.1)).reason, /needs human approval/);
+  assert.match(gate(answers("reversible", 0.1)).reason, /reversible/);
 });
 
 test("gate: low-confidence irreversible is not a hard block", () => {
