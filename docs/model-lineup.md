@@ -1,9 +1,26 @@
 # The agent model lineup (Studio + Cloudflare Workers AI)
 
-A starting lineup of 10 models our agents work with: each strong at something
+A starting lineup of models our agents work with: each strong at something
+
 different, each backed by leaderboard results, each available on **Cloudflare
 Workers AI** (`@cf/...`), and each runnable on the **Mac Studio** (M1 Max, 32 GB
 unified memory, llama.cpp/Metal) from a GGUF with the same model family name.
+
+## The single source of truth
+
+Model files are **not** the SSoT. The SSoT is the manifest, per the router
+presets' own rule ("Model facts, sizes, hashes and licenses live only in
+`models/manifest.json`"):
+
+- **`/Users/studio/local/models/manifest.json`** — the canonical registry on the
+  Studio: every model's id, kind, role, CF name, GGUF file, quant, size, license,
+  status (local/staging/pending) and benchmark.
+- `/Users/studio/local/models/gguf/` + `mlx/` — storage (GGUF for llama.cpp, MLX
+  for Apple-native).
+- `/Users/studio/local/models/llama-models.ini` — the router presets (one GGUF
+  served at a time on `:8080`, `--models-max 1`).
+- `/Users/Shared/studio-models/` — import/staging only (the import tarball lives
+  there); it is **not** the model root.
 
 ## Measured baselines (19 Nov 2026, Studio)
 
@@ -70,6 +87,21 @@ Ten models, one distinct role each, all on CF Workers AI and all local-runnable:
 The `.tsf` roster then names these logical ids; the local provider resolves them
 to a GGUF alias and the `cloudflare-ai-gateway` provider resolves them to `@cf/...`
 — same name, two backends.
+
+## The cherry on top — Clairic (11th model)
+
+Cloudflare's newest open-weight model (Apache 2.0), a **System One-style numeric
+model**: it extracts, computes, estimates and forecasts typed values with
+confidence/probabilities — the third decision kind beside Clef (choice/noul) and
+Jev (judgment).
+
+| Model | CF name | Local | Size | Role |
+|---|---|---|---|---|
+| Clairic Flash (~9.7 B) | `@cf/cloudflare/clairic-flash` | `clairic-flash-Q4_K_M.gguf` + `mmproj` (vision) | 5.7 GB | numeric extract/forecast |
+| Clairic (~27.8 B) | `@cf/cloudflare/clairic` | CF-only (no GGUF yet) | — | numeric extract/forecast (full) |
+
+Clairic-flash fits the Studio beside Clef-flash (5.7 + 6.7 GB) and adds a
+forecast/estimate capability to the factory's judge tier.
 
 ## Open items before download
 
