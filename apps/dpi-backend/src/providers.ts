@@ -71,27 +71,25 @@ export const networkProviders: Record<Exclude<ProviderId, "faux">, NetworkProvid
         getModels: () => base.getModels().map((m) => ({ ...m, provider: id, headers: { ...m.headers, ...header } })),
       };
     },
+    // Only models whose Workers AI endpoint accepts pi's chat+tools message format. Several text-generation models
+    // (llama-3.3-70b-instruct-fp8-fast, gpt-oss, mistral-small, granite, qwen3-30b-a3b-fp8) reject a second turn that
+    // replays tool results with a 400 schema error ("content array not in string"), so an agent dies on its first tool
+    // use. The list keeps the ones that answer a conversation with tool history; verified 19 Nov 2026.
     models: [
-      { id: "@cf/meta/llama-3.3-70b-instruct-fp8-fast", name: "Llama 3.3 70B Instruct", tier: "S", icon: "meta.png" },
-      { id: "@cf/meta/llama-4-scout-17b-16e-instruct", name: "Llama 4 Scout 17B", tier: "S", icon: "meta.png" },
       { id: "@cf/deepseek-ai/deepseek-v4-flash-0731", name: "DeepSeek V4 Flash", tier: "S", icon: "deepseek.png" },
       { id: "@cf/deepseek-ai/deepseek-v4-pro-0813", name: "DeepSeek V4 Pro", tier: "S", icon: "deepseek.png" },
+      { id: "@cf/meta/llama-4-scout-17b-16e-instruct", name: "Llama 4 Scout 17B", tier: "S", icon: "meta.png" },
       { id: "@cf/qwen/qwen3.8-27b", name: "Qwen3.8 27B", tier: "A", icon: "qwen.png" },
-      { id: "@cf/qwen/qwen3-30b-a3b-fp8", name: "Qwen3 30B A3B", tier: "A", icon: "qwen.png" },
       { id: "@cf/moonshotai/kimi-k2.6", name: "Kimi K2.6", tier: "A", icon: "kimi.png" },
       { id: "@cf/moonshotai/kimi-k2.7-code", name: "Kimi K2.7 Code", tier: "A", icon: "kimi.png" },
       { id: "@cf/zai-org/glm-5.3", name: "GLM 5.3", tier: "A", icon: "zai.png" },
       { id: "@cf/zai-org/glm-5.2", name: "GLM 5.2", tier: "A", icon: "zai.png" },
-      { id: "@cf/openai/gpt-oss-120b", name: "GPT-OSS 120B", tier: "A", icon: "openai.png" },
       { id: "@cf/nvidia/nemotron-3-120b-a12b", name: "Nemotron 3 120B", tier: "A", icon: "lab.png" },
       { id: "@cf/google/gemma-4-26b-a4b-it", name: "Gemma 4 26B", tier: "B", icon: "gemini.png" },
-      { id: "@cf/mistralai/mistral-small-3.1-24b-instruct", name: "Mistral Small 3.1", tier: "B", icon: "lab.png" },
-      { id: "@cf/ibm-granite/granite-4.0-h-micro", name: "Granite 4.0 Micro", tier: "B", icon: "lab.png" },
-      { id: "@cf/openai/gpt-oss-20b", name: "GPT-OSS 20B", tier: "B", icon: "openai.png" },
       { id: "@cf/zai-org/glm-4.7-flash", name: "GLM 4.7 Flash", tier: "B", icon: "zai.png" },
       { id: "@cf/zai-org/glm-5.3-flash", name: "GLM 5.3 Flash", tier: "B", icon: "zai.png" },
     ],
-    defaultModelId: "@cf/meta/llama-3.3-70b-instruct-fp8-fast",
+    defaultModelId: "@cf/deepseek-ai/deepseek-v4-flash-0731",
   },
 };
 

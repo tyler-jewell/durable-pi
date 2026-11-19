@@ -31,6 +31,7 @@ import {
 import { lastAssistantText, messageText, toMarkdown, toTranscript } from "../../dpi-sdk/src/transcript.js";
 import { ApiFault, invalid, notFound } from "./errors.js";
 import { DatabaseSync } from "node:sqlite";
+import { execFileSync } from "node:child_process";
 import { mkdir, readdir, realpath, rename as renamePath, stat } from "node:fs/promises";
 import { mkdirSync, writeFileSync, readFileSync, unlinkSync } from "node:fs";
 import { join, dirname, resolve } from "node:path";
@@ -98,14 +99,35 @@ const AGENT_DOCS = { [JOB_RUNS_DOC]: JobRuns, "demo.workspace": Workspace } as c
 export const AGENT_DOC_KINDS = Object.keys(AGENT_DOCS);
 export const DEVICE_DOC_KINDS = ["app.shared-state"];
 
+/**
+ * A token that stays the same while a process lives and differs once its pid is reused: the process's start time.
+ * Linux reads /proc/<pid>/stat; everywhere else ps reports the start time. Nothing returns "unknown" when neither is
+ * available, which only happens where a lock cannot be safely checked anyway.
+ */
+function processStartToken(pid: number): string {
+  try {
+    const stat = readFileSync(`/proc/${pid}/stat`, "utf8");
+    const after = stat.lastIndexOf(")") + 2;
+    return `linux:${stat.slice(after).trim().split(/\s+/)[19]}`; // starttime, field 22 of /proc/<pid>/stat
+  } catch {
+    try {
+      return `ps:${execFileSync("ps", ["-o", "lstart=", "-p", String(pid)], { encoding: "utf8" }).trim()}`;
+    } catch {
+      return "unknown";
+    }
+  }
+}
+
 export function lockFile(path: string) {
   mkdirSync(dirname(path), { recursive: true });
-  const take = () => writeFileSync(path, String(process.pid), { flag: "wx", mode: 0o600 });
+  const token = processStartToken(process.pid);
+  const take = () => writeFileSync(path, `${process.pid} ${token}`, { flag: "wx", mode: 0o600 });
   try {
     take();
   } catch (err) {
     if ((err as NodeJS.ErrnoException).code !== "EEXIST") throw err;
-    const pid = Number(readFileSync(path, "utf8"));
+    const [pidText, recordedToken = "old-format"] = readFileSync(path, "utf8").split(" ");
+    const pid = Number(pidText);
     let alive = false;
     try {
       process.kill(pid, 0);
@@ -113,13 +135,15 @@ export function lockFile(path: string) {
     } catch (e) {
       if ((e as NodeJS.ErrnoException).code !== "ESRCH") alive = true;
     }
-    if (alive && pid !== process.pid) throw Error(`Database already owned by process ${pid}: ${path}`);
+    // A reused pid passes kill(pid, 0) but has a different start time, so it must not count as the old owner.
+    const sameProcess = alive && recordedToken === processStartToken(pid);
+    if (sameProcess && pid !== process.pid) throw Error(`Database already owned by process ${pid}: ${path}`);
     unlinkSync(path);
     take();
   }
   return () => {
     try {
-      if (readFileSync(path, "utf8") === String(process.pid)) unlinkSync(path);
+      if (readFileSync(path, "utf8") === `${process.pid} ${token}`) unlinkSync(path);
     } catch {}
   };
 }
