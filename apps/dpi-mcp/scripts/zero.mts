@@ -11,7 +11,7 @@
 //   npx tsx apps/dpi-mcp/scripts/zero.mts --select decision --select llm
 import { createInterface } from "node:readline";
 import { stdin as input, stdout as output } from "node:process";
-import { enableCapability, loadRegistry, recommendCapability, runDecision, runLlm, saveRegistry, type CapabilityRegistry } from "../src/capabilities.js";
+import { enableCapability, loadRegistry, recommendCapability, runDecision, runLlm, saveRegistry } from "../src/capabilities.js";
 import { discoverMeshModels } from "../src/mesh.js";
 import { notifyReady } from "../src/notify.js";
 
