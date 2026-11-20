@@ -3,9 +3,15 @@
 prepare() {
   SRC="$1"; WORK="$2"
   rm -rf "$WORK" && mkdir -p "$WORK"
-  cp -R "$SRC/pi/lsp/check/." "$WORK/"
+  # The check's own files only: copying node_modules raced with the install below and broke runs intermittently.
+  for entry in "$SRC"/pi/lsp/check/* "$SRC"/pi/lsp/check/.[!.]*; do
+    [ -e "$entry" ] || continue
+    [ "$(basename "$entry")" = node_modules ] && continue
+    cp -R "$entry" "$WORK/"
+  done
   (cd "$WORK" && npm install --no-audit --no-fund >/dev/null 2>&1)
   export PI_CODING_AGENT_DIR="$WORK/agent"
+  export LSP_EXTENSION_DIR="$WORK/agent/extensions/lsp"
   export PATH="$HOME/.dpi/lsp-tools/node_modules/.bin:$PATH"
   export DPI_LSP_CHECK_DIR="$WORK"
 }
@@ -14,7 +20,7 @@ prepare() {
 # folder, and prints its build id.
 install_extension() {
   sh "$SRC/pi/lsp/install.sh" "$1" > "$WORK/install.out" 2>&1 || { cat "$WORK/install.out"; return 1; }
-  cat "$PI_CODING_AGENT_DIR/extensions/lsp/BUILD"
+  cat "$LSP_EXTENSION_DIR/BUILD"
 }
 
 # fixture <dir>: a fresh copy of the check's fixture project at <dir>. The Vue server type-checks templates against the

@@ -11,7 +11,7 @@ now() { date +%s%3N; }
 T0="$(now)"
 export PI_CODING_AGENT_DIR=/root/agent
 # CONTROL=none leaves the extension out, so the agent has no language server tools: the eval must then fail.
-[ "${CONTROL:-}" = none ] || sh "$SRC/pi/lsp/install.sh" "$SRC" >/dev/null 2>&1
+[ "${CONTROL:-}" = none ] || LSP_EXTENSION_DIR=/root/agent/extensions/lsp sh "$SRC/pi/lsp/install.sh" "$SRC" >/dev/null 2>&1
 CASE_DIR="$SRC/pi/lsp/eval/cases/$CASE"
 REPO=/work/repo
 rm -rf /work && mkdir -p "$REPO" && cp -R "$CASE_DIR/repo/." "$REPO/"

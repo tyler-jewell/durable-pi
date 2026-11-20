@@ -1,7 +1,8 @@
 #!/bin/sh
 # Installs the language servers, pi, and the LSP extension, on this machine or a device. Idempotent: running it again
 # changes nothing that is already right. Everything goes to a dedicated prefix (~/.dpi/lsp-tools), so a global `tsc`
-# or `python` that other projects use is never replaced. The extension is copied to pi's global extensions folder.
+# or `python` that other projects use is never replaced. The extension is copied to <src-dir>/.pi/extensions/lsp, which
+# is version controlled, so pi loads it for that project only (LSP_EXTENSION_DIR moves it: the tests and the eval do).
 #
 #   sh pi/lsp/install.sh <src-dir>     src-dir holds pi/extensions/lsp and pi/lsp (the repo root, or a copy of them)
 #
@@ -25,11 +26,12 @@ fi
 for need in python3 shellcheck; do
   command -v "$need" >/dev/null 2>&1 || echo "lsp: warning: $need is not on PATH (needed for $( [ $need = python3 ] && echo Python || echo Bash ) diagnostics)" >&2
 done
-# The extension goes to pi's extensions folder (PI_CODING_AGENT_DIR, when set, moves it: the tests install in isolation).
+# The extension goes to the project's .pi/extensions/lsp (LSP_EXTENSION_DIR moves it: the tests install in isolation).
 # core.mjs is installed under a name that carries its content hash, and index.ts is pointed at that name. Pi caches a
 # module by path for the life of the process, so a /reload that finds core.mjs again would run the old one under the new
 # index.ts. A new hash is a new path, so a reload always runs what was installed. The hash is the build id, kept in $EXT/BUILD.
-EXT="${PI_CODING_AGENT_DIR:-$HOME/.pi/agent}/extensions/lsp"
+SRC="$(cd "$SRC" && pwd)"
+EXT="${LSP_EXTENSION_DIR:-$SRC/.pi/extensions/lsp}"
 HASH="$(node -p "require('crypto').createHash('sha256').update(require('fs').readFileSync('$SRC/pi/extensions/lsp/core.mjs')).digest('hex').slice(0, 12)")"
 rm -rf "$EXT" && mkdir -p "$EXT"
 sed "s#LSP_BUILD = \"dev\"#LSP_BUILD = \"$HASH\"#" "$SRC/pi/extensions/lsp/core.mjs" > "$EXT/core.$HASH.mjs"

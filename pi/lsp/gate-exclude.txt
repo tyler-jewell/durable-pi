@@ -6,3 +6,4 @@ pi/lsp/gate-fixtures/  # a fake language server for gate-test.sh: it speaks LSP 
 .claude/skills/  # symlinks into .agents/skills/ (Claude Code reads this folder), so the same exclusion applies.
 pi/lsp/eval/cases/  # eval fixtures: small repos with a task the agent must finish, broken on purpose until it does.
 apps/dpi-playground/apps/dpi-playground-fe/public/  # Vite-served static assets: sw.js is a plain service-worker script (browser globals), not TS.
+.pi/extensions/lsp/  # the installed copy of pi/extensions/lsp (just lsp install). Version controlled; pi/lsp/check/tracked.sh proves it is what the source produces, so the source is what the gate checks.

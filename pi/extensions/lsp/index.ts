@@ -50,8 +50,12 @@ export default function (pi: ExtensionAPI) {
     await ws?.shutdown();
     root = ctx.cwd;
     ws = new Workspace(root);
-    for (const s of await ws.start()) {
-      process.stderr.write(`[lsp] ${s.label}: ${s.state === "running" ? `running (${s.files} files)` : `failed ${truncate(s.message)}`}\n`);
+    const statuses = await ws.start();
+    // Pi's footer, not stderr: a raw write is painted into the chat area and blocks the prompt. The model gets the same
+    // detail through the "language-servers" section below.
+    if (ctx.hasUI) {
+      const parts = statuses.map((s) => (s.state === "running" ? `${s.label} ${s.files}` : `${s.label} failed ${truncate(s.message, 60)}`));
+      ctx.ui.setStatus("lsp", parts.length ? `lsp: ${parts.join(" · ")}` : undefined);
     }
   });
 

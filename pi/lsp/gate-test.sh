@@ -195,6 +195,27 @@ out=$(node "$GATE" files scratch.sh 2>&1); code=$?
 if [ "$code" = 1 ] && echo "$out" | grep -q 'not tracked by Git'; then pass "files: explicit untracked shell script is refused"; else fail "untracked shell script" "exit $code: $out"; fi
 cd "$SRC" || exit 1; rm -rf "$D"
 
+# 17. The hook itself: `git commit` runs .githooks/pre-commit, which runs the servers. A planted type error must stop the
+# commit with the server's message, and the same commit must go through once the error is fixed. (The hook is copied into
+# the test repo's default hooks folder, so no hooksPath is set.)
+new_repo hook
+# The hook runs the gate from this repo's own folder, so the test repo carries the gate (untracked, so never checked itself).
+mkdir -p pi/extensions/lsp pi/lsp
+cp "$SRC/pi/extensions/lsp/core.mjs" "$SRC/pi/extensions/lsp/gate.mjs" "$SRC/pi/extensions/lsp/tsconfig.json" "$SRC/pi/extensions/lsp/package.json" pi/extensions/lsp/
+ln -s "$SRC/pi/extensions/lsp/node_modules" pi/extensions/lsp/node_modules
+cp "$SRC/pi/lsp/gate-exclude.txt" pi/lsp/
+cp "$SRC/.githooks/pre-commit" .git/hooks/pre-commit && chmod +x .git/hooks/pre-commit
+printf 'export const n: number = 1;\n' > src/ok.ts
+git add src && git commit -q -m clean >/dev/null 2>&1
+printf 'export const s: string = 1;\n' > src/bad.ts
+git add src/bad.ts
+out=$(git commit -q -m planted 2>&1); code=$?
+if [ "$code" != 0 ] && echo "$out" | grep -q 'typescript 2322'; then pass "hook: a planted type error stops git commit, with the server's message"; else fail "hook blocks" "exit $code: $out"; fi
+printf 'export const s: string = "1";\n' > src/bad.ts
+git add src/bad.ts
+if git commit -q -m fixed >/dev/null 2>&1; then pass "hook: the fixed commit goes through"; else fail "hook passes fixed" "$(git commit -q -m fixed 2>&1 | tail -3)"; fi
+cd "$SRC" || exit 1; rm -rf "$D"
+
 if [ "$FAILS" = 0 ]; then
   echo "GATE_TEST_PASS"
 else

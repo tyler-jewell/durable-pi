@@ -5,5 +5,5 @@ RUN apt-get update && apt-get install -y --no-install-recommends git ca-certific
  && rm -rf /var/lib/apt/lists/*
 COPY pi/lsp/install.sh /src/pi/lsp/install.sh
 COPY pi/extensions/lsp/core.mjs pi/extensions/lsp/index.ts /src/pi/extensions/lsp/
-RUN sh /src/pi/lsp/install.sh /src && ln -s /root/.dpi/lsp-tools/node_modules/.bin/pi /usr/local/bin/pi
+RUN LSP_EXTENSION_DIR=/root/agent/extensions/lsp sh /src/pi/lsp/install.sh /src && ln -s /root/.dpi/lsp-tools/node_modules/.bin/pi /usr/local/bin/pi
 ENV GIT_TERMINAL_PROMPT=0

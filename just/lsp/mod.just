@@ -8,7 +8,7 @@ set positional-arguments
 default:
     @just --list lsp
 
-# Install the language servers and pi's LSP extension on this machine (pinned; see pi/lsp/install.sh)
+# Install the language servers, and pi's LSP extension into this repo's .pi/extensions/lsp (version controlled; pinned: pi/lsp/install.sh)
 [no-cd]
 install:
     sh pi/lsp/install.sh .
@@ -23,12 +23,14 @@ plan:
 check:
     node pi/extensions/lsp/gate.mjs all
 
-# Test the gate, the extension in a real pi session (a scripted model), and /reload. No network, no model.
+# Test the gate, the extension in a real pi session (a scripted model, installed in the agent folder and in a project's .pi), /reload, and the tracked copy. No network, no model.
 [no-cd]
 test:
     sh pi/lsp/gate-test.sh .
     sh pi/lsp/check/run.sh .
+    LSP_CHECK_LAYOUT=project sh pi/lsp/check/run.sh .
     sh pi/lsp/check/reload.sh .
+    sh pi/lsp/check/tracked.sh .
 
 # Agent eval: DeepSeek Flash, three coding tasks that never mention language servers, each in its own Apple container.
 # Does the agent reach for ours? Needs the container system and a DeepSeek key in ~/.pi/agent/auth.json.

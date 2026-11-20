@@ -44,11 +44,22 @@ server. The old layout, one server per project, held about 2.2 GB resident acros
 `install.sh` installs `core.mjs` as `core.<hash>.mjs` and points `index.ts` at it. Pi caches a module by path for the life of
 the process, so a `/reload` that found `core.mjs` again ran the old core under the new `index.ts`. A new hash is a new path.
 
+## Where it is installed
+
+The extension lives in the repo, not in the agent folder (`~/.pi/agent`), so only this repo's sessions load it and no other
+project on the machine sees it. `just lsp install` (or `sh pi/lsp/install.sh .`) writes it to `.pi/extensions/lsp`, which is
+version controlled: commit it with any change to `pi/extensions/lsp`. Pi loads project extensions only after project trust is
+granted (`defaultProjectTrust`, see the settings docs). `LSP_EXTENSION_DIR` moves the install elsewhere; the tests and the
+container eval use it.
+
+`just lsp test` checks the copy as well: `pi/lsp/check/tracked.sh` installs into a scratch folder and fails if
+`.pi/extensions/lsp` differs from what the source produces.
+
 ## Tests
 
 | Command | What it proves | Needs |
 |---|---|---|
-| `just lsp test` | the gate (17 cases, real servers), the extension in a real pi session with a scripted model (plan, one server per language, every strategy, edit then re-check, bypass blocked, nothing left behind), and `/reload` (a changed build is picked up; the old layout is caught) | nothing |
+| `just lsp test` | the gate (21 cases, real servers; the last two commit through `.githooks/pre-commit` itself), the extension in a real pi session with a scripted model (plan, one server per language, every strategy, edit then re-check, bypass blocked, nothing left behind) in two layouts (agent folder, and a project's `.pi/extensions/lsp` loaded by trust), `/reload` (a changed build is picked up; the old layout is caught), and the tracked copy matches the source | nothing |
 | `just lsp eval` | a real model (DeepSeek Flash) given tasks that never mention language servers: does it reach for them, and is the repo clean? Three cases, each in its own Apple container, each under 20 s | the container system, a DeepSeek key |
 | `just lsp check` | every file in the repo is clean by the servers' standard | nothing |
 

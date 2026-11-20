@@ -1,8 +1,7 @@
-// Scores the LSP check from pi's session record and its stderr. Usage: assert.cjs <session-dir> <pi.out> <build>
+// Scores the LSP check from pi's session record. Usage: assert.cjs <session-dir> <build>
 const fs = require("fs");
 /** @typedef {{ role?: string, toolName?: string, content?: Array<{ text?: string }>, details?: { build?: string } }} Message */
-const [dir, outFile, build] = process.argv.slice(2);
-const piOut = fs.readFileSync(outFile, "utf8");
+const [dir, build] = process.argv.slice(2);
 const file = fs.readdirSync(dir).filter((/** @type {string} */ f) => f.endsWith(".jsonl")).map((/** @type {string} */ f) => `${dir}/${f}`)[0];
 /** @type {Array<{ message?: Message }>} */
 const entries = fs.readFileSync(file, "utf8").trim().split("\n").map((/** @type {string} */ l) => JSON.parse(l));
@@ -20,9 +19,10 @@ const diag = results.lsp_diagnostics || [];
 const text = (/** @type {number} */ i) => (diag[i] ? diag[i].text : "");
 const first = (/** @type {string} */ s) => s.split("\n")[0];
 
-// The plan: the files decide the servers.
-check("plan: typescript, vue, json and bash started (their files exist)", ["typescript", "vue", "json", "bash"].every((l) => new RegExp(`\\[lsp\\] ${l}: running \\(\\d+ files\\)`).test(piOut)), (piOut.match(/\[lsp\][^\n]*/g) || []).join(" | "));
-check("plan: no css, html or python server (no such files)", !/\[lsp\] (css|html|python)/.test(piOut), "");
+// The plan: the files decide the servers. The status the model was given is in its final answer (probe.sh counts the processes).
+const finalText = (entries.map((e) => e.message).filter((m) => m && m.role === "assistant").pop()?.content || []).map((c) => c.text || "").join("\n");
+check("plan: typescript, vue, json and bash started (their files exist)", ["typescript", "vue", "json", "bash"].every((l) => new RegExp(`^- ${l}: running \\(\\d+ files\\)`, "m").test(finalText)), finalText.split("\n").slice(1).join(" | "));
+check("plan: no css, html or python server (no such files)", !/^- (css|html|python): /m.test(finalText), "");
 
 // The rule: one server per language.
 const probe = (results.bash || [])[0] ? results.bash[0].text : "";

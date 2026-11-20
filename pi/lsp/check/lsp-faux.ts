@@ -27,6 +27,11 @@ const script: Step[] = [
   { tool: "lsp_hover", args: { path: "scratch.sh", line: 1, column: 1 } },
 ];
 
+// The status the model was given: the language-servers section of its system prompt, one line per language. Pi shows the
+// same status in the footer, which a print-mode run has no screen for, so the answer carries it for the check to read.
+const statusLines = (systemPrompt: string) =>
+  systemPrompt.split("\n").filter((l) => /^- [a-z-]+: (running \(\d+ files\)|failed )/.test(l)).join("\n");
+
 export default function (pi: ExtensionAPI) {
-  registerScripted(pi, "lsp-faux", (results) => script[results], "LSP_TEST_DONE");
+  registerScripted(pi, "lsp-faux", (results) => script[results], (systemPrompt) => `LSP_TEST_DONE\n${statusLines(systemPrompt)}`);
 }

@@ -320,6 +320,7 @@ durable-pi/
 │   ├── pi-object/                     # pi agent in a Durable Object: telemetry, cost objects, budget guard
 ├── pi/                                # language servers for agents and the git gate
 │   ├── extensions/lsp/                # core.mjs (servers), index.ts (pi extension), gate.mjs (pre-commit gate)
+│   ├── (.pi/extensions/lsp/)          # the installed copy of the extension, version controlled (just lsp install)
 │   └── lsp/                           # install.sh, gate and session tests, reload test, agent evals; README.md has the design
 ├── templates/pwa-vue/                 # the app scaffold behind `just app add`
 ├── scripts/                           # app scaffolding and verification, declared-copies check, ssh bootstrap helpers
