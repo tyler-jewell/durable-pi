@@ -1,0 +1,2 @@
+worktree: a
+isolated: yes
