@@ -8,7 +8,9 @@ Status is one of: **proven** (an agent rebuilt it and it passed the check), **pe
 
 ---
 
-## jev-bash-gate-proof — proven
+## jev-bash-gate-proof — pending
+
+*Attempt 1 failed.* The team (a local model, through pi and the MCP server) never completed a turn. The first run had no MCP server attached. The second had one, but the reasoning model ran out of output room, and the third was cut off at about 1,270 output tokens. The cause is the Studio's 4,096-token context window, which the prompt and the output share. It is not an output cap. The check passes only when a fresh team rebuilds the script and it runs with the verdicts matched.
 
 Add a script that sends ten fixed bash commands (four read-only that must be allowed, three reversible that must
 need approval, and three destructive that must be blocked) to the bash-gate decision model through the MCP registry
