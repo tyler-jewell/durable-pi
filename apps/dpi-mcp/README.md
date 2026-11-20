@@ -134,6 +134,24 @@ container, and use that URL in the container's `.pi/mcp.json`.
   older archives. Needs `R2_ARCHIVE_TOKEN` (Workers R2 Storage Read+Write) and
   `R2_ARCHIVE_BUCKET` in the server environment.
 
+## Zero bootstrap (one command, zero to tested models)
+
+```bash
+npx tsx scripts/zero.mts          # the dialog: every discovered local model pre-checked; Enter submits
+npx tsx scripts/zero.mts --yes    # no dialog: take the defaults
+```
+
+It discovers every mesh host, lists its local LLMs and decision models, and enables the set you
+submit. Each enabled model is tested live with the same probe, so the results compare directly.
+Only local models are called. The run ends with **realized cost** (electricity only, with wait
+time not counted), priced against a cloud twin only where one exists with a catalog price, and an
+**A/B coverage** check (300 draws per required purpose). It sets the default selection mode to
+A/B random and exits `0` only when every model passed. A host that refuses its token is listed as
+`access denied`. The logic is in `src/zero.ts`, and the offline eval in
+`tests/zero-bootstrap.eval.ts` runs the same code against mock servers.
+
+The proof run is in [docs/zero-bootstrap-run.md](../../docs/zero-bootstrap-run.md).
+
 ## Capabilities (per-host LLMs and decision models)
 
 A second registry, `~/.dpi-mcp/capabilities.json` (override with `DPI_MCP_CAPABILITIES`),

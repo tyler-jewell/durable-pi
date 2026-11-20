@@ -3,7 +3,7 @@
 // local text models for chat, local decision models for Jev/Clef — plus a set of Cloudflare
 // Workers AI capabilities (recommended, cloud transport) so run_llm/run_decision can fall
 // back to cloud. The registry is the source of truth for what models exist.
-import { probeHost, saveRegistry, type Capability, type CapabilityRegistry } from "../src/capabilities.js";
+import { familyOf, probeHost, saveRegistry, type Capability, type CapabilityRegistry } from "../src/capabilities.js";
 import { loadMeshConfig } from "../src/mesh-config.js";
 
 const hostName = process.env.LLAMA_HOST ?? "studio";
@@ -30,9 +30,6 @@ host.models = host.models.length
 
 const now = Date.now();
 const caps: Capability[] = [];
-const familyOf = (id: string, cloud = false) =>
-  cloud ? id.split("/").pop()!.replace(/-fp8$/i, "") : id.replace(/-(UD-)?(Q|IQ|MXFP|BF16|F16|F32|FP8)[0-9_]*(_K(_[MSXL])?|_0)?$/i, "").replace(/-Instruct-\d+$/i, "").toLowerCase();
-
 for (const m of host.models) {
   caps.push({
     id: `${hostName}-${m.kind}-${m.id}`.toLowerCase().replace(/[^a-z0-9]+/g, "-"),
@@ -68,7 +65,7 @@ for (const [kind, ids] of [["llm", cloudLlm], ["decision", cloudDecision]] as co
       address: cfEndpoint,
       model: id,
       transport: "cloudflare-workers-ai",
-      family: familyOf(id, true),
+      family: familyOf(id),
       description: "Cloudflare Workers AI model (cloud fallback)",
       purpose: kind === "decision" ? ["jev-quality"] : ["agent"],
       state: "recommended",

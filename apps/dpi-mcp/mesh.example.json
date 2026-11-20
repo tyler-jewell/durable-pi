@@ -1,5 +1,6 @@
 {
   "hosts": [
-    { "name": "studio", "hostname": "llm-studio.example.com", "service_token_env": "CF_ACCESS_STUDIO" }
+    { "name": "studio", "hostname": "<studio-host>.<your-zone>", "service_token_env": "CF_ACCESS_STUDIO" },
+    { "name": "macbook-pro", "hostname": "<macbook-host>.<your-zone>", "service_token_env": "CF_ACCESS_MACBOOK_PRO" }
   ]
 }

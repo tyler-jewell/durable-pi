@@ -205,6 +205,7 @@ The end-to-end paths the system proves today. Each starts from a prompt (or a `j
 |---|---|---|---|
 | **Agentic install** | `just install` + `just net up` | every device online, backend + hub serving | `just net status`, `just check` |
 | **Capability lifecycle** | `discover_host studio` | a validated, deployed model capability, team notified | [`prove-capability-loop.mts`](apps/dpi-mcp/scripts/prove-capability-loop.mts), [`zero-agent.eval.ts`](apps/dpi-mcp/tests/zero-agent.eval.ts) |
+| **Zero bootstrap** | `npx tsx apps/dpi-mcp/scripts/zero.mts` | every mesh host discovered over Cloudflare Access, its local models enabled and tested, A/B mode set | [proof run](docs/zero-bootstrap-run.md), [`zero-bootstrap.eval.ts`](apps/dpi-mcp/tests/zero-bootstrap.eval.ts) |
 | **Factory create-app** | `create_app "a todo app"` (browser or API) | a scaffolded, reviewed, deployed Workers app | durable job `create-app` + `.tsf` roster |
 | **Model compare** | `run_llm`/`run_decision` on both backs | cloud $/min rate vs local electricity + wait-time opportunity | [`profile-models.mts`](apps/dpi-mcp/scripts/profile-models.mts), `compare_costs` |
 | **Jev gates** | flip `jev-damage-control` on | every bash command decided (allow / needs approval / block) | [`jev-browser.mjs`](apps/dpi-playground/tests/jev-browser.mjs), screenshots below |

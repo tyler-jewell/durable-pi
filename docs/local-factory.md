@@ -70,7 +70,12 @@ Studio (127.0.0.1)
    Cloudflare Access service-token policy. Discovery and every model call attach the token for
    mesh hostnames only. Verified: no token → `401`; token → the Studio's 9 models, a real local
    decision verdict and a real LLM answer. No tailscale anywhere.
-4. **Feedback loop** (`dpi-backend/src/jobs.ts`, job `feedback`): an observation runs
+4. **Zero bootstrap** (`dpi-mcp/src/zero.ts`, `scripts/zero.mts`): discovers every mesh host
+   over Cloudflare Access, lets you choose the models to enable (all pre-checked), tests each
+   one live, reports realized electricity cost against cloud, proves A/B coverage, and sets the
+   default to A/B random. Proven over two hosts (10 models, the MacBook Pro included, all
+   passing). See [zero-bootstrap-run.md](zero-bootstrap-run.md).
+5. **Feedback loop** (`dpi-backend/src/jobs.ts`, job `feedback`): an observation runs
    `triage → work → review → deploy`; the review phase is the same `runReview()` gate `create-app`
    uses. "See something, say something" in AGENTS.md is this job.
 
@@ -97,6 +102,24 @@ Secrets are written to `~/.dpi-mcp/access.env` (mode 0600), never to the repo or
 6. **Verify**: `curl` without headers → `401`; with the two `CF-Access-*` headers → `{"status":"ok"}`.
    Then `npx tsx` `discoverMeshModels()` lists the host's models.
 
+### Adding a second host: the MacBook Pro
+
+The same runbook, with one host-side difference: the model server is a launch agent, so it
+survives reboots, as the Studio's does.
+
+1. `brew install llama.cpp` (llama-server 1.0.0, the same build as the Studio).
+2. Download one GGUF into `~/local/models/gguf/` (the proof run used the granite-4.0-h-micro Q4_K_M
+   from the model lineup, about 2 GB, which fits 8 GB of RAM).
+3. Write a launch agent at `~/Library/LaunchAgents/<label>.plist` with `ProgramArguments`:
+   `llama-server --host 127.0.0.1 --port 8080 -m <gguf> -c 4096 --alias <name>`, `RunAtLoad`
+   and `KeepAlive` true. Load it with `launchctl bootstrap gui/$(id -u) <plist>`.
+4. Reuse the host's existing tunnel: add an ingress rule for a new one-level hostname pointing at
+   `http://localhost:8080`. Add a proxied CNAME for it, then an Access app with the shared
+   service-token policy.
+5. Create a new service token for this host, so you can revoke it on its own. Append it to
+   `~/.dpi-mcp/access.env` as `CF_ACCESS_<HOST>=<id>:<secret>`.
+6. Add the host to `mesh.json`, then run `scripts/zero.mts`.
+
 Access apps and tokens are created with the `cf` CLI's account login. The API token in
 `dpi-network.yaml` is scoped for tunnels and DNS, not Access, so Access calls fail with
 `auth.forbidden` if you try them with it.
@@ -122,13 +145,13 @@ The registry is **data derived from the host's own API**, not hand-written confi
    by name, through the registry.
 2. ~~`local` provider~~ — removed. Model access is the MCP registry only.
 3. ~~Mesh reachability~~ — done (step 3 above and the runbook).
-4. **PWA on iOS.** Serve the hub UI (`apps/dpi-playground`) from the Studio over HTTPS
+5. **PWA on iOS.** Serve the hub UI (`apps/dpi-playground`) from the Studio over HTTPS
    (the Cloudflare Tunnel gives that), and add a web app manifest + service worker + Apple touch
    icon so "Add to Home Screen" installs it as a standalone app. The hub already serves the
    Vue frontend; the manifest/worker/icons are the new bits, plus iOS Safari specifics
    (`apple-mobile-web-app-capable`, full-screen `display: standalone`, no service-worker
    assumptions on iOS).
-5. **Bind the factory to enabled capabilities.** Have the review phase resolve `jev-quality`
+6. **Bind the factory to enabled capabilities.** Have the review phase resolve `jev-quality`
    through `selectCapability` (A/B, local-first) instead of `JEV_BASE_URL`, and the coding
    agents resolve an enabled `llm` capability — the last "auto-implement" stitch.
 

@@ -120,6 +120,17 @@ export function saveRegistry(reg: CapabilityRegistry): void {
   writeFileSync(REGISTRY, JSON.stringify(reg, null, 2) + "\n");
 }
 
+/** The canonical model family. It strips the quantization/format suffix and the cloud namespace, so a
+ *  local GGUF and its Workers AI twin share one family: Qwen3-30B-A3B-Q4_K_M and
+ *  @cf/qwen/qwen3-30b-a3b-fp8 are both `qwen3-30b-a3b`. Cost comparisons pair twins by this key. */
+export function familyOf(model: string): string {
+  const base = model.includes("/") ? model.slice(model.lastIndexOf("/") + 1) : model;
+  return base
+    .replace(/-(UD-)?(Q|IQ|MXFP|BF16|F16|F32|FP8)[0-9_]*(_K(_[MSXL])?|_0)?$/i, "")
+    .replace(/-instruct(-\d+)?$/i, "")
+    .toLowerCase();
+}
+
 export const slug = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
 
 export function findCapability(reg: CapabilityRegistry, id: string): Capability | undefined {
@@ -192,7 +203,7 @@ export function recommendCapability(reg: CapabilityRegistry, args: RecommendArgs
     address: host.address,
     model: args.model,
     transport: args.transport ?? "openai-compat",
-    family: args.name ?? args.model,
+    family: familyOf(args.model),
     description: args.description,
     purpose: args.purpose,
     state: "recommended",
@@ -265,6 +276,11 @@ export async function probeHost(host: string, address: string, timeoutMs = 5000,
   const base = address.replace(/\/+$/, "");
   const cap: HostCapability = { host, address: base, health: "offline", reachable: false, models: [], discoveredAt: Date.now() };
   const health = await fetchJson(`${base}/health`, { method: "GET", headers }, timeoutMs);
+  if (health && (health.status === 401 || health.status === 403)) {
+    // Cloudflare Access (or the host's own auth) refused the request: say so, not "no model server".
+    cap.error = `access denied (HTTP ${health.status}) at ${address}: the host's Access service token is missing or wrong`;
+    return cap;
+  }
   if (health?.ok) {
     const body = (await health.json().catch(() => undefined)) as { status?: string } | undefined;
     cap.health = body?.status === "ok" ? "online" : "offline";

@@ -76,6 +76,18 @@ export function cloudCostUsd(model: string, inToks: number, outToks: number): nu
   return (inToks * p.in + outToks * p.out) / 1_000_000;
 }
 
+/** True when the Workers AI catalog price for this model is known. An unknown price is not $0. */
+export function cloudPriceKnown(model: string): boolean {
+  return Object.prototype.hasOwnProperty.call(CLOUD_PRICE, model);
+}
+
+/** Marginal electricity for `ms` of model time: the power above idle, priced per kWh. Idle draw is not
+ *  charged here, because a cloud call has no idle equivalent. This is the realized spend of one run. */
+export function marginalElectricityUsd(ms: number, settings: CostSettings): number {
+  const kwh = ((settings.loadWatts - settings.idleWatts) * (ms / 1000)) / 3_600_000;
+  return kwh * settings.electricityUsdPerKwh;
+}
+
 export interface UsageSummary {
   loadSeconds: number;
   elapsedSeconds: number;
