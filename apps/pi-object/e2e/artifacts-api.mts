@@ -62,6 +62,39 @@ export async function inventory(): Promise<Array<{ namespace: string; jurisdicti
   return out;
 }
 
+async function cloudGet(path: string): Promise<{ status: number; json: any }> {
+  const res = await fetch(`https://api.cloudflare.com/client/v4/accounts/${accountId}${path}`, {
+    headers: { authorization: `Bearer ${apiToken}` },
+  });
+  const text = await res.text();
+  let json: any;
+  try {
+    json = JSON.parse(text);
+  } catch {
+    json = { raw: text.slice(0, 200) };
+  }
+  return { status: res.status, json };
+}
+
+/** Names only: workers, account tokens, and Artifacts namespaces. No secret values. */
+export async function accountShape(): Promise<{ workers: string[]; tokens: string[]; namespaces: string[] }> {
+  const [workers, tokens, namespaces] = await Promise.all([
+    cloudGet("/workers/scripts"),
+    cloudGet("/tokens?per_page=50"),
+    api("GET", ""),
+  ]);
+  if (workers.status !== 200) throw new Error(`worker list HTTP ${workers.status}`);
+  if (tokens.status !== 200) throw new Error(`token list HTTP ${tokens.status}`);
+  if (namespaces.status !== 200) throw new Error(`namespace list HTTP ${namespaces.status}`);
+  const names = (rows: Array<{ id?: string; name?: string; namespace?: string }>, key: "id" | "name" | "namespace") =>
+    rows.map((row) => String(row[key] ?? "")).filter(Boolean).sort();
+  return {
+    workers: names(workers.json.result ?? [], "id"),
+    tokens: names(tokens.json.result ?? [], "name"),
+    namespaces: names(namespaces.json.result ?? [], "namespace"),
+  };
+}
+
 /** Repos on the account: the namespace list's own repo_count, one call. */
 export async function repoCount(): Promise<number> {
   const listed = await api("GET", "");

@@ -24,7 +24,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { BRANCH, DONE_MARKER, E2E_CONTENT, E2E_FILE, COMMIT_MESSAGE } from "./contract.ts";
-import { api, JURISDICTION, NAMESPACE, repoCount } from "./artifacts-api.mts";
+import { accountShape, api, JURISDICTION, NAMESPACE, repoCount } from "./artifacts-api.mts";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const SIM_DIR = join(here, "artifacts-sim");
@@ -318,6 +318,7 @@ async function main(): Promise<number> {
   let cloneDir: string | undefined;
   let agent: AgentRun | undefined;
   let reposBefore = -1;
+  let shapeBefore = "";
   let sim: Sim | undefined;
   let bridge: { port: number; close(): Promise<void> } | undefined;
   const result: Record<string, unknown> = { runId, target, namespace: target === "offline" ? null : NAMESPACE };
@@ -348,6 +349,7 @@ async function main(): Promise<number> {
       // Account repo count before the run, to prove the run leaves none behind.
       reposBefore = await repoCount();
       result.reposBefore = reposBefore;
+      shapeBefore = JSON.stringify(await accountShape());
 
       // 1. Namespace (created only if missing; removed at the end only if this run created it).
       let t = Date.now();
@@ -484,6 +486,8 @@ async function main(): Promise<number> {
         const delNs = await api("DELETE", `/${NAMESPACE}`);
         check("namespace removed (created by this run)", delNs.status === 200 || delNs.status === 204, `HTTP ${delNs.status}`);
       }
+      const shapeAfter = JSON.stringify(await accountShape());
+      check("workers, tokens, and namespaces unchanged", shapeAfter === shapeBefore, shapeAfter === shapeBefore ? "same" : "changed");
     }
     if (cloneDir) rmSync(cloneDir, { recursive: true, force: true });
     if (target !== "remote") {
