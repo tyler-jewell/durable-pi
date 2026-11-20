@@ -1,27 +1,18 @@
-// Prove the jev-quality reviewer gate with the Studio's real Clef-Flash decision model.
-// A "clean" state should approve (ship), a "broken" one should fail the gate.
-import { askJev } from "../apps/dpi-backend/src/jev.js";
-import { reviewVerdict } from "../apps/dpi-backend/src/jobs.js";
+// Prove the review phase's real MCP decision and the resulting gate for clean and broken work.
+import { requestReviewDecision, reviewVerdict } from "../apps/dpi-backend/src/jobs.js";
 
-const QUESTIONS = {
-  verdict: {
-    type: "choice" as const,
-    instructions: "Should this app ship as built?",
-    criteria: {
-      approve: "The work matches the plan and its checks passed; ship it",
-      revise: "Small, specific fixes are needed; loop back to the builder",
-      reject: "Broken, unsafe, or not what the plan asked for; block the run",
-    },
-  },
-};
-
+const plan = "Build a todo app";
 const cases = [
-  { name: "clean", state: { plan: "build a todo app", facts: "typecheck and build pass; routes work", review: "approve: matches the plan, tests pass" }, model: "approve: looks good" },
-  { name: "broken", state: { plan: "build a todo app", facts: "build fails with 12 errors", review: "reject: does not compile" }, model: "reject: does not compile" },
+  { name: "clean", facts: "Typecheck and build pass; routes work", review: "approve: matches the plan, tests pass", ok: true },
+  { name: "broken", facts: "Build fails with 12 errors", review: "reject: does not compile", ok: false },
 ];
 
 for (const c of cases) {
-  const answers = await askJev(c.state, QUESTIONS);
-  const v = reviewVerdict(answers, c.model);
-  console.log(`${c.name.padEnd(7)} → ${v.ok ? "APPROVE (ships)" : "GATE FAILS"} | ${v.reason}`);
+  const { tool, answer } = await requestReviewDecision(plan, c.facts, c.review);
+  const verdict = reviewVerdict({ verdict: answer }, c.review);
+  // Use the opposite reviewer verdict to rule out an approval or block that came only from fallback.
+  const control = reviewVerdict({ verdict: answer }, c.ok ? "reject" : "approve");
+  const pass = verdict.ok === c.ok && control.ok === c.ok;
+  console.log(`${pass ? "PASS" : "FAIL"} ${c.name}: ${verdict.reason} [${tool}]`);
+  if (!pass) process.exitCode = 1;
 }

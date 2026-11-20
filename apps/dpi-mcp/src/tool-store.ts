@@ -138,7 +138,10 @@ export function select(
     return t;
   }
   let eligible = store.tools.filter((t) => t.enabled && t.kind === kind);
-  if (opts.requires?.length) eligible = eligible.filter((t) => opts.requires!.every((r) => t.tags.includes(r)));
+  const required = opts.requires ?? [];
+  eligible = eligible.filter((t) => required.every((tag) =>
+    tag === "mesh" || tag === "cloud" ? t.source === tag : t.tags.includes(tag),
+  ));
   if (!eligible.length) {
     const why = opts.requires?.length ? ` with every required tag [${opts.requires.join(", ")}]` : "";
     throw new Error(`no enabled ${kind} tool${why}; enable one with enable_tool`);

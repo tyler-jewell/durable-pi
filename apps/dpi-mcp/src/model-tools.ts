@@ -150,7 +150,7 @@ export class ModelTools {
       {
         title: "Ask a model: one router for every enabled tool of a kind",
         description:
-          "Pick one enabled model tool of the kind, at random (A/B), after filtering by the tags you require, then call it. Use `llm` with messages, or `decision` with state and questions. Pass `name` to call one tool by name instead. Pass `requires` to narrow the pool (every tag must match).",
+          "Pick one enabled model tool of the kind, at random (A/B), after filtering by the tags you require, then call it. Use `llm` with messages, or `decision` with state and questions. Pass `name` to call one tool by name instead. Pass `requires` to narrow the pool (every tag must match; `mesh` and `cloud` match the tool source).",
         inputSchema: {
           kind: z.enum(["llm", "decision"]),
           name: z.string().optional().describe("a tool name, to call that tool deterministically"),

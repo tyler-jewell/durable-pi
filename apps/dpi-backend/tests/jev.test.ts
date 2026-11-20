@@ -2,7 +2,11 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { once } from "node:events";
+import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
+import express from "express";
 import { askJev, resolveTransport } from "../src/jev.js";
+import { requestReviewDecision } from "../src/jobs.js";
 
 type Handler = (req: IncomingMessage, res: ServerResponse) => void;
 
@@ -38,6 +42,43 @@ function listen(handler: Handler) {
   server.listen(0, "127.0.0.1");
   return once(server, "listening").then(() => server);
 }
+
+test("factory review requires mesh over MCP and rejects an invalid choice", async () => {
+  const app = express();
+  app.use(express.json());
+  const received: unknown[] = [];
+  let choice = "approve";
+  app.post("/mcp", async (req, res) => {
+    if (req.headers.authorization !== "Bearer test-token") return void res.sendStatus(401);
+    const mcp = new McpServer({ name: "review-fixture", version: "1" });
+    if (req.body.method === "tools/call") received.push(req.body.params.arguments);
+    mcp.registerTool("ask_model", {}, () => ({ content: [], structuredContent: { tool: "fixture", answers: {
+      verdict: { type: "choice", choice, confidence: 0.9, probabilities: { approve: 0.9, revise: 0.05, reject: 0.05 } },
+    } } }));
+    const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined, enableJsonResponse: true });
+    res.on("close", () => void mcp.close());
+    await mcp.connect(transport);
+    await transport.handleRequest(req, res, req.body);
+  });
+  const server = await listen(app);
+  const port = (server.address() as { port: number }).port;
+  try {
+    await withEnv({ DPI_MCP_URL: `http://127.0.0.1:${port}/mcp`, DPI_MCP_TOKEN: "test-token" }, async () => {
+      const result = await requestReviewDecision("plan", "facts", "model verdict");
+      assert.equal(result.tool, "fixture");
+      assert.equal(result.answer.choice, "approve");
+      const args = received[0] as Record<string, unknown>;
+      assert.equal(args.kind, "decision");
+      assert.deepEqual(args.requires, ["mesh", "decision"]);
+      assert.deepEqual(args.state, { plan: "plan", facts: "facts", review: "model verdict" });
+      choice = "ship-anyway";
+      await assert.rejects(requestReviewDecision("plan", "facts", "model verdict"), /invalid verdict/);
+    });
+  } finally {
+    server.close();
+    server.closeAllConnections();
+  }
+});
 
 test("askJev posts a System One payload to JEV_BASE_URL and unwraps answers", async () => {
   let received: { body: unknown; auth: string | undefined } = { body: undefined, auth: undefined };

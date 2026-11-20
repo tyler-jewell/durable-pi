@@ -19,7 +19,7 @@ import {
 import { CodingTools, createBashTool, createEditTool, createReadTool, createWriteTool } from "@earendil-works/pi-durable/tools";
 import type { ToolRegistration } from "@earendil-works/pi-durable";
 import { loadTsfPrompts } from "./tsf.js";
-import { askJev, type JevAnswer, type JevQuestion } from "./jev.js";
+import { askMeshVerdict, type JevAnswer, type JevQuestion } from "./jev.js";
 import { readState } from "../../dpi-sdk/src/app-state.js";
 import type { WireAssistantMessage, WireMessage, WireToolResultMessage } from "../../dpi-sdk/src/api.js";
 import { clip, messageText } from "../../dpi-sdk/src/transcript.js";
@@ -268,15 +268,13 @@ const WRITE_TOOLS = [createReadTool(), createBashTool(), createWriteTool(), crea
 const READ_TOOLS = [createReadTool(), createBashTool()];
 
 /** The Jev questions for the `jev-quality` reviewer gate: one bounded `choice` on the plan + facts + model review. */
-const REVIEW_QUESTIONS: Record<string, JevQuestion> = {
-  verdict: {
-    type: "choice",
-    instructions: "Should this app ship as built?",
-    criteria: {
-      approve: "The work matches the plan and its checks passed; ship it",
-      revise: "Small, specific fixes are needed; loop back to the builder",
-      reject: "Broken, unsafe, or not what the plan asked for; block the run",
-    },
+const REVIEW_QUESTION: Extract<JevQuestion, { type: "choice" }> = {
+  type: "choice",
+  instructions: "Should this app ship as built?",
+  criteria: {
+    approve: "The work matches the plan and its checks passed; ship it",
+    revise: "Small, specific fixes are needed; loop back to the builder",
+    reject: "Broken, unsafe, or not what the plan asked for; block the run",
   },
 };
 
@@ -304,19 +302,18 @@ export function reviewVerdict(answers: Record<string, JevAnswer> | undefined, mo
   return verdict.choice === "approve" ? { ok: true, reason } : { ok: false, reason: `${reason}: ${clip(modelVerdict, 160)}` };
 }
 
-/** The shared review phase: a reviewer subagent returns approve/revise/reject, Jev judges the
- *  same facts, and the confidence-aware verdict is the single gate every job's review uses. */
+/** Evaluate the shared review question through MCP. Throws if no valid decision was returned. */
+export async function requestReviewDecision(plan: string, facts: string, review: string) {
+  return askMeshVerdict({ plan, facts, review }, REVIEW_QUESTION);
+}
+
+/** The shared review phase uses a mesh decision on the same facts as the reviewer subagent. */
 async function runReview(p: Phase, plan: string, facts: string): Promise<{ ok: boolean; reason: string }> {
   const pr = await tsfPrompt(p, "reviewer", { plan, facts });
   const modelVerdict = (await p.agent(pr.user, { tools: READ_TOOLS, instructions: pr.system })).trim();
-  let jev: Record<string, JevAnswer> | undefined;
-  try {
-    jev = await askJev({ plan, facts, review: modelVerdict }, REVIEW_QUESTIONS);
-  } catch {
-    jev = undefined; // Jev unreachable: fail open to the model reviewer's verdict.
-  }
-  const verdict = reviewVerdict(jev, modelVerdict);
-  return { ok: verdict.ok, reason: verdict.reason };
+  const decision = await requestReviewDecision(plan, facts, modelVerdict).catch(() => undefined);
+  if (decision) await p.note("Decision tool", decision.tool);
+  return reviewVerdict(decision ? { verdict: decision.answer } : undefined, modelVerdict);
 }
 
 

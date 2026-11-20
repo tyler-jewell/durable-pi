@@ -16,7 +16,6 @@
     "docs/tsf-factory-design.md": 2,
     "docs/zero-to-app-e2e.md": 2,
     "dpi-network.example.yaml": 1,
-    "scripts/prove-jev-quality.mts": 1,
     "templates/tsf/tsf.config.yaml": 2
   }
 }

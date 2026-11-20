@@ -53,6 +53,17 @@ test("select: A/B picks at random from the enabled tools that carry every requir
   assert.throws(() => select(store, "llm", { requires: ["vision"] }), /every required tag/);
 });
 
+test("select: requiring the mesh source excludes cloud even with a conflicting custom tag", () => {
+  const store = emptyStore();
+  store.tools = [
+    tool({ name: "remote", source: "cloud", kind: "decision", tags: ["mesh", "decision"] }),
+    tool({ name: "local", kind: "decision", tags: ["decision"] }),
+  ];
+  assert.equal(select(store, "decision", { requires: ["mesh", "decision"], random: () => 0 }).name, "local");
+  store.tools[1].enabled = false;
+  assert.throws(() => select(store, "decision", { requires: ["mesh", "decision"], mode: "auto" }), /no enabled decision tool/);
+});
+
 test("select: auto prefers the most recently used mesh tool, with cloud as the fallback", () => {
   const store = emptyStore();
   store.selectionMode = "auto";

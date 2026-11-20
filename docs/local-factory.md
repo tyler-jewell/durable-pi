@@ -1,8 +1,8 @@
 # The local-only software factory (Studio on the mesh)
 
 The local factory pairs the `.tsf` `create-app` job with chat and decision models running on the
-mesh. The model setup below supports local-only validation. The durable job’s backend model
-bindings are listed under [Remaining work](#remaining-work-ordered).
+mesh. The model setup below supports local-only validation. The review gate uses MCP; the coding agents’ model
+binding is listed under [Remaining work](#remaining-work-ordered).
 
 ## Validated resources (19 Nov 2026)
 
@@ -27,7 +27,7 @@ bounded answers such as this `choice` verdict:
 Studio (127.0.0.1)
 ├── dpi-backend      create-app durable job: planner → builder → scout → test → review → document → deploy
 │     ├── coding agents ──► backend model configuration
-│     └── review phase ──► askJev ──► decision endpoint
+│     └── review phase ──► ask_model (mesh + decision) ──► decision endpoint
 ├── dpi-mcp          MCP tools (create_app/check/test/push, model discovery, ask_model)
 └── llama-server     8080 (router, one GGUF at a time from ~/local/models/gguf)
 ```
@@ -35,16 +35,20 @@ Studio (127.0.0.1)
 - **MCP model calls** go through `ask_model`, which picks an enabled model tool by its tags, or
   through a named model tool. The MCP meter records these calls. Pi’s generated profiles connect
   directly to the model endpoints, so their chat turns do not appear in that meter.
-- **The review gate's decision model** is an enabled decision tool. The backend still reads
-  `JEV_BASE_URL` until the binding in "Remaining work" step 2 lands. The gate fails open to the model reviewer when Jev is
-  unreachable, so a sleeping model server never blocks a run.
+- **The review gate** uses `DPI_MCP_URL` and `DPI_MCP_TOKEN` to ask an enabled decision tool.
+  It requires both `mesh` and `decision` before selection, so it cannot fall back to a cloud
+  decision tool. If MCP returns no valid decision, the gate uses the reviewer subagent’s verdict.
+  The reviewer subagent’s chat model is configured separately.
 
 ## What is built
 
 1. **Step 3 — `jev-quality`** (`dpi-backend/src/jobs.ts`): the review phase asks the local
-   Jev a bounded `choice` (approve/revise/reject) on `{ plan, facts, review }`; `approve`
-   passes, anything else fails the run, and an unreachable Jev fails open to the model
-   reviewer. `reviewVerdict()` is exported + unit-tested (`tsf.test.ts`, 25 backend tests).
+   decision tool a bounded `choice` (approve/revise/reject) on `{ plan, facts, review }`.
+   `reviewVerdict()` passes an approval and blocks a confident revise or reject. An unavailable
+   decision tool or a low-confidence non-approval leaves the reviewer subagent’s verdict in effect.
+   `scripts/prove-jev-quality.mts` checks a live approval and block via the same MCP client and
+   gate functions. It also checks both results against the opposite reviewer verdict to rule
+   out a fallback-only pass.
 2. **Model tools** (`dpi-mcp/src/models.ts`, `tool-store.ts`, `model-tools.ts`,
    `discovery-tools.ts`, `host-inspect.ts`): agents drive discovery and enablement with MCP tools
    alone — `discover_models` (mesh and cloud) → `inspect_host` (ssh: config + launchd auto-start +
@@ -62,7 +66,7 @@ Studio (127.0.0.1)
    over Cloudflare Access, lets you choose the models to enable (all pre-checked), tests each
    one live, reports realized electricity cost against cloud, proves A/B coverage, and sets the
    default to A/B random. Proven over two hosts (10 models, the MacBook Pro included, all
-   passing). See [zero-bootstrap-run.md](zero-bootstrap-run.md).
+   passing). The run transcript is in git at `2fd8aae:docs/zero-bootstrap-run.md`.
 5. **Feedback loop** (`dpi-backend/src/jobs.ts`, job `feedback`): an observation runs
    `triage → work → review → deploy`; the review phase is the same `runReview()` gate `create-app`
    uses. "See something, say something" in AGENTS.md is this job.
@@ -126,15 +130,11 @@ The tool store is **data derived from each host's own API**, not hand-written co
 
 ## Remaining work (ordered)
 
-1. **PWA on iOS.** Serve the hub UI (`apps/dpi-playground`) from the Studio over HTTPS
-   (the Cloudflare Tunnel gives that), and add a web app manifest + service worker + Apple touch
-   icon so "Add to Home Screen" installs it as a standalone app. The hub already serves the
-   Vue frontend; the manifest, worker, and icons are the new parts, plus iOS Safari specifics
-   (`apple-mobile-web-app-capable`, full-screen `display: standalone`, no service-worker
-   assumptions on iOS).
-2. **Bind the factory to enabled tools.** Have the review phase call `ask_model` for the decision
-   kind (local tools first, by the `decision` tag) instead of `JEV_BASE_URL`, and the coding agents
-   call an enabled chat tool. This is the last "auto-implement" stitch.
+1. **Bind the coding agents to enabled chat tools.** Prove model routing and metering for the
+   planner, builder, scout, reviewer and documenter.
+2. **Expose zero bootstrap in the browser.** Verify discovery, approval and enablement, then
+   prove the full local-only factory job from the hub and isolated browser box. Verify the
+   installed iOS PWA over the Access-protected HTTPS route.
 
 See `apps/dpi-mcp/README.md` for the tool list and `docs/tsf-factory-design.md` for the
 phase graph.
