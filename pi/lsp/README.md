@@ -69,4 +69,5 @@ Rules for any pi extension in this repo, from pi 1.2.0's changes to the event mo
 | Command | What it proves | Needs |
 |---|---|---|
 | `just lsp test` | the gate (21 cases, real servers; the last two commit through `.githooks/pre-commit` itself), the extension in a real pi session with a scripted model (plan, one server per language, every strategy, edit then re-check, bypass blocked, nothing left behind) in two layouts (agent folder, and a project's `.pi/extensions/lsp` loaded by trust), `/reload` (a changed build is picked up; the old layout is caught), and the tracked copy matches the source | nothing |
+| `just lsp test` (trigger) | a run started by `pi.sendMessage(..., { triggerTurn: true })` while idle, with no prompt, still gets the `language-servers` section (`pi/lsp/check/trigger.sh`; a handler that skips non-prompt runs fails it) | nothing |
 | `just lsp check` | every file in the repo is clean by the servers' standard | nothing |

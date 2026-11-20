@@ -30,5 +30,6 @@ test:
     sh pi/lsp/check/run.sh .
     LSP_CHECK_LAYOUT=project sh pi/lsp/check/run.sh .
     sh pi/lsp/check/reload.sh .
+    sh pi/lsp/check/trigger.sh .
     sh pi/lsp/check/tracked.sh .
 
