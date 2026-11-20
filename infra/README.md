@@ -4,10 +4,19 @@ Declarative Cloudflare setup for the "access from anywhere" SSH mesh: tunnel,
 DNS, Access SSH app + policy, OTP login method, service token, and the per-app
 short-lived certificate CA.
 
-> **Status (19 Nov 2026): recovered.** State lives in the private R2 bucket
-> `durable-pi-terraform-state`; the module is on provider v5; all five `studio`
-> resources are imported and `terraform plan` reports no changes. The remaining
-> follow-up is the Service Auth policy fix at the bottom.
+> **Status (20 Nov 2026): the mesh is Cloudflare-only.** State lives in the private
+> R2 bucket `durable-pi-terraform-state`; the module is on provider v5 and
+> `terraform plan` reports no changes. There is no Tailscale in this module.
+>
+> - `main.tf`: the studio tunnel, its SSH application and short-lived certificate CA.
+> - `mesh.tf`: the tunnel's full ingress list (SSH, LLM, mesh MCP), the mesh MCP
+>   DNS record and its Access application (owner identities, or the MacBook's
+>   service token).
+> - `llm.tf`: the reusable service-auth policy the two LLM applications share,
+>   narrowed from any valid service token to the two named tokens, and both applications.
+>
+> Hostnames and token IDs live in `terraform.tfvars` (gitignored); the example
+> file lists every variable.
 
 ## Credentials (Keychain + env, never committed)
 

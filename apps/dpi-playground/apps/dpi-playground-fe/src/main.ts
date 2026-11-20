@@ -8,7 +8,7 @@ createApp(App).mount("#app");
 
 // PWA: register the service worker for an installable, offline-capable shell.
 // Only in a secure context (https or localhost), so iOS/desktop installs work when
-// served over Tailscale Serve or Cloudflare Access HTTPS.
+// served over Cloudflare Access HTTPS.
 if ("serviceWorker" in navigator && (location.protocol === "https:" || location.hostname === "localhost" || location.hostname === "127.0.0.1")) {
   window.addEventListener("load", () => {
     navigator.serviceWorker.register("/sw.js").catch(() => {});

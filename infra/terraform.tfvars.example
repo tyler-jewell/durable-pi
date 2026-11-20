@@ -6,3 +6,13 @@ ssh_emails            = [
   "you@example.com",
 ]
 service_token_duration = "720h"
+
+# Mesh endpoints (infra/mesh.tf)
+llm_hostname          = "llm-studio.example.com"
+mesh_hostname         = "mesh.example.com"
+mesh_service_token_id = "<service token id>"
+
+# LLM endpoints (infra/llm.tf)
+llm_service_token_zero_id    = "<zero bootstrap token id>"
+llm_service_token_macbook_id = "<macbook token id>"
+llm_macbook_hostname         = "llm-mbp.example.com"

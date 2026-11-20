@@ -30,6 +30,6 @@ description: "Cloudflare and infrastructure rules for this repo: the cf CLI, ver
 ## Mesh hosts
 
 - Each host runs one Cloudflare Tunnel connector and one Access-protected one-level hostname that reaches its loopback model server. The step-by-step runbook is in `docs/local-factory.md` (Mesh over Cloudflare).
-- Host SSH goes through Cloudflare Access, not Tailscale. The interactive login caches a token locally; when it expires, a human re-authenticates.
+- Host SSH goes through Cloudflare Access, not Tailscale. The interactive login caches a token locally; when it expires, a human re-authenticates. Non-interactive callers (the mesh-health MCP) use a Cloudflare service token from the Keychain, and the LLM endpoints accept only the two tokens named in `infra/llm.tf`.
 - Each host's model server is configured by `llama/config.yaml` (shared) and `llama/hosts.yaml` (per host, git-ignored). Check drift with `just llama drift <host> <url>` after any change.
 - Hostnames, account ids, and service-token names never go in a committed file. Use `mesh.example.json` and `hosts.example.yaml` as templates.
