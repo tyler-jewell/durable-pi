@@ -10,20 +10,24 @@ This repository is **public-ready**. Never commit anything that ties it to one m
 - Comments describe what the code does now. Never write about a migration, a removed, renamed or merged thing, what something used to be, what it replaces, or what was "no longer" true. Migration notes belong in the commit message, not in the code.
 - Never add files to version control that significantly affect the artifact release pipeline (build/check/test), and never increase total pipeline time by more than 5% of the baseline.
 
-## A result needs its calls
+## A result needs its evidence
 
-A task is reported done only with evidence of the tool calls and artifacts that produced the result. Use the MCP meter for model calls made through dpi-mcp and the run trace for direct agent turns. A review checks that evidence, not the summary.
+A task is done only with evidence of the tool calls and artifacts that produced it. A review checks that evidence, not a summary.
 
-## Tool calls are never silently cut
+## Truncated answers are errors
 
-A model answer that hits its output limit is flagged `truncated` in every surface that returns it, and a truncated tool call is never executed. A context window is shared by the prompt and the output, so a request must fit the window the server actually runs, not the one a config claims.
+A cut-off model answer is reported as cut off everywhere it appears, and its tool calls never run. The architecture is in the `durable-pi-architecture` skill.
 
 ## See something, say something
 
-When you notice a bug, a missing tool, a bad pattern, or an improvement worth making, **do not silently log it or leave it as a TODO** — send it off for work immediately as a durable job:
+When you notice a bug, a missing tool, a bad pattern, or an improvement worth making, send it off as a durable job; do not log it or leave a TODO:
 
 ```text
 run_durable_job feedback { "observation": "...what you saw, with evidence..." }
 ```
 
-The `feedback` job runs `triage → work → review → deploy`: a subagent turns the observation into a change, another makes it, and the **`review` phase is the same `reviewVerdict()` jev-quality gate every job uses** — it returns *approve*, *revise* or *reject*. An approval deploys; a denial is the review's own reason (the root cause of *why* it was denied), and *revise* loops the change back through `work`. Follow it with `check_durable_job`. That is the loop, and it is one shared work structure — not a separate state machine.
+Follow it with `check_durable_job`. The loop and its review gate are described in the `durable-pi-architecture` skill.
+
+## Infrastructure, Cloudflare, and architecture
+
+Cloudflare, Terraform, credentials, and mesh hosts are described in the `durable-pi-infra` skill. The system's architecture (jobs, the review gate, model routing, the llama config, and the checks) is in the `durable-pi-architecture` skill. Read the relevant skill before changing either.
