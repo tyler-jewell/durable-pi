@@ -21,6 +21,8 @@ export interface CatalogModel {
   kind: "llm" | "decision";
   description: string;
   price?: Price;
+  /** The hosted window, from the catalog's context_window property (a string in the catalog). */
+  contextWindow?: number;
 }
 
 const DECISION = /decision model|system one/i;
@@ -37,7 +39,15 @@ export function parseCatalog(raw: unknown): CatalogModel[] {
     const description = typeof m.description === "string" ? m.description : "";
     const props = Array.isArray(m.properties) ? (m.properties as { property_id?: string; value?: unknown }[]) : [];
     const priceProp = props.find((p) => p.property_id === "price");
-    out.push({ name, kind: DECISION.test(description) ? "decision" : "llm", description, price: parsePrice(priceProp?.value) });
+    const ctxProp = props.find((p) => p.property_id === "context_window");
+    const contextWindow = Number(ctxProp?.value);
+    out.push({
+      name,
+      kind: DECISION.test(description) ? "decision" : "llm",
+      description,
+      price: parsePrice(priceProp?.value),
+      contextWindow: Number.isFinite(contextWindow) && contextWindow > 0 ? contextWindow : undefined,
+    });
   }
   return out;
 }
@@ -110,6 +120,7 @@ export function syncCloudCapabilities(reg: CapabilityRegistry, models: CatalogMo
       inputs: existing?.inputs ?? [{ name: "api_key", description: "Cloudflare API token for Workers AI", required: true, secret: true }],
       options: existing?.options ?? [],
       pricing: m.price,
+      contextWindow: m.contextWindow,
       createdAt: existing?.createdAt ?? now,
       updatedAt: now,
     };

@@ -100,14 +100,14 @@ export async function testCapability(reg: CapabilityRegistry, cap: Capability, s
   let error: string | undefined;
   try {
     if (cap.kind === "decision") {
-      const r = await runDecision(cap.address, cap.model, PROBE_STATE, PROBE_QUESTION, { transport: cap.transport, timeoutMs: 120_000 });
+      const r = await runDecision(cap.address, cap.model, PROBE_STATE, PROBE_QUESTION, { transport: cap.transport, timeoutMs: 120_000, contextWindow: cap.contextWindow });
       const answer = r.answers.verdict;
       ok = answer?.type === "choice" && typeof answer.choice === "string";
       sample = answer?.type === "choice" ? `${answer.choice} (${(answer.confidence ?? 0).toFixed(2)})` : JSON.stringify(answer);
       inToks = r.inToks;
       outToks = r.outToks;
     } else {
-      const r = await runLlm(cap.address, cap.model, [{ role: "user", content: "Reply with exactly: OK" }], { transport: cap.transport, timeoutMs: 180_000 });
+      const r = await runLlm(cap.address, cap.model, [{ role: "user", content: "Reply with exactly: OK" }], { transport: cap.transport, timeoutMs: 180_000, contextWindow: cap.contextWindow });
       ok = /\bOK\b/i.test(r.text);
       sample = r.text.trim().slice(0, 60);
       inToks = r.inToks;

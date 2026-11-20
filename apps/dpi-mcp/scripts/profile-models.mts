@@ -38,7 +38,7 @@ async function run(cap: Capability): Promise<{ ms: number; inToks: number; outTo
   // A cloud twin takes its key from the environment (CLOUDFLARE_API_KEY) unless the capability stores one.
   const stored = cap.inputs.find((i) => i.secret)?.value;
   const apiKey = stored ?? (cap.transport === "cloudflare-workers-ai" ? process.env.CLOUDFLARE_API_KEY : undefined);
-  const opts = { transport: cap.transport, apiKey };
+  const opts = { transport: cap.transport, apiKey, contextWindow: cap.contextWindow };
   const t0 = Date.now();
   const r =
     cap.kind === "llm"

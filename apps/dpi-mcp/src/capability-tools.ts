@@ -303,13 +303,13 @@ export function registerCapabilityTools(server: McpServer): void {
       const reg = load();
       const cap = resolveForKind(reg, "llm", { capability: args.capability, prefer: args.prefer ?? "local", required: args.required });
       const t0 = Date.now();
-      const r = await runLlm(cap.address, cap.model, args.messages, { transport: cap.transport, apiKey: apiKeyOf(cap) });
+      const r = await runLlm(cap.address, cap.model, args.messages, { transport: cap.transport, apiKey: apiKeyOf(cap), contextWindow: cap.contextWindow });
       account(reg, cap, "llm", Date.now() - t0, r.inToks, r.outToks);
       // A cut-off answer is said so, in the text itself, and flagged in structured output. It is never passed off as complete.
       const notice = r.truncated ? "\n\n[truncated: the answer hit the output limit and is incomplete]" : "";
       return {
         content: [{ type: "text", text: r.text + notice }],
-        structuredContent: { capability: cap.id, model: cap.model, text: r.text, inToks: r.inToks, outToks: r.outToks, finishReason: r.finishReason, truncated: r.truncated },
+        structuredContent: { capability: cap.id, model: cap.model, text: r.text, inToks: r.inToks, outToks: r.outToks, finishReason: r.finishReason, truncated: r.truncated, maxTokens: r.maxTokens, guarded: r.guarded, contextWindow: cap.contextWindow ?? null },
       };
     },
   );
@@ -333,7 +333,7 @@ export function registerCapabilityTools(server: McpServer): void {
       const reg = load();
       const cap = resolveForKind(reg, "decision", { capability: args.capability, prefer: args.prefer ?? "local", required: args.required });
       const t0 = Date.now();
-      const r = await runDecision(cap.address, cap.model, args.state, args.questions as Record<string, DecisionQuestion>, { transport: cap.transport, apiKey: apiKeyOf(cap) });
+      const r = await runDecision(cap.address, cap.model, args.state, args.questions as Record<string, DecisionQuestion>, { transport: cap.transport, apiKey: apiKeyOf(cap), contextWindow: cap.contextWindow });
       account(reg, cap, "decision", Date.now() - t0, r.inToks, r.outToks);
       return {
         content: [{ type: "text", text: JSON.stringify({ capability: cap.id, model: cap.model, answers: r.answers, inToks: r.inToks, outToks: r.outToks }, null, 2) }],

@@ -17,6 +17,7 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 import { accessHeadersFor } from "./mesh-config.js";
 import type { Price } from "./cloud-catalog.js";
+import { budget, estimateTokens, MIN_OUTPUT_TOKENS, servedContextOf, type Budget } from "./context.js";
 
 export type CapabilityKind = "llm" | "decision";
 export type CapabilityState = "recommended" | "enabled" | "disabled";
@@ -25,6 +26,10 @@ export interface ModelInfo {
   id: string;
   kind: CapabilityKind; // `text` → llm, `decisions` → decision (from output_modalities)
   aliases: string[];
+  /** The window the server runs with. The budget uses this. Undefined when the host does not say. */
+  servedContext?: number;
+  /** The window the model was trained for. Informational; never used for the budget. */
+  trainedContext?: number;
 }
 
 export interface HostCapability {
@@ -77,6 +82,8 @@ export interface Capability {
   transport: CapabilityTransport;
   /** Canonical model family, shared by the local + cloud twins so costs can be paired. */
   family: string;
+  /** The served window, from discovery. The context budget uses it. Undefined means unknown, and calls are unguarded. */
+  contextWindow?: number;
   /** Cloud models only: the catalog price, from discovery. Never a hardcoded table. */
   pricing?: Price;
   description: string;
@@ -207,6 +214,7 @@ export function recommendCapability(reg: CapabilityRegistry, args: RecommendArgs
     model: args.model,
     transport: args.transport ?? "openai-compat",
     family: familyOf(args.model),
+    contextWindow: (host.models.find((x) => x.id === args.model)?.servedContext),
     description: args.description,
     purpose: args.purpose,
     state: "recommended",
@@ -295,11 +303,23 @@ export async function probeHost(host: string, address: string, timeoutMs = 5000,
   }
   const list = await fetchJson(`${base}/v1/models`, { method: "GET", headers }, timeoutMs);
   if (list?.ok) {
-    const data = (await list.json()) as { data?: { id?: string; aliases?: string[]; architecture?: { output_modalities?: string[] } }[] };
+    const data = (await list.json()) as { data?: { id?: string; aliases?: string[]; architecture?: { output_modalities?: string[] }; context_length?: number; status?: { args?: unknown; preset?: unknown } }[] };
     for (const m of data.data ?? []) {
       if (!m.id) continue;
       const modalities = m.architecture?.output_modalities ?? [];
-      cap.models.push({ id: m.id, kind: modalities.includes("decisions") ? "decision" : "llm", aliases: m.aliases ?? [] });
+      cap.models.push({
+        id: m.id,
+        kind: modalities.includes("decisions") ? "decision" : "llm",
+        aliases: m.aliases ?? [],
+        servedContext: servedContextOf(m),
+        trainedContext: typeof m.context_length === "number" ? m.context_length : undefined,
+      });
+    }
+    // A single plain server has no status block. Its window is the one /props reports for the running slot.
+    if (cap.models.length === 1 && cap.models[0].servedContext === undefined) {
+      const props = await fetchJson(`${base}/props`, { method: "GET", headers }, timeoutMs);
+      const n = props?.ok ? ((await props.json().catch(() => undefined)) as { default_generation_settings?: { n_ctx?: number } } | undefined)?.default_generation_settings?.n_ctx : undefined;
+      if (typeof n === "number" && n > 0) cap.models[0].servedContext = n;
     }
   }
   return cap;
@@ -314,6 +334,10 @@ export interface LlmResult {
   finishReason: "stop" | "length" | "tool_calls" | "other";
   /** True when the answer was cut off by the output cap. A truncated answer is never presented as complete. */
   truncated: boolean;
+  /** The output cap that was sent, after the context budget. */
+  maxTokens: number;
+  /** False when the served window was unknown, so the request went through without the budget. */
+  guarded: boolean;
 }
 
 /** Map an OpenAI-style finish_reason onto ours. Anything unknown is "other", never silently "stop". */
@@ -323,7 +347,10 @@ export function finishOf(reason: unknown): LlmResult["finishReason"] {
 
 type ChatBody = { choices?: { message?: { content?: string | null }; finish_reason?: string }[]; usage?: { prompt_tokens?: number; completion_tokens?: number } };
 /** One reader for both transports, so a cut-off answer is reported the same way everywhere. */
-function llmResult(data: ChatBody): LlmResult {
+/** The output we ask for when the window allows it. The budget clamps it, and the result says what was sent. */
+const REQUESTED_OUTPUT_TOKENS = 2048;
+
+function llmResult(data: ChatBody, b: Budget): LlmResult {
   const finishReason = finishOf(data.choices?.[0]?.finish_reason);
   return {
     text: data.choices?.[0]?.message?.content ?? "",
@@ -331,6 +358,8 @@ function llmResult(data: ChatBody): LlmResult {
     outToks: data.usage?.completion_tokens ?? 0,
     finishReason,
     truncated: finishReason === "length",
+    maxTokens: b.maxTokens,
+    guarded: b.guarded,
   };
 }
 
@@ -338,35 +367,37 @@ export async function runLlm(
   address: string,
   model: string,
   messages: { role: "system" | "user" | "assistant"; content: string }[],
-  opts: { transport?: CapabilityTransport; apiKey?: string; timeoutMs?: number } = {},
+  opts: { transport?: CapabilityTransport; apiKey?: string; timeoutMs?: number; contextWindow?: number } = {},
 ): Promise<LlmResult> {
   const timeoutMs = opts.timeoutMs ?? 120_000;
   const base = address.replace(/\/+$/, "");
+  // The window is shared by the prompt and the output. Check the prompt first, and clamp the output to what is left.
+  const b: Budget = budget(opts.contextWindow, estimateTokens(messages), REQUESTED_OUTPUT_TOKENS);
   if (opts.transport === "cloudflare-workers-ai") {
     // Chat models serve an OpenAI-compatible endpoint at /ai/v1/chat/completions.
     const res = await meshFetch(`${base}/ai/v1/chat/completions`, {
       method: "POST",
       headers: { "Content-Type": "application/json", ...(opts.apiKey ? { Authorization: `Bearer ${opts.apiKey}` } : {}) },
-      body: JSON.stringify({ model, messages, max_tokens: 2048 }),
+      body: JSON.stringify({ model, messages, max_tokens: b.maxTokens }),
       signal: AbortSignal.timeout(timeoutMs),
       redirect: "error",
     });
     if (!res.ok) throw new Error(`LLM ${model}: HTTP ${res.status}`);
     const data = (await res.json()) as { choices?: { message?: { content?: string } }[]; usage?: { prompt_tokens?: number; completion_tokens?: number }; errors?: { message?: string }[] };
     if (data.errors?.length) throw new Error(`LLM ${model}: ${data.errors[0].message}`);
-    return llmResult(data);
+    return llmResult(data, b);
   }
   const res = await meshFetch(`${base}/v1/chat/completions`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ model, messages, temperature: 0, max_tokens: 2048 }),
+    body: JSON.stringify({ model, messages, temperature: 0, max_tokens: b.maxTokens }),
     signal: AbortSignal.timeout(timeoutMs),
     redirect: "error",
   });
   if (!res.ok) throw new Error(`LLM ${model}: HTTP ${res.status}`);
   const data = (await res.json()) as { choices?: { message?: { content?: string } }[]; usage?: { prompt_tokens?: number; completion_tokens?: number }; error?: { message?: string } };
   if (data.error) throw new Error(`LLM ${model}: ${data.error.message}`);
-  return llmResult(data);
+  return llmResult(data, b);
 }
 
 /** A System One answer record, the same shape `dpi-backend/src/jev.ts` consumes. */
@@ -382,6 +413,7 @@ export interface DecisionResult {
   answers: Record<string, DecisionAnswer>;
   inToks: number;
   outToks: number;
+  guarded: boolean;
 }
 
 export async function runDecision(
@@ -389,10 +421,12 @@ export async function runDecision(
   model: string,
   state: unknown,
   questions: Record<string, DecisionQuestion>,
-  opts: { transport?: CapabilityTransport; apiKey?: string; timeoutMs?: number } = {},
+  opts: { transport?: CapabilityTransport; apiKey?: string; timeoutMs?: number; contextWindow?: number } = {},
 ): Promise<DecisionResult> {
   const timeoutMs = opts.timeoutMs ?? 60_000;
   const base = address.replace(/\/+$/, "");
+  // A decision has no output cap to clamp, but its prompt must still fit with room for an answer.
+  const b: Budget = budget(opts.contextWindow, estimateTokens(JSON.stringify({ state, questions })), MIN_OUTPUT_TOKENS);
   if (opts.transport === "cloudflare-workers-ai") {
     const res = await meshFetch(`${base}/ai/run`, {
       method: "POST",
@@ -406,7 +440,7 @@ export async function runDecision(
     if (data.errors?.length) throw new Error(`Decision ${model}: ${data.errors[0].message}`);
     // Cloudflare-hosted models (clef) return answers under result; third-party System One wraps once more.
     const answers = data.result?.answers ?? data.result?.result?.answers ?? {};
-    return { answers, inToks: data.result?.usage?.input_tokens ?? 0, outToks: data.result?.usage?.output_tokens ?? 0 };
+    return { answers, inToks: data.result?.usage?.input_tokens ?? 0, outToks: data.result?.usage?.output_tokens ?? 0, guarded: b.guarded };
   }
   const res = await meshFetch(`${base}/v1/systemone`, {
     method: "POST",
@@ -418,5 +452,5 @@ export async function runDecision(
   if (!res.ok) throw new Error(`Decision ${model}: HTTP ${res.status}`);
   const data = (await res.json()) as { answers?: Record<string, DecisionAnswer>; usage?: { input_tokens?: number; output_tokens?: number }; error?: { message?: string } };
   if (data.error) throw new Error(`Decision ${model}: ${data.error.message}`);
-  return { answers: data.answers ?? {}, inToks: data.usage?.input_tokens ?? 0, outToks: data.usage?.output_tokens ?? 0 };
+  return { answers: data.answers ?? {}, inToks: data.usage?.input_tokens ?? 0, outToks: data.usage?.output_tokens ?? 0, guarded: b.guarded };
 }
