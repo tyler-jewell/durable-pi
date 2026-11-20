@@ -16,6 +16,7 @@ import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { accessHeadersFor } from "./mesh-config.js";
+import type { Price } from "./cloud-catalog.js";
 
 export type CapabilityKind = "llm" | "decision";
 export type CapabilityState = "recommended" | "enabled" | "disabled";
@@ -76,6 +77,8 @@ export interface Capability {
   transport: CapabilityTransport;
   /** Canonical model family, shared by the local + cloud twins so costs can be paired. */
   family: string;
+  /** Cloud models only: the catalog price, from discovery. Never a hardcoded table. */
+  pricing?: Price;
   description: string;
   /** Roles this capability can fill, e.g. ["jev-quality"] or ["builder", "planner"]. */
   purpose: string[];
@@ -121,8 +124,8 @@ export function saveRegistry(reg: CapabilityRegistry): void {
 }
 
 /** The canonical model family. It strips the quantization/format suffix and the cloud namespace, so a
- *  local GGUF and its Workers AI twin share one family: Qwen3-30B-A3B-Q4_K_M and
- *  @cf/qwen/qwen3-30b-a3b-fp8 are both `qwen3-30b-a3b`. Cost comparisons pair twins by this key. */
+ *  local GGUF and its cloud twin share one family: a quantized local file and its
+ *  catalog name map to the same family key. Cost comparisons pair twins by this key. */
 export function familyOf(model: string): string {
   const base = model.includes("/") ? model.slice(model.lastIndexOf("/") + 1) : model;
   return base
@@ -307,6 +310,28 @@ export interface LlmResult {
   text: string;
   inToks: number;
   outToks: number;
+  /** The provider's stop reason. `length` means the answer hit the output cap and is cut off. */
+  finishReason: "stop" | "length" | "tool_calls" | "other";
+  /** True when the answer was cut off by the output cap. A truncated answer is never presented as complete. */
+  truncated: boolean;
+}
+
+/** Map an OpenAI-style finish_reason onto ours. Anything unknown is "other", never silently "stop". */
+export function finishOf(reason: unknown): LlmResult["finishReason"] {
+  return reason === "stop" || reason === "length" || reason === "tool_calls" ? reason : "other";
+}
+
+type ChatBody = { choices?: { message?: { content?: string | null }; finish_reason?: string }[]; usage?: { prompt_tokens?: number; completion_tokens?: number } };
+/** One reader for both transports, so a cut-off answer is reported the same way everywhere. */
+function llmResult(data: ChatBody): LlmResult {
+  const finishReason = finishOf(data.choices?.[0]?.finish_reason);
+  return {
+    text: data.choices?.[0]?.message?.content ?? "",
+    inToks: data.usage?.prompt_tokens ?? 0,
+    outToks: data.usage?.completion_tokens ?? 0,
+    finishReason,
+    truncated: finishReason === "length",
+  };
 }
 
 export async function runLlm(
@@ -329,7 +354,7 @@ export async function runLlm(
     if (!res.ok) throw new Error(`LLM ${model}: HTTP ${res.status}`);
     const data = (await res.json()) as { choices?: { message?: { content?: string } }[]; usage?: { prompt_tokens?: number; completion_tokens?: number }; errors?: { message?: string }[] };
     if (data.errors?.length) throw new Error(`LLM ${model}: ${data.errors[0].message}`);
-    return { text: data.choices?.[0]?.message?.content ?? "", inToks: data.usage?.prompt_tokens ?? 0, outToks: data.usage?.completion_tokens ?? 0 };
+    return llmResult(data);
   }
   const res = await meshFetch(`${base}/v1/chat/completions`, {
     method: "POST",
@@ -341,7 +366,7 @@ export async function runLlm(
   if (!res.ok) throw new Error(`LLM ${model}: HTTP ${res.status}`);
   const data = (await res.json()) as { choices?: { message?: { content?: string } }[]; usage?: { prompt_tokens?: number; completion_tokens?: number }; error?: { message?: string } };
   if (data.error) throw new Error(`LLM ${model}: ${data.error.message}`);
-  return { text: data.choices?.[0]?.message?.content ?? "", inToks: data.usage?.prompt_tokens ?? 0, outToks: data.usage?.completion_tokens ?? 0 };
+  return llmResult(data);
 }
 
 /** A System One answer record, the same shape `dpi-backend/src/jev.ts` consumes. */
@@ -352,7 +377,7 @@ export type DecisionQuestion =
   | { type: "noul"; instructions: string; criteria?: { true?: string; false?: string } }
   | { type: "choice"; instructions: string; criteria: Record<string, string> };
 
-/** Run a System One decision (Jev/Clef style) against a decision endpoint. */
+/** Run a decision (System One style) against a decision endpoint. */
 export interface DecisionResult {
   answers: Record<string, DecisionAnswer>;
   inToks: number;

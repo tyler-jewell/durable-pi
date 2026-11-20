@@ -1,3 +1,4 @@
+import { QUANT, CF_NAMESPACE } from "./naming-fixtures.js";
 // Zero bootstrap, end to end, offline: real HTTP mock model servers, the real Access check (a token is
 // required), the real registry, meter and bootstrap. It is the same code the CLI runs, with a mocked mesh.
 //
@@ -15,6 +16,7 @@ import { join } from "node:path";
 
 const dir = mkdtempSync(join(tmpdir(), "dpi-zero-eval-"));
 const TOKEN_ID = "eval-alpha.access";
+const TWIN_PRICE = { inPerM: 0.2, outPerM: 0.3 }; // the cloud twin's catalog price, from discovery
 const TOKEN_SECRET = "eval-secret";
 // Isolate every store before the modules load (they read these at import time).
 process.env.DPI_MCP_CAPABILITIES = join(dir, "capabilities.json");
@@ -26,7 +28,8 @@ writeFileSync(process.env.DPI_MCP_MESH, JSON.stringify({ hosts: [{ name: "alpha"
 
 const { bootstrap } = await import("../src/zero.js");
 const { probeHost, loadRegistry, saveRegistry } = await import("../src/capabilities.js");
-const { loadMeter, cloudCostUsd } = await import("../src/meter.js");
+const { loadMeter } = await import("../src/meter.js");
+const { tokenCostUsd } = await import("../src/cloud-catalog.js");
 const { loadTeamFeed } = await import("../src/notify.js");
 
 function json(res: ServerResponse, status: number, body: unknown) {
@@ -43,7 +46,7 @@ const alpha = createServer((req: IncomingMessage, res: ServerResponse) => {
   req.on("end", () => {
     if (req.url === "/health") return json(res, 200, { status: "ok" });
     if (req.url === "/v1/models")
-      return json(res, 200, { data: [{ id: "Eval-Judge", architecture: { output_modalities: ["decisions"] } }, { id: "gpt-oss-20b-MXFP4", architecture: { output_modalities: ["text"] } }] });
+      return json(res, 200, { data: [{ id: "Alpha-Judge" + QUANT, architecture: { output_modalities: ["decisions"] } }, { id: "Alpha-Chat" + QUANT, architecture: { output_modalities: ["text"] } }] });
     if (req.url === "/v1/systemone")
       return json(res, 200, { answers: { verdict: { type: "choice", choice: "approve", confidence: 0.9, probabilities: { approve: 0.9 } } }, usage: { input_tokens: 120, output_tokens: 0 } });
     if (req.url === "/v1/chat/completions") return json(res, 200, { choices: [{ message: { content: "OK" } }], usage: { prompt_tokens: 40, completion_tokens: 2 } });
@@ -71,9 +74,9 @@ async function discoverMock() {
 function seedCloudTwin() {
   const reg = loadRegistry();
   reg.capabilities.push({
-    id: "cloudflare-llm-gpt-oss-20b", name: "@cf/openai/gpt-oss-20b", kind: "llm", host: "cloudflare", address: "http://127.0.0.1:9", model: "@cf/openai/gpt-oss-20b",
-    transport: "cloudflare-workers-ai", family: "gpt-oss-20b", description: "cloud twin (must never be called)", purpose: ["agent"], state: "recommended", autoEnable: false,
-    source: "agent", inputs: [], options: [], createdAt: 0, updatedAt: 0,
+    id: "cloudflare-llm-alpha-chat", name: CF_NAMESPACE + "vendor/alpha-chat", kind: "llm", host: "cloudflare", address: "http://127.0.0.1:9", model: CF_NAMESPACE + "vendor/alpha-chat",
+    transport: "cloudflare-workers-ai", family: "alpha-chat", description: "cloud twin (must never be called)", purpose: ["agent"], state: "recommended", autoEnable: false,
+    source: "agent", inputs: [], options: [], createdAt: 0, updatedAt: 0, pricing: TWIN_PRICE,
   });
   saveRegistry(reg);
 }
@@ -104,9 +107,9 @@ test("zero bootstrap: discovers the mesh, enables and tests every local model, r
   assert.ok(report.tests.every((t) => t.ok), JSON.stringify(report.tests));
   const chat = report.tests.find((t) => t.kind === "llm");
   assert.ok(chat?.cloudEquivUsd !== undefined, "the chat run is priced against its cloud twin");
-  assert.ok(Math.abs((chat?.cloudEquivUsd ?? 0) - cloudCostUsd("@cf/openai/gpt-oss-20b", 40, 2)) < 1e-12, "priced from the actual tokens");
+  assert.ok(Math.abs((chat?.cloudEquivUsd ?? 0) - (tokenCostUsd(TWIN_PRICE, 40, 2) ?? NaN)) < 1e-12, "priced from the actual tokens");
   assert.equal(report.tests.find((t) => t.kind === "decision")?.cloudEquivUsd, undefined, "no cloud twin, so not compared");
-  assert.equal(loadRegistry().capabilities.find((c) => c.id === "cloudflare-llm-gpt-oss-20b")?.state, "recommended", "the cloud twin is never enabled");
+  assert.equal(loadRegistry().capabilities.find((c) => c.id === "cloudflare-llm-alpha-chat")?.state, "recommended", "the cloud twin is never enabled");
 
   // Realized cost: the priced run's electricity against its cloud equivalent; the decision run is not compared.
   assert.equal(report.realized.pricedRuns, 1);

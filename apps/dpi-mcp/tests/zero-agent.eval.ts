@@ -1,3 +1,4 @@
+import { QUANT } from "./naming-fixtures.js";
 // Core eval: the zero-code-base agent probes a remote host for decision-model capabilities.
 //
 // The agent is given only a host address + an ssh target and no facts about the host. It must
@@ -25,10 +26,10 @@ import {
 import { inspectHost } from "../src/host-inspect.js";
 
 const GROUND_TRUTH = {
-  models: ["Clef-Flash-Q4_K_M", "OpenJev-Q4_K_M"],
+  models: ["Delta-Judge" + QUANT, "Epsilon-Judge" + QUANT],
   serverExe: "llama-server",
   modelDir: "/srv/studio-models/gguf",
-  alias: "Clef-Flash-Q4_K_M",
+  alias: "Delta-Judge" + QUANT,
   autoStartServices: [] as string[], // no launchd service auto-starts the model server
 };
 
@@ -47,8 +48,8 @@ test("zero-code-base agent discovers, tests, proposes and (if right) approves a 
       return void res.end(
         JSON.stringify({
           data: [
-            { id: "Clef-Flash-Q4_K_M", aliases: [], architecture: { output_modalities: ["decisions"] } },
-            { id: "OpenJev-Q4_K_M", aliases: [], architecture: { output_modalities: ["decisions"] } },
+            { id: "Delta-Judge" + QUANT, aliases: [], architecture: { output_modalities: ["decisions"] } },
+            { id: "Epsilon-Judge" + QUANT, aliases: [], architecture: { output_modalities: ["decisions"] } },
           ],
         }),
       );
@@ -72,7 +73,7 @@ test("zero-code-base agent discovers, tests, proposes and (if right) approves a 
     `#!/bin/sh\nprintf '%s\\n' '${JSON.stringify({
       processes: [
         `30519 1 /opt/homebrew/bin/llama-server --host 127.0.0.1 --port 8080 --no-webui --ctx-size 4096 --models-dir ${GROUND_TRUTH.modelDir} --models-max 1 --sleep-idle-seconds 600`,
-        `70686 30519 /opt/homebrew/Cellar/llama.cpp/1.0.0/bin/llama-server --port 62199 --alias ${GROUND_TRUTH.alias} --model ${GROUND_TRUTH.modelDir}/Clef-Flash-Q4_K_M.gguf --ctx-size 4096`,
+        `70686 30519 /opt/homebrew/Cellar/llama.cpp/1.0.0/bin/llama-server --port 62199 --alias ${GROUND_TRUTH.alias} --model ${GROUND_TRUTH.modelDir}/Delta-Judge-Q4_K_M.gguf --ctx-size 4096`,
       ],
       autoStartServices: [],
     }).replace(/'/g, `'\\''`)}'\n`,

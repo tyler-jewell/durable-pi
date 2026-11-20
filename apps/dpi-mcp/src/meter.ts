@@ -59,28 +59,6 @@ export function recordUsage(meter: UsageMeter, call: UsageRecord): UsageMeter {
   return meter;
 }
 
-/** Workers AI billing facts (USD per million tokens), the same catalog cf ai models list shows. */
-const CLOUD_PRICE: Record<string, { in: number; out: number; cachedIn?: number }> = {
-  "@cf/openai/gpt-oss-20b": { in: 0.2, out: 0.3 },
-  "@cf/mistralai/mistral-small-3.1-24b-instruct": { in: 0.351, out: 0.555 },
-  "@cf/qwen/qwen3.8-27b": { in: 0.45, out: 3.2, cachedIn: 0.05 },
-  "@cf/qwen/qwen3-30b-a3b-fp8": { in: 0.0509, out: 0.335 },
-  "@cf/deepseek-ai/deepseek-v4.1-flash-1017": { in: 0.3, out: 1.2, cachedIn: 0.006 },
-  "@cf/cloudflare/clef-flash": { in: 0.038, out: 0 },
-};
-
-/** Billable cost of one cloud call, from tokens x the catalog price. */
-export function cloudCostUsd(model: string, inToks: number, outToks: number): number {
-  const p = CLOUD_PRICE[model];
-  if (!p) return 0;
-  return (inToks * p.in + outToks * p.out) / 1_000_000;
-}
-
-/** True when the Workers AI catalog price for this model is known. An unknown price is not $0. */
-export function cloudPriceKnown(model: string): boolean {
-  return Object.prototype.hasOwnProperty.call(CLOUD_PRICE, model);
-}
-
 /** Marginal electricity for `ms` of model time: the power above idle, priced per kWh. Idle draw is not
  *  charged here, because a cloud call has no idle equivalent. This is the realized spend of one run. */
 export function marginalElectricityUsd(ms: number, settings: CostSettings): number {

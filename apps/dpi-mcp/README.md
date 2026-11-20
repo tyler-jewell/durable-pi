@@ -67,6 +67,7 @@ run without them.
 | `run_llm` | chat completion on an enabled LLM capability (auto: local hot-first, cloud fallback) | — | no |
 | `run_decision` | System One (Jev/Clef) decision on an enabled decision capability | — | no |
 | `list_usage` | local kWh + cost at the configured electricity price | — | yes |
+| `discover_cloud` | read the Cloudflare model catalog: every text model, its kind and its catalog price, recorded as recommended (never enabled) | — | yes |
 | `compare_costs` | per model: cloud $/min rate vs local electricity + wait-time opportunity | — | yes |
 | `update_settings` | edit electricity price/kWh and idle/load watts | — | yes |
 | `notify_ready` | append a readiness entry (with validation evidence) to the team feed | — | no |
@@ -199,9 +200,9 @@ decides deterministically), or, with no id, resolve **automatically** — the ne
 an enabled local capability, most-recently-used first (so the already-loaded model is reused and
 no swap is paid), falling back to cloud. A capability carries a `transport` (`openai-compat` for a
 local llama-server/Ollama, `cloudflare-workers-ai` for the Cloudflare Workers AI API), so the
-same tool reaches both. `scripts/seed-capabilities.mts` probes the host's mesh address and seeds one
-enabled capability per local model plus recommended cloud fallbacks — the registry always
-reflects the current system.
+same tool reaches both. Nothing is seeded by hand. The zero bootstrap (`scripts/zero.mts`) discovers and
+enables local models, and `discover_cloud` records the Cloudflare catalog as recommended cloud
+capabilities with their catalog prices. The registry always reflects the current system.
 
 **Local cost is metered.** Every local `run_llm`/`run_decision` call records its interval;
 `list_usage` reports total kWh (idle power over elapsed time plus load power over the **union** of

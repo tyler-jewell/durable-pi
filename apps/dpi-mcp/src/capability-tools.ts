@@ -14,7 +14,8 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import { inspectHost } from "./host-inspect.js";
-import { cloudCostUsd, compareCosts, computeUsage, loadMeter, recordUsage, saveMeter, type UsageRecord } from "./meter.js";
+import { compareCosts, computeUsage, loadMeter, recordUsage, saveMeter, type UsageRecord } from "./meter.js";
+import { discoverCloud, fetchCatalog, tokenCostUsd } from "./cloud-catalog.js";
 import { listMeshHosts } from "./mesh.js";
 import { loadTeamFeed, notifyReady } from "./notify.js";
 import {
@@ -73,7 +74,8 @@ function apiKeyOf(cap: Capability): string | undefined {
 function account(reg: CapabilityRegistry, cap: Capability, kind: "llm" | "decision", ms: number, inToks: number, outToks: number) {
   const meter = loadMeter();
   const now = Date.now();
-  const costUsd = cap.transport === "cloudflare-workers-ai" ? cloudCostUsd(cap.model, inToks, outToks) : 0;
+  // Cloud spend is the catalog price times the tokens. An unpriced model records 0, and compare_costs says so.
+  const costUsd = cap.transport === "cloudflare-workers-ai" ? (tokenCostUsd(cap.pricing, inToks, outToks) ?? 0) : 0;
   const record: UsageRecord = { startedAt: now - ms, endedAt: now, model: cap.family ?? cap.name, kind, transport: cap.transport, inToks, outToks, costUsd };
   recordUsage(meter, record);
   cap.updatedAt = Date.now();
@@ -86,7 +88,7 @@ export function registerCapabilityTools(server: McpServer): void {
     {
       title: "List the LLMs and decision models each mesh host exposes",
       description:
-        "Read the raw per-host discovery: for every host, the models it serves, whether each is a chat LLM or a decision (System One/Jev/Clef) model, and health. Use recommend_capability to turn one into a usable capability, or run_llm/run_decision on an enabled capability.",
+        "Read the raw per-host discovery: for every host, the models it serves, whether each is a chat LLM or a decision model, and health. Use recommend_capability to turn one into a usable capability, or run_llm/run_decision on an enabled capability.",
       inputSchema: { refresh: z.boolean().optional().describe("re-probe every known host first") },
       annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     },
@@ -303,9 +305,11 @@ export function registerCapabilityTools(server: McpServer): void {
       const t0 = Date.now();
       const r = await runLlm(cap.address, cap.model, args.messages, { transport: cap.transport, apiKey: apiKeyOf(cap) });
       account(reg, cap, "llm", Date.now() - t0, r.inToks, r.outToks);
+      // A cut-off answer is said so, in the text itself, and flagged in structured output. It is never passed off as complete.
+      const notice = r.truncated ? "\n\n[truncated: the answer hit the output limit and is incomplete]" : "";
       return {
-        content: [{ type: "text", text: r.text }],
-        structuredContent: { capability: cap.id, model: cap.model, text: r.text, inToks: r.inToks, outToks: r.outToks },
+        content: [{ type: "text", text: r.text + notice }],
+        structuredContent: { capability: cap.id, model: cap.model, text: r.text, inToks: r.inToks, outToks: r.outToks, finishReason: r.finishReason, truncated: r.truncated },
       };
     },
   );
@@ -313,7 +317,7 @@ export function registerCapabilityTools(server: McpServer): void {
   server.registerTool(
     "run_decision",
     {
-      title: "Run a System One decision (Jev/Clef) on an enabled decision capability",
+      title: "Run a decision on an enabled decision capability",
       description:
         "Judge a JSON state with bounded questions on an enabled decision capability (see list_capabilities), returning noul/choice answers. This is the same envelope the factory's jev-quality reviewer gate uses.",
       inputSchema: {
@@ -353,6 +357,26 @@ export function registerCapabilityTools(server: McpServer): void {
       return {
         content: [{ type: "text", text: JSON.stringify(summary, null, 2) }],
         structuredContent: summary as unknown as Record<string, unknown>,
+      };
+    },
+  );
+
+  server.registerTool(
+    "discover_cloud",
+    {
+      title: "Discover the cloud model catalog: every text model, its kind and its price",
+      description:
+        "Read the Cloudflare Workers AI catalog (cf ai models list) and record each text model as a recommended cloud capability, with its kind (decision or chat) and its per-token price. Nothing is enabled: enable a cloud model with enable_capability. Prices come from the catalog, never from code. Needs CLOUDFLARE_ACCOUNT_ID and the cf CLI signed in.",
+      inputSchema: {},
+      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: true },
+    },
+    async () => {
+      const accountId = process.env.CLOUDFLARE_ACCOUNT_ID ?? "";
+      if (!accountId) throw new Error("CLOUDFLARE_ACCOUNT_ID is not set; discover_cloud needs the account to record its catalog");
+      const result = discoverCloud(accountId, fetchCatalog());
+      return {
+        content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
+        structuredContent: result as unknown as Record<string, unknown>,
       };
     },
   );

@@ -12,7 +12,8 @@
 // is deliberately NOT counted: the report shows realized spend only.
 import { disableCapability, familyOf, loadRegistry, recommendCapability, enableCapability, runDecision, runLlm, saveRegistry, selectCapability, type Capability, type CapabilityKind, type CapabilityRegistry, type DecisionQuestion } from "./capabilities.js";
 import type { MeshModelDiscovery } from "./mesh.js";
-import { cloudCostUsd, cloudPriceKnown, DEFAULT_SETTINGS, loadMeter, marginalElectricityUsd, recordUsage, type CostSettings } from "./meter.js";
+import { DEFAULT_SETTINGS, loadMeter, marginalElectricityUsd, recordUsage, type CostSettings } from "./meter.js";
+import { syncCloudCapabilities, tokenCostUsd, type CatalogModel } from "./cloud-catalog.js";
 import { notifyReady } from "./notify.js";
 
 export interface Candidate {
@@ -120,7 +121,7 @@ export async function testCapability(reg: CapabilityRegistry, cap: Capability, s
   recordUsage(loadMeter(), { startedAt: t0, endedAt: t0 + ms, model: cap.family, kind: cap.kind, transport: cap.transport, inToks, outToks, costUsd: 0 });
 
   const twin = cloudTwinOf(reg, cap);
-  const priced = twin && cloudPriceKnown(twin.model);
+  const cloudEquivUsd = tokenCostUsd(twin?.pricing, inToks, outToks);
   return {
     ...base,
     ok: ok && !error,
@@ -128,7 +129,7 @@ export async function testCapability(reg: CapabilityRegistry, cap: Capability, s
     inToks,
     outToks,
     electricityUsd: marginalElectricityUsd(ms, settings),
-    cloudEquivUsd: priced ? cloudCostUsd(twin!.model, inToks, outToks) : undefined,
+    cloudEquivUsd,
     cloudModel: twin?.model,
     sample,
     error,
@@ -200,6 +201,9 @@ export function abCoverage(reg: CapabilityRegistry, purposes: string[][], draws 
 
 export interface ZeroDeps {
   discover: () => Promise<MeshModelDiscovery[]>;
+  /** Optional cloud catalog. When present, its models are recorded as recommended capabilities (never enabled),
+   *  so the cost comparison has its twins. A failed read is logged and the run goes on with local models. */
+  cloud?: { models: () => CatalogModel[]; address: string };
   /** Ask the user. Gets the candidates and the auto-selection; returns the chosen flags. */
   choose: (candidates: Candidate[], defaults: boolean[]) => Promise<boolean[]>;
   log: (line: string) => void;
@@ -248,6 +252,14 @@ export async function bootstrap(deps: ZeroDeps): Promise<ZeroReport> {
     ...reg.hosts.filter((h) => !discovered.some((d) => d.host.name === h.host)),
     ...discovered.filter((d) => d.models.length && d.address).map((d) => ({ host: d.host.name, address: d.address!, health: "online" as const, reachable: true, models: d.models, discoveredAt: Date.now() })),
   ];
+  if (deps.cloud) {
+    try {
+      const r = syncCloudCapabilities(reg, deps.cloud.models(), deps.cloud.address);
+      log(`  cloud catalog: ${r.added} added, ${r.refreshed} refreshed (recommended only, none enabled)`);
+    } catch (e) {
+      log(`  cloud catalog unavailable (${String((e as Error).message).slice(0, 120)}); continuing with local models`);
+    }
+  }
   const enabled: Capability[] = [];
   for (const c of picked) {
     const cap = recommendCapability(reg, { host: c.host, model: c.id, description: `Local ${c.kind} model enabled by the zero bootstrap`, purpose: purposeOf(c.kind) });

@@ -9,7 +9,7 @@ is built, and what remains.
 
 `studio.jewell-labs.com` (Apple M1 Max, 32 GB, reached over a Cloudflare Tunnel + Access) runs **llama.cpp `llama-server` 1.0.0**.
 The canonical model root is `~/local/models/` (manifest.json is the SSoT; see
-docs/model-lineup.md), and one router on `:8080` serves one GGUF at a time from
+the model lineup is discovered, not listed in the repo), and one router on `:8080` serves one GGUF at a time from
 `gguf/` (`--models-max 1`, autoload, sleep-idle 600 s):
 
 | Endpoint | What it is | Models (canonical `gguf/`) | Modality |

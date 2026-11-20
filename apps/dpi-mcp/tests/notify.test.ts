@@ -1,3 +1,4 @@
+import { QUANT } from "./naming-fixtures.js";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { mkdtempSync, rmSync } from "node:fs";
@@ -17,7 +18,7 @@ test("notifyReady appends to the shared team feed and loadTeamFeed reads it", ()
       kind: "capability-ready",
       capability: "studio-decision-clef-flash-q4-k-m",
       host: "studio",
-      model: "Clef-Flash-Q4_K_M",
+      model: "Delta-Judge" + QUANT,
       purpose: ["jev-quality"],
       validated: { liveTest: "ok", endToEndMs: 42 },
       message: "validated and deployed",

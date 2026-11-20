@@ -1,8 +1,10 @@
+import { QUANT, CF_NAMESPACE } from "./naming-fixtures.js";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { candidatesOf, parseSelection, purposeOf, realizedCost, type ModelTest } from "../src/zero.js";
 import { familyOf } from "../src/capabilities.js";
-import { cloudPriceKnown, marginalElectricityUsd, DEFAULT_SETTINGS } from "../src/meter.js";
+import { marginalElectricityUsd, DEFAULT_SETTINGS } from "../src/meter.js";
+import { tokenCostUsd } from "../src/cloud-catalog.js";
 
 test("parseSelection: Enter submits the defaults; numbers toggle; a/n set all or none", () => {
   const defaults = [true, true, false];
@@ -20,18 +22,18 @@ test("parseSelection: invalid tokens are ignored, so a typo never enables a mode
   assert.deepEqual(parseSelection("0 4 -1 x 1.5", 3, [false, false, false]), [false, false, false]);
 });
 
-test("familyOf pairs a local GGUF with its Workers AI twin", () => {
-  assert.equal(familyOf("Qwen3-30B-A3B-Q4_K_M"), familyOf("@cf/qwen/qwen3-30b-a3b-fp8"));
-  assert.equal(familyOf("Mistral-Small-3.1-24B-Instruct-2503-Q4_K_M"), familyOf("@cf/mistralai/mistral-small-3.1-24b-instruct"));
-  assert.equal(familyOf("gpt-oss-20b-MXFP4"), familyOf("@cf/openai/gpt-oss-20b"));
-  assert.equal(familyOf("Clef-Flash-Q4_K_M"), familyOf("@cf/cloudflare/clef-flash"));
-  assert.equal(familyOf("Qwen3.8-27B-UD-Q4_K_M"), "qwen3.8-27b");
-  assert.equal(familyOf("granite-4.0-h-micro-Q4_K_M"), "granite-4.0-h-micro");
+test("familyOf pairs a local GGUF with its cloud twin (fixtures are generic on purpose)", () => {
+  assert.equal(familyOf("Alpha-Chat-30B-A3B" + QUANT), familyOf(CF_NAMESPACE + "vendor/alpha-chat-30b-a3b-fp8"));
+  assert.equal(familyOf("Beta-Chat-24B-Instruct-2503" + QUANT), familyOf(CF_NAMESPACE + "vendor/beta-chat-24b-instruct"));
+  assert.equal(familyOf("gamma-chat-20b-MXFP4"), familyOf(CF_NAMESPACE + "vendor/gamma-chat-20b"));
+  assert.equal(familyOf("Delta-Judge" + QUANT), familyOf(CF_NAMESPACE + "vendor/delta-judge"));
+  assert.equal(familyOf("Epsilon-27B-UD" + QUANT), "epsilon-27b");
+  assert.equal(familyOf("solo-model" + QUANT), "solo-model");
 });
 
-test("cloudPriceKnown: an unpriced model is unknown, never a zero price", () => {
-  assert.equal(cloudPriceKnown("@cf/openai/gpt-oss-20b"), true);
-  assert.equal(cloudPriceKnown("@cf/unknown/model"), false);
+test("an unpriced model is unknown, never a zero price", () => {
+  assert.equal(tokenCostUsd(undefined, 100, 100), undefined);
+  assert.equal(tokenCostUsd({ inPerM: 0, outPerM: 0 }, 100, 100), 0, "a price of zero is a price, not unknown");
 });
 
 test("marginal electricity is the power above idle, priced per kWh", () => {

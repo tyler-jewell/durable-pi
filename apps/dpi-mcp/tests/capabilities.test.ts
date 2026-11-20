@@ -1,3 +1,4 @@
+import { QUANT } from "./naming-fixtures.js";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
@@ -32,8 +33,8 @@ test("probeHost derives chat LLMs and decision models from /v1/models", async ()
       return void res.end(
         JSON.stringify({
           data: [
-            { id: "Coder-7B", aliases: [], architecture: { output_modalities: ["text"] } },
-            { id: "Clef-Flash-Q4_K_M", aliases: [], architecture: { output_modalities: ["decisions"] } },
+            { id: "Alpha-Chat" + QUANT, aliases: [], architecture: { output_modalities: ["text"] } },
+            { id: "Delta-Judge" + QUANT, aliases: [], architecture: { output_modalities: ["decisions"] } },
           ],
         }),
       );
@@ -47,8 +48,8 @@ test("probeHost derives chat LLMs and decision models from /v1/models", async ()
     assert.equal(cap.health, "online");
     assert.equal(cap.reachable, true);
     assert.deepEqual(cap.models.map((m) => [m.id, m.kind]), [
-      ["Coder-7B", "llm"],
-      ["Clef-Flash-Q4_K_M", "decision"],
+      ["Alpha-Chat" + QUANT, "llm"],
+      ["Delta-Judge" + QUANT, "decision"],
     ]);
   } finally {
     server.close();
@@ -64,12 +65,12 @@ test("probeHost marks an unreachable host offline with a hint", async () => {
 
 test("capability lifecycle: recommended is not bound, enabled is", () => {
   const base = {
-    id: "studio-decision-clef-flash-q4-k-m",
-    name: "Clef-Flash",
+    id: "studio-decision-delta-judge-q4-k-m",
+    name: "Delta-Judge",
     kind: "decision" as const,
     host: "studio",
     address: "http://127.0.0.1:8080",
-    model: "Clef-Flash-Q4_K_M",
+    model: "Delta-Judge" + QUANT,
     transport: "openai-compat" as const,
     family: "clef-flash",
     description: "local judge",
@@ -84,11 +85,11 @@ test("capability lifecycle: recommended is not bound, enabled is", () => {
   } satisfies Capability;
   const reg: CapabilityRegistry = { hosts: [], capabilities: [base] };
   assert.equal(resolveCapability(reg, "jev-quality"), undefined); // recommended ≠ enabled
-  assert.equal(findCapability(reg, "studio-decision-clef-flash-q4-k-m")?.id, base.id);
+  assert.equal(findCapability(reg, "studio-decision-delta-judge-q4-k-m")?.id, base.id);
   const enabled = { ...base, state: "enabled" as const };
   reg.capabilities = [enabled];
-  assert.equal(resolveCapability(reg, "jev-quality")?.model, "Clef-Flash-Q4_K_M");
-  assert.equal(slug("Studio decision: Clef-Flash-Q4_K_M!"), "studio-decision-clef-flash-q4-k-m");
+  assert.equal(resolveCapability(reg, "jev-quality")?.model, "Delta-Judge" + QUANT);
+  assert.equal(slug("Studio decision: Delta-Judge-Q4_K_M!"), "studio-decision-delta-judge-q4-k-m");
 });
 
 test("runLlm and runDecision call a host's OpenAI and System One endpoints", async () => {
@@ -107,8 +108,8 @@ test("runLlm and runDecision call a host's OpenAI and System One endpoints", asy
   try {
     const port = (server.address() as { port: number }).port;
     const base = `http://127.0.0.1:${port}`;
-    assert.equal((await runLlm(base, "Coder-7B", [{ role: "user", content: "hi" }])).text, "hi");
-    const r = await runDecision(base, "Clef-Flash-Q4_K_M", { x: 1 }, { verdict: { type: "choice", instructions: "ship?", criteria: { approve: "yes" } } });
+    assert.equal((await runLlm(base, "Alpha-Chat" + QUANT, [{ role: "user", content: "hi" }])).text, "hi");
+    const r = await runDecision(base, "Delta-Judge" + QUANT, { x: 1 }, { verdict: { type: "choice", instructions: "ship?", criteria: { approve: "yes" } } });
     assert.equal(r.answers.verdict.type, "choice");
     if (r.answers.verdict.type === "choice") assert.equal(r.answers.verdict.choice, "approve");
   } finally {

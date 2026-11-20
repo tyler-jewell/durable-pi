@@ -1,91 +1,81 @@
-// Apples-to-apples + cost profile: the SAME model on local (Studio) and cloud (Workers AI),
-// same prompt and parameters, capturing tokens and billable cost.
+// Apples-to-apples profile: for every model family that has BOTH an enabled local capability and a priced cloud
+// twin in the registry, send the same prompt to both and compare tokens, latency and cost. Nothing is named here:
+// the pairs come from discovery (see `discover_cloud` and the zero bootstrap).
 //
-//   CLOUDFLARE_API_KEY=<key> CLOUDFLARE_ACCOUNT_ID=<id> npx tsx scripts/profile-models.mts
+//   npx tsx scripts/profile-models.mts            # runs the pairs the registry holds
 //
-// Pair 1 (LLM):       gpt-oss-20b  — local MXFP4 vs @cf/openai/gpt-oss-20b
-// Pair 2 (decision):  Clef-Flash   — local Q4_K_M vs @cf/cloudflare/clef-flash
-// Cost: Workers AI prices (USD per M tokens) are billing facts from the CF catalog;
-// local marginal cost is $0 — the Studio is a fixed-cost box (electricity is estimated).
+// Cloud calls cost money (priced from the catalog, per token). Local calls cost electricity, marginal only.
+// The report prints the exact names it used on each side, because a family can differ in quantization.
 
-import { loadMeshConfig } from "../src/mesh-config.js";
+import { loadRegistry, runDecision, runLlm, type Capability, type CapabilityRegistry, type DecisionQuestion } from "../src/capabilities.js";
+import { marginalElectricityUsd, DEFAULT_SETTINGS } from "../src/meter.js";
+import { tokenCostUsd } from "../src/cloud-catalog.js";
 
-const CF_ACCOUNT = process.env.CLOUDFLARE_ACCOUNT_ID ?? "";
-const CF_KEY = process.env.CLOUDFLARE_API_KEY ?? "";
-const meshHost = loadMeshConfig().hosts.find((h) => h.name === (process.env.LLAMA_HOST ?? "studio"));
-const LOCAL_BASE = (process.env.LLAMA_BASE_URL ?? (meshHost ? `https://${meshHost.hostname}` : "")).replace(/\/+$/, "");
-if (!LOCAL_BASE) throw new Error("no local host: set LLAMA_BASE_URL or add the host to mesh.json");
-const CF_BASE = `https://api.cloudflare.com/client/v4/accounts/${CF_ACCOUNT}`;
+const LLM_PROMPT = [{ role: "user" as const, content: "Explain the difference between a process and a thread, in under 60 words." }];
+const DECISION_QUESTION: Record<string, DecisionQuestion> = {
+  verdict: { type: "choice", instructions: "Is the change ready to ship?", criteria: { approve: "ready", revise: "needs work", reject: "broken" } },
+};
+const STATE = { plan: "add a status page", facts: "tests pass; the build is green" };
 
-// Billing facts (Workers AI catalog, 19 Nov 2026): $ per million tokens.
-const PRICE = {
-  "@cf/openai/gpt-oss-20b": { in: 0.2, out: 0.3 },
-  "@cf/cloudflare/clef-flash": { in: 0.038, out: 0 },
-} as const;
-
-const ELECTRICITY_USD_PER_KWH = 0.15; // rough US average
-const STUDIO_WATTS = 80; // M1 Max under Metal inference, rough
-
-type Row = { call: string; transport: string; model: string; ms: number; inToks: number; outToks: number; cost: number; coldMs?: number };
-const rows: Row[] = [];
-
-async function post(url: string, body: unknown, apiKey?: string): Promise<{ ms: number; data: any }> {
-  const t0 = Date.now();
-  const res = await fetch(url, {
-    method: "POST",
-    headers: { "Content-Type": "application/json", ...(apiKey ? { Authorization: `Bearer ${apiKey}` } : {}) },
-    body: JSON.stringify(body),
-  });
-  const ms = Date.now() - t0;
-  if (!res.ok) throw Error(`${url}: HTTP ${res.status} ${(await res.text()).slice(0, 200)}`);
-  return { ms, data: await res.json() };
+interface Pair {
+  family: string;
+  kind: "llm" | "decision";
+  local: Capability;
+  cloud: Capability;
 }
 
-// --- LLM, same prompt + params on both ---
-const llmPrompt = [{ role: "user", content: "Explain the difference between a process and a thread, in under 60 words." }];
-const llmParams = { temperature: 0, max_tokens: 64 };
+/** Families with an enabled local capability and a priced cloud twin of the same kind. */
+export function pairsOf(reg: CapabilityRegistry): Pair[] {
+  const pairs: Pair[] = [];
+  for (const local of reg.capabilities.filter((c) => c.state === "enabled" && c.host !== "cloudflare")) {
+    const cloud = reg.capabilities.find((c) => c.host === "cloudflare" && c.kind === local.kind && c.family === local.family && c.pricing);
+    if (cloud) pairs.push({ family: local.family, kind: local.kind, local, cloud });
+  }
+  return pairs;
+}
 
-// Warm the local model first: the Studio router serves one GGUF at a time (--models-max 1),
-// so a cold call pays a load/swap. We discard the warm-up and measure the warm generation.
-const llmWarmup = await post(`${LOCAL_BASE}/v1/chat/completions`, { model: "gpt-oss-20b-MXFP4", messages: [{ role: "user", content: "hi" }], max_tokens: 4, temperature: 0 });
-const llmLocal = await post(`${LOCAL_BASE}/v1/chat/completions`, { model: "gpt-oss-20b-MXFP4", messages: llmPrompt, ...llmParams });
-const llmLocalU = llmLocal.data.usage ?? {};
-rows.push({ call: "LLM · local (warm)", transport: "openai-compat", model: "gpt-oss-20b-MXFP4", ms: llmLocal.ms, inToks: llmLocalU.prompt_tokens ?? 0, outToks: llmLocalU.completion_tokens ?? 0, cost: 0, coldMs: llmWarmup.ms });
+async function run(cap: Capability): Promise<{ ms: number; inToks: number; outToks: number; truncated: boolean }> {
+  // A cloud twin takes its key from the environment (CLOUDFLARE_API_KEY) unless the capability stores one.
+  const stored = cap.inputs.find((i) => i.secret)?.value;
+  const apiKey = stored ?? (cap.transport === "cloudflare-workers-ai" ? process.env.CLOUDFLARE_API_KEY : undefined);
+  const opts = { transport: cap.transport, apiKey };
+  const t0 = Date.now();
+  const r =
+    cap.kind === "llm"
+      ? await runLlm(cap.address, cap.model, LLM_PROMPT, opts)
+      : await runDecision(cap.address, cap.model, STATE, DECISION_QUESTION, opts);
+  return { ms: Date.now() - t0, inToks: r.inToks, outToks: r.outToks, truncated: "truncated" in r ? Boolean(r.truncated) : false };
+}
 
-const llmCf = await post(`${CF_BASE}/ai/v1/chat/completions`, { model: "@cf/openai/gpt-oss-20b", messages: llmPrompt, ...llmParams }, CF_KEY);
-const llmCfU = llmCf.data.usage ?? {};
-rows.push({ call: "LLM · cloud", transport: "cloudflare-workers-ai", model: "@cf/openai/gpt-oss-20b", ms: llmCf.ms, inToks: llmCfU.prompt_tokens ?? 0, outToks: llmCfU.completion_tokens ?? 0, cost: 0 });
-
-// --- Decision, same state + questions on both ---
-const decState = { plan: "build a todo app", facts: "typecheck and build pass" };
-const decQ = { verdict: { type: "choice", instructions: "Should this app ship?", criteria: { approve: "ship", revise: "fix", reject: "block" } } };
-
-const decWarmup = await post(`${LOCAL_BASE}/v1/systemone`, { model: "Clef-Flash-Q4_K_M", state: { x: 1 }, questions: { q: { type: "noul", instructions: "return 0" } } });
-const decLocal = await post(`${LOCAL_BASE}/v1/systemone`, { model: "Clef-Flash-Q4_K_M", state: decState, questions: decQ });
-const decLocalU = decLocal.data.usage ?? {};
-rows.push({ call: "Decision · local (warm)", transport: "openai-compat", model: "Clef-Flash-Q4_K_M", ms: decLocal.ms, inToks: decLocalU.input_tokens ?? 0, outToks: decLocalU.output_tokens ?? 0, cost: 0, coldMs: decWarmup.ms });
-
-const decCf = await post(`${CF_BASE}/ai/run`, { model: "@cf/cloudflare/clef-flash", input: { state: decState, questions: decQ } }, CF_KEY);
-const decCfU = decCf.data?.result?.usage ?? {};
-rows.push({ call: "Decision · cloud", transport: "cloudflare-workers-ai", model: "@cf/cloudflare/clef-flash", ms: decCf.ms, inToks: decCfU.input_tokens ?? 0, outToks: decCfU.output_tokens ?? 0, cost: 0 });
-
-// --- cost ---
-for (const r of rows) {
-  if (r.transport === "cloudflare-workers-ai") {
-    const p = PRICE[r.model as keyof typeof PRICE] ?? { in: 0, out: 0 };
-    r.cost = (r.inToks * p.in + r.outToks * p.out) / 1_000_000;
+async function main() {
+  const reg = loadRegistry();
+  const pairs = pairsOf(reg);
+  if (pairs.length === 0) {
+    console.log("profile: no family has both an enabled local capability and a priced cloud twin. Run discover_cloud, then enable the local model.");
+    return;
+  }
+  console.log(`profile: ${pairs.length} pair(s)\n`);
+  for (const p of pairs) {
+    console.log(`${p.kind} · family ${p.family}`);
+    // One failing side (a retired catalog model, an offline host) is reported and the profile carries on.
+    try {
+      const l = await run(p.local);
+      const localCost = marginalElectricityUsd(l.ms, DEFAULT_SETTINGS);
+      const cut = l.truncated ? "  TRUNCATED at the output limit" : "";
+      console.log(`  local  ${p.local.model.padEnd(44)} ${(l.ms / 1000).toFixed(2)}s  in ${l.inToks} out ${l.outToks}  electricity $${localCost.toFixed(6)}${cut}`);
+    } catch (e) {
+      console.log(`  local  ${p.local.model}  FAILED: ${String((e as Error).message).slice(0, 140)}`);
+    }
+    try {
+      const c = await run(p.cloud);
+      const cloudCost = tokenCostUsd(p.cloud.pricing, c.inToks, c.outToks) ?? 0;
+      const cut = c.truncated ? "  TRUNCATED at the output limit" : "";
+      console.log(`  cloud  ${p.cloud.model.padEnd(44)} ${(c.ms / 1000).toFixed(2)}s  in ${c.inToks} out ${c.outToks}  billed $${cloudCost.toFixed(6)}${cut}`);
+    } catch (e) {
+      console.log(`  cloud  ${p.cloud.model}  FAILED: ${String((e as Error).message).slice(0, 140)}`);
+    }
+    console.log("");
   }
 }
 
-const cents = (n: number) => `$${n.toFixed(6)} (${(n * 100).toFixed(5)}¢)`;
-console.log("\nAPPLES-TO-APPLES PROFILE (same model + params, local vs cloud)");
-console.log("  call                   transport               model                                ms      in-tok  out-tok  billable cost");
-for (const r of rows) {
-  const cold = r.coldMs !== undefined ? `  (cold load/swap ${r.coldMs} ms)` : "";
-  console.log(
-    `  ${r.call.padEnd(22)} ${r.transport.padEnd(23)} ${r.model.padEnd(38)} ${String(r.ms).padStart(6)}  ${String(r.inToks).padStart(6)}  ${String(r.outToks).padStart(6)}  ${r.transport === "cloudflare-workers-ai" ? cents(r.cost) : "$0 (marginal)"}${cold}`,
-  );
-}
-const localEnergyKwh = rows.filter((r) => r.transport === "openai-compat").reduce((a, r) => a + (STUDIO_WATTS * r.ms) / 3_600_000_000, 0); // W·ms → kWh
-console.log(`\nLocal electricity (estimate, warm generation only): ${(localEnergyKwh * 1000).toFixed(3)} Wh ≈ ${cents(localEnergyKwh * ELECTRICITY_USD_PER_KWH)} across the two warm local calls (${STUDIO_WATTS} W · ${ELECTRICITY_USD_PER_KWH.toFixed(2)} $/kWh).`);
-console.log(`Cloud billable total: ${cents(rows.filter((r) => r.transport === "cloudflare-workers-ai").reduce((a, r) => a + r.cost, 0))}.`);
+if (process.argv[1]?.endsWith("profile-models.mts")) await main();

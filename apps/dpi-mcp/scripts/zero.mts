@@ -8,6 +8,7 @@
 import { createInterface } from "node:readline";
 import { discoverMeshModels } from "../src/mesh.js";
 import { bootstrap, parseSelection, type Candidate } from "../src/zero.js";
+import { fetchCatalog } from "../src/cloud-catalog.js";
 
 const yes = process.argv.includes("--yes");
 
@@ -30,9 +31,13 @@ async function dialog(candidates: Candidate[], defaults: boolean[]): Promise<boo
   });
 }
 
+const accountId = process.env.CLOUDFLARE_ACCOUNT_ID ?? "";
 const report = await bootstrap({
   discover: () => discoverMeshModels(),
   choose: dialog,
   log: (line) => console.log(line),
+  cloud: accountId
+    ? { models: () => fetchCatalog(), address: `https://api.cloudflare.com/client/v4/accounts/${accountId}` }
+    : undefined,
 });
 process.exit(report.allTested ? 0 : 1);
