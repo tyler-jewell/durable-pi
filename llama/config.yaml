@@ -18,6 +18,7 @@ args:
   n-gpu-layers: 999       # every layer on the GPU
   threads: 8
   threads-batch: 8
+  models-memory-margin: 3072  # MiB of memory kept free before the router loads another model; it unloads the least recently used first
   cache-ram: 8192         # prompt cache in RAM, MiB. Agents that alternate prompts on one model reuse it: measured on the
                           # MacBook Pro, alternating 6k-token prompts took ~31 s to prefill with the cache off and ~0.2 s with it on.
                           # A host with less memory sets a smaller value in its hosts.yaml overlay.

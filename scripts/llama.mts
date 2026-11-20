@@ -113,6 +113,9 @@ export function hostOf(hosts: Record<string, HostConfig>, name: string): HostCon
   return host;
 }
 
+/** Router-level flags. A running router does not echo them in a model's arguments, so drift cannot compare them. */
+export const ROUTER_FLAGS = new Set(["models-dir", "models-max", "models-memory-margin", "models-preset", "models-autoload", "no-models-autoload"]);
+
 /** The flags a value turns into: `--name value`, the bare `--name`, or nothing for false. */
 function flagTokens(args: Record<string, FlagValue>): string[] {
   return Object.entries(args).flatMap(([name, value]) => {
@@ -188,7 +191,7 @@ export function driftOf(config: LlamaConfig, host: HostConfig, reported: string[
   const expected = new Map<string, string | true>();
   const shared = { ...config.args, ...host.args };
   for (const [name, value] of Object.entries(shared)) {
-    if (value === false) continue;
+    if (value === false || ROUTER_FLAGS.has(name)) continue;
     expected.set(`--${name}`, value === true ? true : String(value));
   }
   expected.set("--sleep-idle-seconds", String(config.sleep_idle_seconds));
@@ -198,7 +201,7 @@ export function driftOf(config: LlamaConfig, host: HostConfig, reported: string[
     else if (seen.get(flag) !== want) problems.push(`${flag}: running ${String(seen.get(flag))}, config ${want === true ? "bare flag" : want}`);
   }
   for (const [flag, value] of Object.entries(shared)) {
-    if (value === false && seen.has(`--${flag}`)) problems.push(`--${flag}: running, config leaves it out`);
+    if (value === false && !ROUTER_FLAGS.has(flag) && seen.has(`--${flag}`)) problems.push(`--${flag}: running, config leaves it out`);
   }
   return problems;
 }

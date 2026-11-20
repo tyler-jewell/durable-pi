@@ -75,6 +75,21 @@ test("unknownFlags finds a flag the binary's help does not list", () => {
   assert.deepEqual(unknownFlags(["/bin/x", "--jinja", "--ctx-size", "4", "--bogus-flag", "1"], help), ["--bogus-flag"]);
 });
 
+test("drift ignores router-level flags, which a running router does not echo per model", () => {
+  const argv = argvOf(config, host);
+  const router = new Set(["--models-dir", "--models-max", "--models-memory-margin"]);
+  const perModel: string[] = [];
+  for (let i = 0; i < argv.length; i++) {
+    if (router.has(argv[i])) {
+      if (!argv[i + 1]?.startsWith("--")) i++;
+      continue;
+    }
+    perModel.push(argv[i]);
+  }
+  assert.deepEqual(driftOf(config, host, perModel), []);
+  assert.ok(argv.includes("--models-memory-margin"));
+});
+
 test("a leading ~ means the host's home folder, so a plist rendered elsewhere names the right paths", () => {
   assert.equal(expandHome("~/a/b"), join(homedir(), "a/b"));
   assert.equal(expandHome("~/a/b", "/Users/other"), "/Users/other/a/b");
