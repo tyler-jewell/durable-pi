@@ -10,6 +10,10 @@ This repository is **public-ready**. Never commit anything that ties it to one m
 - Comments describe what the code does now. Never write about a migration, a removed, renamed or merged thing, what something used to be, what it replaces, or what was "no longer" true. Migration notes belong in the commit message, not in the code.
 - Never add files to version control that significantly affect the artifact release pipeline (build/check/test), and never increase total pipeline time by more than 5% of the baseline.
 
+## A result needs its calls
+
+A task is reported done only with the tool calls that produced it. The meter records every model call, so it is the source of truth for what ran. A review checks the calls, not the summary: a report that names a tool which was never called, or a verdict with no call behind it, is a failure, however it reads.
+
 ## Tool calls are never silently cut
 
 A model answer that hits its output limit is flagged `truncated` in every surface that returns it, and a truncated tool call is never executed. A context window is shared by the prompt and the output, so a request must fit the window the server actually runs, not the one a config claims.
