@@ -18,6 +18,10 @@ const script: Step[] = [
   { tool: "bash", args: { command: FIXED } },
   { tool: "lsp_diagnostics", args: { path: "src/app.ts" } },
   { tool: "bash", args: { command: "git commit --no-verify -m bypass-attempt" } },
+  { tool: "lsp_diagnostics", args: { path: `${process.env.DPI_LSP_CHECK_DIR}/outside.sh` } },
+  { tool: "lsp_diagnostics", args: { path: "outside-link.sh" } },
+  { tool: "lsp_diagnostics", args: { path: "ignored.sh" } },
+  { tool: "lsp_diagnostics", args: { path: "node_modules/generated.sh" } },
 ];
 
 export default function (pi: ExtensionAPI) {

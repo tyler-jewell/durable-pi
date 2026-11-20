@@ -42,6 +42,10 @@ check("second project keeps its own tsconfig: loose code is clean there", /^No d
 check("json: a syntax error (pull diagnostics)", /bad\.json:\d+:\d+ error: /.test(text(3)), first(text(3)));
 check("bash: an unquoted variable (versioned publish)", /run\.sh:\d+:\d+ \w+: .*\[shellcheck SC2086\]/.test(text(4)), first(text(4)));
 check("after an edit, the same file is re-checked and clean", /^No diagnostics/.test(text(5)), first(text(5)));
+check("external scratch file is rejected", /path must be inside the project/.test(text(6)), first(text(6)));
+check("symlink to an external file is rejected", /path must be inside the project/.test(text(7)), first(text(7)));
+check("Git-ignored script is rejected", /path is ignored by Git/.test(text(8)), first(text(8)));
+check("dependency directory script is rejected", /path is excluded from language-server checks/.test(text(9)), first(text(9)));
 
 // Navigation.
 const def = (results.lsp_definition || [])[0];
@@ -50,7 +54,7 @@ const hov = (results.lsp_hover || [])[0];
 check("lsp_hover describes total", !!hov && /total/.test(hov.text) && /number/.test(hov.text), hov ? hov.text.trim().slice(0, 80) : "no result");
 
 // The installed code is the repo's: every result carries the build the installer printed.
-check("the tools ran the freshly installed build", diag.length > 0 && diag.every((d) => d.build === build), `${build} vs ${diag.map((d) => d.build).join(",")}`);
+check("the tools ran the freshly installed build", diag.length === 10 && diag.slice(0, 6).every((d) => d.build === build), `${build} vs ${diag.map((d) => d.build).join(",")}`);
 
 const bypass = (results.bash || [])[2];
 check("a commit that skips the gate is blocked before it runs", !!bypass && /bypass the git gate/.test(bypass.text), bypass ? bypass.text.slice(0, 80) : "no result");

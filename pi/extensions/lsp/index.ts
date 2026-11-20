@@ -9,7 +9,7 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { DEFAULT_MAX_BYTES, DEFAULT_MAX_LINES, formatSize, isToolCallEventType, truncateHead } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
-import { isAbsolute, relative, resolve } from "node:path";
+import { relative } from "node:path";
 import { fileURLToPath } from "node:url";
 import { LANGUAGES, LSP_BUILD, SEVERITY, Workspace, langOf } from "./core.mjs";
 import type { Diagnostic, LangId } from "./core.mjs";
@@ -73,18 +73,13 @@ export default function (pi: ExtensionAPI) {
     // A diffable section, not a full prompt replacement: Pi patches only this section when it changes.
     event.systemPromptOptions.sections["language-servers"] =
       lines.join("\n") +
-      "\nAfter you edit a file of a language listed above, run lsp_diagnostics on it before you report the change done. " +
-      "Use lsp_definition, lsp_hover and lsp_references to read types and find symbols instead of guessing. " +
+      "\nRun lsp_diagnostics only on supported files inside this project that are not ignored or excluded. " +
+      "For scratch shell scripts outside the project (for example under /tmp), use bash -n and, if installed, shellcheck instead. " +
+      "Use lsp_definition, lsp_hover and lsp_references on project files to read types and find symbols instead of guessing. " +
       "Commits run a gate that rejects any error or warning these servers report, so fix them first.";
   });
 
-  /** An absolute path inside the project. Anything outside it is refused. */
-  function inside(path: string): string {
-    const abs = isAbsolute(path) ? path : resolve(root, path);
-    const rel = relative(root, abs);
-    if (rel.startsWith("..") || isAbsolute(rel)) throw new Error(`path must be inside the project: ${path}`);
-    return abs;
-  }
+  const inside = (path: string) => workspace().toolPath(path);
 
   const rel = (abs: string) => relative(root, abs) || abs.split("/").pop()!;
   const position = (line: number, column: number) => ({ line: Math.max(0, line - 1), character: Math.max(0, column - 1) });
@@ -92,7 +87,7 @@ export default function (pi: ExtensionAPI) {
   const asLocation = (l: Location | LocationLink): Location => ("targetUri" in l ? { uri: l.targetUri, range: l.targetSelectionRange ?? l.targetRange } : l);
 
   const positionParams = Type.Object({
-    path: Type.String({ description: "File path, relative to the project" }),
+    path: Type.String({ description: "Path to an eligible file inside the project" }),
     line: Type.Integer({ minimum: 1, description: "Line, starting at 1" }),
     column: Type.Integer({ minimum: 1, description: "Column, starting at 1" }),
   });
@@ -101,10 +96,10 @@ export default function (pi: ExtensionAPI) {
     name: "lsp_diagnostics",
     label: "LSP diagnostics",
     description:
-      "Errors and warnings from the language servers. With a path, checks that file. Without one, checks the project's files for every running language. Output is cut at 50KB / 2000 lines.",
+      "Errors and warnings for eligible files inside the project. Omit the path to check the project. For external shell scripts, use bash -n or shellcheck. Output is cut at 50KB / 2000 lines.",
     promptSnippet: "lsp_diagnostics: errors and warnings for a file, as the language server sees them",
-    promptGuidelines: ["lsp_diagnostics: run it on each file you edited, before you report the change done."],
-    parameters: Type.Object({ path: Type.Optional(Type.String({ description: "File to check; omit to check the project" })) }),
+    promptGuidelines: ["lsp_diagnostics: check supported edited project files before reporting done. Do not pass scratch files outside the project, ignored files, or excluded files."],
+    parameters: Type.Object({ path: Type.Optional(Type.String({ description: "Eligible file inside the project; omit to check the project" })) }),
     async execute(_id, params) {
       const w = workspace();
       let files: string[];

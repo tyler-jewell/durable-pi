@@ -24,6 +24,13 @@ Pi has no built-in language-server support. `pi/extensions/lsp` adds it: four to
    A file that no `tsconfig` includes is reported as a finding (tsserver would check it with default settings, which is no check).
    A server that is missing, dies, or stays silent fails the file: a document is never reported clean on silence.
 
+## File scope
+
+The tools check supported regular files inside the project. Explicit requests reject Git-ignored
+untracked files and excluded paths. Paths that resolve outside the project, including through
+symlinks, are rejected before a server receives the file. Use `bash -n` and, if available,
+`shellcheck` for an external scratch shell script.
+
 ## Memory
 
 The TypeScript server is the one process whose memory grows with the project. It runs as a single process (no separate syntax

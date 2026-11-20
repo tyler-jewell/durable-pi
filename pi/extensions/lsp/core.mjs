@@ -15,11 +15,11 @@
 //
 // Every server started by this process is killed when the process exits, so none outlives its agent or hook.
 
-import { spawn, execFileSync } from "node:child_process";
-import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
+import { spawn, spawnSync, execFileSync } from "node:child_process";
+import { existsSync, readFileSync, readdirSync, realpathSync, statSync } from "node:fs";
 import { createRequire } from "node:module";
 import { homedir } from "node:os";
-import { basename, dirname, extname, join, relative } from "node:path";
+import { basename, dirname, extname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { pathToFileURL } from "node:url";
 
 /** The build this core was installed as. install.sh and the reload test change it to tell two installs apart. */
@@ -81,7 +81,7 @@ export function languageIdOf(file) {
 // The project: which files exist, and which of them a server should check.
 // ---------------------------------------------------------------------------------------------------------------------
 
-/** Directories no scan enters when git cannot list the files. */
+/** Dependency, build and metadata directories outside the checking scope. */
 const SKIP = new Set(["node_modules", "dist", ".git", ".cloudflare", ".wrangler", "coverage", "__pycache__", ".venv", "venv"]);
 
 /** Repo-declared exclusions (pi/lsp/gate-exclude.txt): path prefixes the servers do not check, each with a reason. @param {string} root @returns {string[]} */
@@ -95,6 +95,27 @@ export function excludedPaths(root) {
 
 /** @param {string} p */
 const isFile = (p) => statSync(p, { throwIfNoEntry: false })?.isFile() ?? false;
+
+/** @param {string} root @param {string} file */
+function relativeInside(root, file) {
+  const rel = relative(root, file);
+  if (rel === ".." || rel.startsWith(`..${sep}`) || isAbsolute(rel)) throw new Error(`path must be inside the project: ${file}`);
+  return rel;
+}
+
+/** @param {string} root @param {string} file @param {string[]} exclude @param {string} [realRoot] */
+function projectFile(root, file, exclude, realRoot = realpathSync(root)) {
+  const abs = resolve(root, file);
+  const rel = relativeInside(root, abs);
+  const target = relativeInside(realRoot, realpathSync(abs));
+  for (const path of [rel, target]) {
+    if (path.split(sep).slice(0, -1).some((dir) => SKIP.has(dir)) || exclude.some((prefix) => path.startsWith(prefix))) {
+      throw new Error(`path is excluded from language-server checks: ${file}`);
+    }
+  }
+  if (!isFile(abs)) throw new Error(`path is not a file: ${file}`);
+  return abs;
+}
 
 /** Every file of a checkout. Git knows best (tracked and untracked, minus .gitignore); a folder that is not a repo is walked. @param {string} root @returns {string[]} */
 export function listProjectFiles(root) {
@@ -130,7 +151,15 @@ export function listProjectFiles(root) {
  * @param {string} root @param {string[]} [exclude] @returns {Scan}
  */
 export function scanWorkspace(root, exclude = excludedPaths(root)) {
-  const files = listProjectFiles(root).filter((f) => !exclude.some((prefix) => relative(root, f).startsWith(prefix)));
+  const realRoot = realpathSync(root);
+  const files = listProjectFiles(root).filter((f) => {
+    try {
+      projectFile(root, f, exclude, realRoot);
+      return true;
+    } catch {
+      return false;
+    }
+  });
   /** @type {Map<string, number>} */
   const extensions = new Map();
   /** @type {Map<LangId, string[]>} */
@@ -693,6 +722,14 @@ export class Workspace {
     return this.status();
   }
 
+  /** Resolve an explicit tool path, including Git's ignore rules for untracked files. @param {string} path */
+  toolPath(path) {
+    const abs = projectFile(this.root, path, this.exclude);
+    const result = spawnSync("git", ["-C", this.root, "check-ignore", "-q", "--", abs], { stdio: "ignore" });
+    if (result.status === 0) throw new Error(`path is ignored by Git: ${path}`);
+    return abs;
+  }
+
   /** @returns {Status[]} */
   status() {
     return LANG_IDS.filter((l) => this.statuses.has(l)).map((l) => /** @type {Status} */ (this.statuses.get(l)));
@@ -790,7 +827,14 @@ export class Workspace {
     const out = new Map();
     /** @type {Map<LangId, string[]>} */
     const byLang = new Map();
+    const realRoot = realpathSync(this.root);
     for (const f of files) {
+      try {
+        projectFile(this.root, f, this.exclude, realRoot);
+      } catch (e) {
+        out.set(f, /** @type {Error} */ (e));
+        continue;
+      }
       const lang = langOf(f);
       if (!lang) out.set(f, new Error("no language server covers this file type"));
       else byLang.set(lang, [...(byLang.get(lang) ?? []), f]);
@@ -899,6 +943,7 @@ export class Workspace {
    * @param {string} file @param {string} method @param {object} extra @returns {Promise<any>}
    */
   async query(file, method, extra) {
+    file = projectFile(this.root, file, this.exclude);
     const lang = langOf(file);
     if (!lang) throw new Error(`no language server covers ${basename(file)}`);
     return this.#run(lang, async (s) => {
