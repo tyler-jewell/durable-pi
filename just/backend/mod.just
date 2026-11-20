@@ -31,3 +31,8 @@ token:
 check:
     npm run check
     npm test
+
+# Send one message to this machine's device. The token stays in the env file.
+[no-cd]
+send *MESSAGE:
+    node --experimental-strip-types scripts/board-send.mts "{{ MESSAGE }}"
