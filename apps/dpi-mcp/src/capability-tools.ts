@@ -15,6 +15,7 @@ import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import { inspectHost } from "./host-inspect.js";
 import { cloudCostUsd, compareCosts, computeUsage, loadMeter, recordUsage, saveMeter, type UsageRecord } from "./meter.js";
+import { loadTeamFeed, notifyReady } from "./notify.js";
 import {
   disableCapability,
   enableCapability,
@@ -379,6 +380,50 @@ export function registerCapabilityTools(server: McpServer): void {
       return {
         content: [{ type: "text", text: JSON.stringify(comparison, null, 2) }],
         structuredContent: { models: comparison },
+      };
+    },
+  );
+
+  server.registerTool(
+    "notify_ready",
+    {
+      title: "Tell the team a capability is validated, deployed and ready",
+      description:
+        "Append a readiness entry to the shared team feed (DPI_MCP_TEAM_FEED) with the validation evidence, so the team — another agent or a human — can see that a discovered host capability was checked and turned on. This closes the discover → validate → deploy → notify loop.",
+      inputSchema: {
+        capability: z.string().min(1).max(80).describe("capability id (from enable_capability / list_capabilities)"),
+        host: z.string().min(1).max(64).optional().describe("host the model runs on"),
+        model: z.string().min(1).max(128).optional().describe("model id"),
+        purpose: z.array(z.string()).optional().describe("purposes the capability serves, e.g. jev-quality"),
+        validated: z.record(z.string(), z.unknown()).optional().describe("validation evidence: config checks, live test, end-to-end call timing"),
+        message: z.string().min(1).max(400).describe("one-line readiness message for the team"),
+      },
+      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
+    },
+    async (args) => {
+      const entry = { at: Date.now(), kind: "capability-ready" as const, ...args };
+      const feed = notifyReady(entry);
+      return {
+        content: [{ type: "text", text: JSON.stringify(entry, null, 2) }],
+        structuredContent: { entry, feed },
+      };
+    },
+  );
+
+  server.registerTool(
+    "team_feed",
+    {
+      title: "Read the team feed: what capabilities have been announced ready",
+      description:
+        "The shared feed of readiness announcements (notify_ready), newest last. Agents read this to learn what the swarm has already discovered, validated and deployed.",
+      inputSchema: {},
+      annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+    },
+    async () => {
+      const feed = loadTeamFeed();
+      return {
+        content: [{ type: "text", text: JSON.stringify({ entries: feed }, null, 2) }],
+        structuredContent: { entries: feed },
       };
     },
   );

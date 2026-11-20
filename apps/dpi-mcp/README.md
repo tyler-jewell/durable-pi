@@ -48,6 +48,8 @@ run without them.
 | `list_usage` | local kWh + cost at the configured electricity price | — | yes |
 | `compare_costs` | per model: cloud $/min rate vs local electricity + wait-time opportunity | — | yes |
 | `update_settings` | edit electricity price/kWh and idle/load watts | — | yes |
+| `notify_ready` | append a readiness entry (with validation evidence) to the team feed | — | no |
+| `team_feed` | read the feed of capability-readiness announcements | — | yes |
 
 Every tool returns `structuredContent` with a full ordered `events` array
 (`{ step, status, ts, detail, durMs }`) so the caller sees the progress of each step, and
@@ -132,7 +134,27 @@ recommend_capability (host, model, purpose, inputs?, options?)   # → recommend
 enable_capability (id, inputs?, options?, autoEnable?)           # turn it on now, or…
 list_capabilities                 # …it stays here in settings for a later toggle
 run_llm / run_decision            # use an enabled capability (local default, cloud fallback)
+notify_ready (capability, host, model, validated, message)  # tell the team it's ready
+team_feed                         # read every readiness announcement, newest last
 ```
+
+The proof runs the whole loop live with no hardcoded host facts:
+
+```bash
+LLAMA_BASE_URL=http://127.0.0.1:18080 DPI_MCP_SSH_HOST=studio \
+  npx tsx apps/dpi-mcp/scripts/prove-capability-loop.mts
+# 1. discover: studio exposes 9 models
+# 2. inspect: 4 llama-server process(es), 0 launchd auto-start(s), live test ok (1.4 s)
+# 3. recommend: studio-decision-clef-flash-q4-k-m (decision, state=recommended)
+# 4. gate: passed (llama-server present + live test ok)
+# 5. deploy: studio-decision-clef-flash-q4-k-m enabled (autoEnable=true)
+# 6. end-to-end: OpenJev-Q4_K_M → approve (20.2 s)
+# 7. notify: team feed now has 1 entry — validated and deployed on studio
+```
+
+`notify_ready` writes the validation evidence to `~/.dpi-mcp/team-feed.json`
+(`DPI_MCP_TEAM_FEED` to override) — the "tell the team when ready" channel any agent or
+settings UI reads with `team_feed`.
 
 Model access is one surface: `run_llm`/`run_decision` call a capability by id (the agent
 decides deterministically), or, with no id, resolve **automatically** — the next-best-cheapest:
