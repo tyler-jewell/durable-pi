@@ -11,7 +11,6 @@
     "apps/dpi-mcp/tests/zero.test.ts": 1,
     "apps/dpi-playground/tests/jev-browser.mjs": 2,
     "docs/indydevdan-deep-dive.md": 2,
-    "docs/local-factory.md": 1,
     "docs/zero-to-app-e2e.md": 2,
     "dpi-network.example.yaml": 1
   }

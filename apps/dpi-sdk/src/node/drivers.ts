@@ -651,5 +651,3 @@ export const drivers: Record<DeviceKind, Driver> = {
   "macos-vm": macosVmDriver,
   url: urlDriver,
 };
-
-export const defaultHome = () => homedir();

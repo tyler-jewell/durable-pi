@@ -294,7 +294,6 @@ export const number = (n: number) =>
 export const json = (v: unknown) => JSON.stringify(v, null, 2);
 export const icon = (modelId = "") =>
   `/icons/${models.value.find((m) => m.id === modelId)?.icon ?? "lab.png"}`;
-export const shortPath = (s = "", n = 34) => (s.length > n ? "…" + s.slice(-(n - 1)) : s);
 export function ago(ms?: number) {
   if (!ms) return "never";
   const s = Math.max(0, Math.round((Date.now() - ms) / 1000));

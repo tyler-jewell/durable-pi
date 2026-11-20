@@ -38,10 +38,6 @@ export const THINKING_LEVELS: readonly ThinkingLevel[] = [
 ];
 export type WhenBusy = "followUp" | "steer" | "reject";
 
-export interface ApiErrorBody {
-  error: { code: ErrorCode; message: string };
-}
-
 // ---------------------------------------------------------------- device
 
 export interface ModelInfo {
@@ -218,13 +214,6 @@ export interface CreateSessionBody {
 export interface CreateAgentBody {
   from?: number | string;
   name?: string;
-}
-
-export interface SendMessageBody {
-  content: string;
-  whenBusy?: WhenBusy;
-  requestId: string;
-  waitMs?: number;
 }
 
 export type SendResult =

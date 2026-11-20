@@ -397,7 +397,7 @@ Every node is proved the same way: **test in a container → review code (remove
 
 **Public-safety model (decided):** the public app is safe to expose because the blast radius is tiny, not because of paranoia.
 - Per DO project: **free-tier Cloudflare AI Gateway models only** (`@cf/*`), so no paid credits are at risk.
-- **Spend caps** bound the worst case: $5 per Durable Object per billing period, enforced in code (`apps/pi-object`), and $10 hard caps on the account for `durable_objects` and `workers` (`scripts/ensure-spend-limits.mjs`). Cloudflare does not guarantee an invoice maximum, so the in-code guard is the tighter bound.
+- **Spend caps** bound the worst case: $5 per Durable Object per billing period, enforced in code (`apps/pi-object`), and $10 hard caps on the account for `durable_objects` and `workers` (`apps/pi-object/scripts/ensure-spend-limits.mjs`). Cloudflare does not guarantee an invoice maximum, so the in-code guard is the tighter bound.
 - **No valuable secrets live in the public app** — only the free-tier token, which the cap already bounds.
 - **Observability is the feature**: the right panel streams everything the DO does, so abuse (what a bot asked and did) is visible live.
 - Redaction (`redact()`) scrubs the token + obvious patterns from logs/streams as hygiene, not as the guarantee.
@@ -450,7 +450,7 @@ Every node is proved the same way: **test in a container → review code (remove
 - [ ] Acceptance: same app local vs deployed — left generated/approval parity, right stream parity.
 
 ### Phase 5 — Cleanup & docs
-- [ ] Remove non-critical areas once approved: `migrate-playground.ts` and the exe-dev skill. (`ai_docs/` and the pi-object spike harnesses are already gone.)
+- [ ] Remove non-critical areas once approved: `migrate-playground.ts` and the exe-dev skill.
 - [ ] Trim/update README + app READMEs to the base-app + Cloudflare model.
 - [ ] Keep [Known issues](#known-issues) current.
 
@@ -482,11 +482,11 @@ To add a skill: `npx skills add <owner/repo> -s <skill> -a pi -a claude-code`, c
 
 - **Some Workers AI text-generation models reject a conversation with tool history.** `llama-3.3-70b-instruct-fp8-fast`, `gpt-oss`, `mistral-small`, `granite` and `qwen3-30b-a3b-fp8` 400 on the second turn, when a tool result is replayed ("content array not in string"), so an agent dies on its first tool use. They are removed from the gateway's model list, and the default is now `@cf/deepseek-ai/deepseek-v4-flash-0731`, which works. Verified 19 Nov 2026.
 - **Artifacts needs the Workers Paid plan** (not Free); 1 GB/repo for repos created after 2026-09-29.
-- **`cf` is a 1.0 release candidate** (`1.0.0-rc.1`, announced 17 Nov 2026). The config format, Build Output, and the create/develop/deploy commands are declared stable. A few generated API commands may still be renamed (`cf workers secrets bulk` is now `bulk-edit`). See [`docs/latest-changes-2026-11-18.md`](docs/latest-changes-2026-11-18.md).
+- **`cf` is a 1.0 release candidate** (`1.0.0-rc.1`, announced 17 Nov 2026). The config format, Build Output, and the create/develop/deploy commands are declared stable. A few generated API commands may still be renamed (`cf workers secrets bulk` is now `bulk-edit`).
 - **Artifacts billing starts 19 Nov 2026** for operations and storage (per the pricing page). Repository-count billing comes later, with notice. Our 2026-10-01 changelog entry said 14 Oct; the pricing page supersedes it.
 - **Cloudflare spend limits are account-level, not per project.** Each product has one hard cap per account, and a cap is not an invoice guarantee. Details: [pi-object Known issues](apps/pi-object/README.md#known-issues).
 - **Jev via Workers AI and third-party models need AI Gateway prepaid credits or BYOK** (error 2021 on Free). **Decision (19 Nov 2026): stay on free `@cf/*` models.** No prepaid credits, no BYOK, until the public demo needs a non-free model. A second billing path is intentionally avoided.
-- **`vue-tsc` does not run on TypeScript 7** (7.0.2 and 7.1 beta), and no stable Vue type checker targets it yet: `@vue/language-core` 4 alpha has no SFC code generator. The Vue apps stay on 5.9.3. `just ts-probe` re-checks the container result; see [docs/latest-changes-2026-11-18.md](docs/latest-changes-2026-11-18.md).
+- **`vue-tsc` does not run on TypeScript 7** (7.0.2 and 7.1 beta), and no stable Vue type checker targets it yet: `@vue/language-core` 4 alpha has no SFC code generator. The Vue apps stay on 5.9.3. `just ts-probe` re-checks the container result.
 - **Artifacts repo-count billing is not dated.** Operations and storage billing starts 19 Nov 2026. Each cloud e2e run checks the account's repo count returns to its baseline, and `npm run artifacts:billing` checks the pricing page on demand.
 - **The local Artifacts simulator serves Git on loopback only.** Containers reach it through a bridge that `npm run e2e:offline` starts and stops.
 - **No Durable Object storage adapter for pi-durable yet** — today it is `openNodeSqliteStorage`; the DO target needs an adapter.
