@@ -8,6 +8,7 @@
 //   "search: <words>" → one search_history call
 //   "page: <summary>" → one ping_on_call_engineer call
 //   "Release check: …" (the release-check job's subagent) → one bash call
+//   the factory's builder → writes index.html; its documenter → writes README.md
 //   anything else  → "Echo: <text>"
 import type { MutableModels } from "@earendil-works/pi-ai/models";
 import {
@@ -71,6 +72,9 @@ export function installFaux(models: MutableModels) {
     if (prompt.startsWith("page:")) return call("ping_on_call_engineer", { summary: prompt.slice(5).trim() });
     if (prompt.startsWith("Release check:"))
       return call("bash", { command: "git log --oneline -5 2>/dev/null || echo 'no git history'; ls | head -5" });
+    // The factory's builder and documenter write their files, as a real subagent does (their user prompts differ).
+    if (prompt.startsWith("App name:") && prompt.includes("Implement it")) return call("bash", { command: "printf '<!doctype html><title>app</title>' > index.html" });
+    if (prompt.startsWith("App name:") && prompt.includes("Write README.md")) return call("bash", { command: "printf '# App\\n' > README.md" });
     if (prompt.startsWith("slow:")) return fauxAssistantMessage(fauxText(prompt.slice(5).trim().repeat(4)));
     return fauxAssistantMessage(fauxText(`Echo: ${prompt}`));
   };

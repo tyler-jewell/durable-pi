@@ -16,10 +16,11 @@ import {
   type TaskRuntime,
   type Tx,
 } from "@earendil-works/pi-durable";
-import { CodingTools, createBashTool, createEditTool, createReadTool, createWriteTool } from "@earendil-works/pi-durable/tools";
-import type { ToolRegistration } from "@earendil-works/pi-durable";
+import { CodingTools } from "@earendil-works/pi-durable/tools";
+import type { Extension } from "@earendil-works/pi-durable";
 import { loadTsfPrompts } from "./tsf.js";
 import { askMeshVerdict, type JevAnswer, type JevQuestion } from "./jev.js";
+import { DocumentTools, ReadOnlyTools } from "./read-only.js";
 import { readState } from "../../dpi-sdk/src/app-state.js";
 import type { WireAssistantMessage, WireMessage, WireToolResultMessage } from "../../dpi-sdk/src/api.js";
 import { clip, messageText } from "../../dpi-sdk/src/transcript.js";
@@ -212,7 +213,7 @@ interface Phase {
   /** Read whatever is currently at this job's documented result path. */
   readResult(): Promise<JsonValue | undefined>;
   /** Run a subagent in an owned child conversation; its tool calls become steps. `opts` overrides the default read+bash toolset and instructions. */
-  agent(prompt: string, opts?: { tools?: readonly ToolRegistration[]; instructions?: string }): Promise<string>;
+  agent(prompt: string, opts?: { extension?: Extension; instructions?: string }): Promise<string>;
   /** Block (non-durably) until the given clock time, for pacing and repeat phases. */
   waitUntil(at: number): Promise<void>;
 }
@@ -239,7 +240,7 @@ const DEFAULT_PROMPTS: Record<string, { system: string; user: string }> = {
     user: "Observation: {{observation}}\n\nWrite the plan: what exactly to change, why, and the acceptance check that proves it.",
   },
   builder: {
-    system: "You are the builder of a software factory. Implement the plan in this folder, then run the project's typecheck and build until they pass. You may create and edit files.",
+    system: "You are the builder of a software factory. Implement the plan in this folder by writing the files with write or bash; do not paste code into your reply. If the app needs a package.json, it must define the scripts \"typecheck\" and \"build\", which the test phase runs, and both must pass. A single static page needs no package.json. You may create and edit files.",
     user: "App name: {{name}}\n\nPlan:\n{{plan}}\n\nImplement it, then make typecheck and build pass.",
   },
   scout: {
@@ -264,8 +265,7 @@ async function tsfPrompt(p: Phase, role: string, vars: Record<string, string>) {
   return { system: roster?.system ?? def.system, user: render(roster?.user ?? def.user, vars) };
 }
 
-const WRITE_TOOLS = [createReadTool(), createBashTool(), createWriteTool(), createEditTool()];
-const READ_TOOLS = [createReadTool(), createBashTool()];
+
 
 /** The Jev questions for the `jev-quality` reviewer gate: one bounded `choice` on the plan + facts + model review. */
 const REVIEW_QUESTION: Extract<JevQuestion, { type: "choice" }> = {
@@ -283,18 +283,24 @@ const REVIEW_QUESTION: Extract<JevQuestion, { type: "choice" }> = {
  * non-approve is inconclusive, so the model reviewer's verdict stands (fail-open, the same rule
  * as the bash gate). Pure so it is unit-testable.
  */
+/** The verdict a reviewer wrote: its first word after markdown and a "Verdict:" label, or undefined. */
+export function verdictOf(text: string): "approve" | "revise" | "reject" | undefined {
+  const plain = text.replace(/[*_`#>]/g, " ").replace(/^\s*verdict\s*:/i, "").trim().toLowerCase();
+  const word = /^(approve[ds]?|revise[ds]?|reject(?:ed)?)\b/.exec(plain)?.[1];
+  if (!word) return undefined;
+  return word.startsWith("approve") ? "approve" : word.startsWith("revise") ? "revise" : "reject";
+}
+
 export function reviewVerdict(answers: Record<string, JevAnswer> | undefined, modelVerdict: string): { ok: boolean; reason: string } {
   const answer = answers?.verdict;
   if (!answer || answer.type !== "choice") {
-    const v = modelVerdict.trim().toLowerCase();
-    if (v.startsWith("approve")) return { ok: true, reason: `Approved (model; Jev unavailable)` };
+    if (verdictOf(modelVerdict) === "approve") return { ok: true, reason: `Approved (model; Jev unavailable)` };
     return { ok: false, reason: clip(modelVerdict, 200) || "Reviewer returned no verdict" };
   }
   const verdict = answer as Extract<JevAnswer, { type: "choice" }>;
   // A non-approve Jev must be confident to fail the run; below 0.5 it is noise, so the model stands.
   if (verdict.choice !== "approve" && verdict.confidence < 0.5) {
-    const v = modelVerdict.trim().toLowerCase();
-    if (v.startsWith("approve"))
+    if (verdictOf(modelVerdict) === "approve")
       return { ok: true, reason: `Approved (model; Jev ${verdict.choice} at ${verdict.confidence.toFixed(2)} confidence)` };
     return { ok: false, reason: clip(modelVerdict, 200) || "Reviewer returned no verdict" };
   }
@@ -310,9 +316,9 @@ export async function requestReviewDecision(plan: string, facts: string, review:
 /** The shared review phase uses a mesh decision on the same facts as the reviewer subagent. */
 async function runReview(p: Phase, plan: string, facts: string): Promise<{ ok: boolean; reason: string }> {
   const pr = await tsfPrompt(p, "reviewer", { plan, facts });
-  const modelVerdict = (await p.agent(pr.user, { tools: READ_TOOLS, instructions: pr.system })).trim();
+  const modelVerdict = (await p.agent(pr.user, { extension: ReadOnlyTools, instructions: pr.system })).trim();
   const decision = await requestReviewDecision(plan, facts, modelVerdict).catch(() => undefined);
-  if (decision) await p.note("Decision tool", decision.tool);
+  if (decision) await p.note("Decision tool", `${decision.tool}: ${decision.answer.choice} at ${decision.answer.confidence.toFixed(2)}`);
   return reviewVerdict(decision ? { verdict: decision.answer } : undefined, modelVerdict);
 }
 
@@ -464,18 +470,21 @@ const HANDLERS: Record<string, Record<string, Handler>> = {
       const description = String(p.input.description);
       const name = slug(description);
       const pr = await tsfPrompt(p, "planner", { description });
-      const plan = await p.agent(pr.user, { tools: READ_TOOLS, instructions: pr.system });
+      const plan = await p.agent(pr.user, { extension: ReadOnlyTools, instructions: pr.system });
       return { done: clip(plan, 120), data: { plan, name } };
     },
     build: async (p) => {
       const name = String(p.data.name);
       const pr = await tsfPrompt(p, "builder", { name, plan: String(p.data.plan ?? "") });
-      await p.agent(pr.user, { tools: WRITE_TOOLS, instructions: pr.system });
-      return { done: `Built ${name}` };
+      await p.agent(pr.user, { extension: CodingTools, instructions: pr.system });
+      // The builder's reply is not the app: the files are. A build that wrote none has failed.
+      const written = Number((await p.shell("find . -type f -not -path '*/node_modules/*' -not -path '*/.git/*' | wc -l")).out.trim());
+      if (!written) throw Error("the builder wrote no files; it answered in text instead of writing the app");
+      return { done: `Built ${name}: ${written} file(s)` };
     },
     scout: async (p) => {
       const pr = await tsfPrompt(p, "scout", { plan: String(p.data.plan ?? "") });
-      const facts = await p.agent(pr.user, { tools: READ_TOOLS, instructions: pr.system });
+      const facts = await p.agent(pr.user, { extension: ReadOnlyTools, instructions: pr.system });
       return { done: clip(facts, 120), data: { facts } };
     },
     test: async (p) => {
@@ -498,7 +507,8 @@ const HANDLERS: Record<string, Record<string, Handler>> = {
     document: async (p) => {
       const name = String(p.data.name);
       const pr = await tsfPrompt(p, "documenter", { name, plan: String(p.data.plan ?? "") });
-      await p.agent(pr.user, { tools: WRITE_TOOLS, instructions: pr.system });
+      await p.agent(pr.user, { extension: DocumentTools, instructions: pr.system });
+      if ((await p.shell("test -s README.md && echo yes || echo no")).out.trim() !== "yes") throw Error("the documenter did not write README.md");
       return { done: `README written for ${name}` };
     },
     deploy: async (p) => {
@@ -519,12 +529,12 @@ const HANDLERS: Record<string, Record<string, Handler>> = {
     triage: async (p) => {
       const observation = String(p.input.observation);
       const pr = await tsfPrompt(p, "triager", { observation });
-      const plan = await p.agent(pr.user, { tools: READ_TOOLS, instructions: pr.system });
+      const plan = await p.agent(pr.user, { extension: ReadOnlyTools, instructions: pr.system });
       return { done: clip(plan, 120), data: { plan } };
     },
     work: async (p) => {
       const pr = await tsfPrompt(p, "builder", { name: "feedback", plan: String(p.data.plan ?? "") });
-      await p.agent(pr.user, { tools: WRITE_TOOLS, instructions: pr.system });
+      await p.agent(pr.user, { extension: CodingTools, instructions: pr.system });
       const hasPkg = (await p.shell("test -f package.json && echo yes || echo no")).out.trim() === "yes";
       if (hasPkg) {
         await p.exec("npm run typecheck", "npm run typecheck");
@@ -718,17 +728,15 @@ export function createJobs(deps: JobsDeps) {
         const stepId = `${spec.id}:${cp.iteration}:agent`;
         const at = runtime.now();
         await runtime.commit(async (tx) => {
+          // One subagent serves the whole run. Every phase sets its own tools and instructions on it, so a read-only
+          // phase never keeps the writing tools an earlier phase selected, and a writing phase gets them.
           const found = (await tx.scanConversations({ ownerTaskId: task.id }, 1)).items[0];
-          if (found) childId = found.id as number;
-          else {
-            const child = await tx.createConversation({ ownership: { kind: "task", taskId: task.id } });
-            await configure(tx, child.id, {
-              extensions: [CodingTools],
-              tools: opts?.tools ?? [createReadTool(), createBashTool()],
-              instructions: opts?.instructions ?? CHILD_INSTRUCTIONS,
-            });
-            childId = child.id as number;
-          }
+          const target = found ?? (await tx.createConversation({ ownership: { kind: "task", taskId: task.id } }));
+          await configure(tx, target.id, {
+            extensions: [opts?.extension ?? CodingTools],
+            instructions: opts?.instructions ?? CHILD_INSTRUCTIONS,
+          });
+          childId = target.id as number;
           const current = await runOf(tx, task);
           current.childConversationId = childId;
           upsertStep(current.phases[index], {

@@ -25,7 +25,7 @@ export const MESH_MODELS = [{ id: "chat", name: "Mesh chat (A/B over enabled cha
 
 /** A conservative window for budgeting in pi. The MCP server enforces each tool's real served window. */
 const CONTEXT_WINDOW = 16_384;
-const MAX_OUTPUT = 2_048;
+const MAX_OUTPUT = 4_096;
 
 const ZERO_COST = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 };
 const zeroUsage = (): Usage => ({ input: 0, output: 0, cacheRead: 0, cacheWrite: 0, totalTokens: 0, cost: { ...ZERO_COST } });
@@ -124,6 +124,8 @@ function streamTurn(model: Model<string>, context: TranscriptContext, options?: 
       if (result.isError) throw Error(result.text || "The mesh model returned an error");
       const answer = result.structured as ChatAnswer | undefined;
       if (!answer || typeof answer.text !== "string" || !Array.isArray(answer.toolCalls)) throw Error("The mesh model returned an invalid answer");
+      // A cut-off answer is an error, never a finished turn: its text and any calls are incomplete.
+      if (answer.truncated) throw Error(`The mesh model's answer reached the output limit (${answer.outToks} tokens) before it finished`);
       out.responseModel = answer.model;
       out.usage = {
         input: answer.inToks,
@@ -157,8 +159,7 @@ function streamTurn(model: Model<string>, context: TranscriptContext, options?: 
         stream.push({ type: "toolcall_end", contentIndex: index, toolCall: block, partial: out });
       }
 
-      // A cut-off answer is reported as cut off, and its tool calls were withheld by the server.
-      out.stopReason = answer.truncated ? "length" : answer.toolCalls.length ? "toolUse" : "stop";
+      out.stopReason = answer.toolCalls.length ? "toolUse" : "stop";
       stream.push({ type: "done", reason: out.stopReason, message: out });
       stream.end(out);
     } catch (error) {
