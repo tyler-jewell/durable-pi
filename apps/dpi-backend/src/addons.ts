@@ -4,6 +4,7 @@
 //
 //   system-prompts       a checklist of built-in system prompts, rendered as one section
 //   jev-damage-control   Jev judges every bash command before it runs and blocks destructive ones
+//   bash-guard           a local deny-list that runs before Jev and stays on when Jev is down
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { defineDoc, defineExtension, hook, section, ToolTask, type Extension } from "@earendil-works/pi-durable";
@@ -83,6 +84,14 @@ export function gate(a: Record<string, JevAnswer>): Verdict {
 /** The faux provider's stand-in for Jev, so tests and offline demos never call the network. */
 const OFFLINE_DANGER = /\brm\s+-[a-z]*[rf]|\bgit\s+push\b.*--force|\bgit\s+reset\s+--hard|\bdropdb\b|\bmkfs|\bdd\s+.*of=|\btruncate\b/;
 const OFFLINE_REVERSIBLE = /\b(git\s+commit|npm\s+i(nstall)?|pip\s+install|brew\s+install|touch|mkdir|mv|cp|sed\s+-i|wrangler\s+deploy|pnpm\s+install)\b/;
+const LOCAL_DENY = [/\brm\s+-[a-z]*[rf]/, /\bgit\s+push\b.*--force/, /\bgit\s+reset\s+--hard/, /\bdropdb\b/, /\bmkfs\b/, /\bdd\s+.*\bof=/, /\btruncate\b/];
+
+/** A local deny-list. It does not call a model, and it blocks before any remote decision. */
+export function localBashGuard(command: string): string | undefined {
+  if (LOCAL_DENY.some((rule) => rule.test(command))) return "bash-guard blocked this command: it matches the local deny list";
+  return undefined;
+}
+
 export async function judgeOffline(command: string): Promise<Verdict> {
   if (OFFLINE_DANGER.test(command))
     return { action: "block", reason: "destructive intent (offline rules): this command aims to wipe something" };
@@ -98,6 +107,11 @@ export const ADDON_INFO: Omit<HarnessExtensionInfo, "enabled" | "prompts">[] = [
     name: "system-prompts",
     title: "System prompts",
     description: "Adds the checked prompts to this agent's system prompt. A change applies from the next request.",
+  },
+  {
+    name: "bash-guard",
+    title: "Bash guard",
+    description: "Blocks a local deny-list of destructive shell commands before any model decision. It stays on by default.",
   },
   {
     name: "jev-damage-control",
@@ -131,6 +145,8 @@ export function createAddons(opts: { offline: boolean }) {
         beforeTool: async (call, api, ctx) => {
           if (call.name !== "bash") return;
           const command = String((call.arguments as { command?: unknown }).command ?? "");
+          const denied = localBashGuard(command);
+          if (denied) return { block: denied };
           let verdict = await api.memo<Verdict>("jev-damage-control", ctx);
           if (!verdict) {
             try {
@@ -149,8 +165,20 @@ export function createAddons(opts: { offline: boolean }) {
       }),
     ],
   });
-  const all: Record<string, Extension> = { "system-prompts": prompts, "jev-damage-control": jev };
-  return { all, list: [prompts, jev] };
+  const guard = defineExtension({
+    name: "bash-guard",
+    hooks: [
+      hook(ToolTask, {
+        beforeTool: async (call) => {
+          if (call.name !== "bash") return;
+          const denied = localBashGuard(String((call.arguments as { command?: unknown }).command ?? ""));
+          if (denied) return { block: denied };
+        },
+      }),
+    ],
+  });
+  const all: Record<string, Extension> = { "system-prompts": prompts, "bash-guard": guard, "jev-damage-control": jev };
+  return { all, list: [prompts, guard, jev] };
 }
 
 export type Addons = ReturnType<typeof createAddons>;

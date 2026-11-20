@@ -183,7 +183,7 @@ test("custom extensions: jev-damage-control blocks rm -rf only while on; system-
       JSON.stringify((await store.entries(c, undefined, 500)).items.filter((e) => e.kind === "pi.system").slice(0, 1));
 
     let ext = await store.extensionsOf(row, c);
-    assert.deepEqual(ext.extensions.map((e) => [e.name, e.enabled]), [["system-prompts", false], ["jev-damage-control", false]]);
+    assert.deepEqual(ext.extensions.map((e) => [e.name, e.enabled]), [["system-prompts", false], ["bash-guard", true], ["jev-damage-control", false]]);
     assert.deepEqual(ext.builtIn.sort(), ["coding-tools", "playground"]);
     assert.deepEqual(ext.extensions[0].prompts?.map((p) => [p.id, p.enabled]), [["smart_ass_opus_fix.md", true], ["one_sentence.md", false]]);
 
@@ -191,7 +191,7 @@ test("custom extensions: jev-damage-control blocks rm -rf only while on; system-
     await store.setExtension(row, c, { name: "jev-damage-control", enabled: true });
     await turn("!rm -rf doomed");
     assert.ok(existsSync(join(t.work, "doomed")));
-    assert.match(JSON.stringify((await store.entries(c, undefined, 5)).items), /jev-damage-control blocked this command/);
+    assert.match(JSON.stringify((await store.entries(c, undefined, 5)).items), /bash-guard blocked this command/);
     await turn("!ls");
     assert.match(JSON.stringify((await store.entries(c, undefined, 5)).items), /doomed/);
     // Reversible → the three-way middle path: needs human approval, so it is held, not run.
@@ -199,9 +199,9 @@ test("custom extensions: jev-damage-control blocks rm -rf only while on; system-
     assert.ok(!existsSync(join(t.work, "approved-file")), "reversible command is held for approval");
     assert.match(JSON.stringify((await store.entries(c, undefined, 5)).items), /needs human approval/);
     ext = await store.setExtension(row, c, { name: "jev-damage-control", enabled: false });
-    assert.equal(ext.extensions[1].enabled, false);
+    assert.equal(ext.extensions[2].enabled, false);
     await turn("!rm -rf doomed");
-    assert.ok(!existsSync(join(t.work, "doomed")));
+    assert.ok(existsSync(join(t.work, "doomed")), "the local guard still blocks the delete when the model gate is off");
 
     // system-prompts: the checked prompts join the system prompt from the next request.
     await store.setExtension(row, c, { name: "system-prompts", enabled: true });
@@ -214,13 +214,13 @@ test("custom extensions: jev-damage-control blocks rm -rf only while on; system-
     assert.doesNotMatch(await systemText(), /Clear, Concise, Actionable Communication/);
     // Extensions stack: turning one on keeps the other on.
     ext = await store.setExtension(row, c, { name: "jev-damage-control", enabled: true });
-    assert.deepEqual(ext.extensions.map((e) => [e.name, e.enabled]), [["system-prompts", true], ["jev-damage-control", true]]);
+    assert.deepEqual(ext.extensions.map((e) => [e.name, e.enabled]), [["system-prompts", true], ["bash-guard", true], ["jev-damage-control", true]]);
     assert.deepEqual(ext.builtIn, ["coding-tools", "playground"]);
-    await mkdir(join(t.work, "doomed"));
+    await mkdir(join(t.work, "doomed"), { recursive: true });
     await turn("!rm -rf doomed");
     assert.ok(existsSync(join(t.work, "doomed")));
     ext = await store.setExtension(row, c, { name: "system-prompts", enabled: false });
-    assert.deepEqual(ext.extensions.map((e) => e.enabled), [false, true]);
+    assert.deepEqual(ext.extensions.map((e) => e.enabled), [false, true, true]);
     await assert.rejects(() => store.setExtension(row, c, { name: "nope", enabled: true }), /Unknown extension/);
   } finally {
     await store.close();
