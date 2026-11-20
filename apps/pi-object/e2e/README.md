@@ -56,7 +56,7 @@ Local image, once: `container build -t dpi-artifacts-dev:local -f e2e/Containerf
 | Image / worker | dpi-artifacts-dev:local (digest 60debdb90a65) | https://durable-pi-object.tyler-jewell.workers.dev | dpi-artifacts-dev:local (digest 60debdb90a65) |
 | Node / runtime version | v26.13.1 | workerd (Workers runtime, nodejs_compat) | v26.13.1 |
 | git | 2.39.5 | @cloudflare/computer git client (isomorphic-git over the workspace) | 2.39.5 |
-| wrangler / cf / pi | 4.165.0 / 1.0.0-rc.1 / 1.6.0 | wrangler 4.165.0 / pi-ai 1.6.0 | 4.165.0 / 1.0.0-rc.1 / 1.6.0 |
+| wrangler / cf / pi | 4.166.0 / 1.0.0-rc.2 / 1.6.0 | wrangler 4.165.0 / pi-ai 1.6.0 | 4.165.0 / 1.0.0-rc.1 / 1.6.0 |
 | CPU / memory | 2 vCPU / 1G | Workers limits (cpuMs 30000, subrequests 500) | 2 vCPU / 1G |
 | Model | scripted (pi CLI, faux provider) | scripted (pi-ai faux provider) | scripted (pi CLI, faux provider) |
 | Agent tools used | write, bash (git add/commit/push) | write, git_commit_push | write, bash (git add/commit/push) |

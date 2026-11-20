@@ -2,8 +2,8 @@
 FROM docker.io/library/node:26-bookworm-slim
 RUN apt-get update && apt-get install -y --no-install-recommends git ca-certificates \
  && rm -rf /var/lib/apt/lists/*
-# cf 1.0.0-rc.1 is the 1.0 release candidate (17 Nov 2026); wrangler 4.165.0 has the local Artifacts simulator.
-RUN npm install -g wrangler@4.165.0 cf@1.0.0-rc.1 --no-audit --no-fund
+# Pinned to the same cf and Wrangler as apps/pi-object.
+RUN npm install -g wrangler@4.166.0 cf@1.0.0-rc.2 --no-audit --no-fund
 WORKDIR /opt/e2e
 COPY package.json package-lock.json ./
 RUN npm ci --omit=dev --no-audit --no-fund && ln -s /opt/e2e/node_modules/.bin/pi /usr/local/bin/pi
