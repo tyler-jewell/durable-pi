@@ -27,6 +27,8 @@ export interface LlamaConfig {
 
 export interface HostConfig {
   hostname?: string;
+  /** The host's home folder, which `~` means in its paths. Defaults to this machine's. */
+  home: string;
   binary: string;
   models_dir: string;
   replaces: string[];
@@ -36,9 +38,9 @@ export interface HostConfig {
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const LLAMA_DIR = join(ROOT, "llama");
 
-/** `~` at the start of a path becomes this machine's home, so the same file names a folder on every host. */
-export function expandHome(path: string): string {
-  return path === "~" || path.startsWith("~/") ? join(homedir(), path.slice(1)) : path;
+/** `~` at the start of a path becomes the host's home folder, so one file names a folder on every host. */
+export function expandHome(path: string, home = homedir()): string {
+  return path === "~" || path.startsWith("~/") ? join(home, path.slice(1)) : path;
 }
 
 const fail = (message: string): never => {
@@ -95,6 +97,7 @@ export function parseHosts(text: string): Record<string, HostConfig> {
     if (!Array.isArray(replaces) || replaces.some((r) => typeof r !== "string")) fail(`${where}.replaces must be a list of labels`);
     hosts[name] = {
       hostname: entry.hostname === undefined ? undefined : text("hostname"),
+      home: entry.home === undefined ? homedir() : text("home"),
       binary: text("binary"),
       models_dir: text("models_dir"),
       replaces: replaces as string[],
@@ -124,7 +127,7 @@ export function argvOf(config: LlamaConfig, host: HostConfig): string[] {
   return [
     host.binary,
     "--models-dir",
-    expandHome(host.models_dir),
+    expandHome(host.models_dir, host.home),
     "--models-max",
     String(config.models_max),
     "--host",
@@ -248,7 +251,7 @@ function check(config: LlamaConfig, hosts: Record<string, HostConfig>, hostsPres
   if (!hostsPresent) console.log("check: llama/hosts.yaml is absent here (copy hosts.example.yaml to set this machine's paths)");
   let bad = false;
   for (const [name, host] of Object.entries(hosts)) {
-    const dir = expandHome(host.models_dir);
+    const dir = expandHome(host.models_dir, host.home);
     if (!existsSync(dir)) console.log(`check: ${name}: models_dir ${dir} does not exist here`);
     if (!existsSync(host.binary)) {
       console.log(`check: ${name}: ${host.binary} is not on this machine; its flags were not checked`);
@@ -273,7 +276,7 @@ function apply(config: LlamaConfig, name: string, host: HostConfig): void {
   if (!existsSync(host.binary)) fail(`${host.binary} does not exist on this machine`);
   const uid = process.getuid?.() ?? 501;
   const agents = join(homedir(), "Library", "LaunchAgents");
-  const logPath = expandHome(config.log);
+  const logPath = expandHome(config.log, host.home);
   mkdirSync(dirname(logPath), { recursive: true });
   mkdirSync(agents, { recursive: true });
   const unload = (label: string) => {
@@ -312,7 +315,7 @@ async function main(): Promise<void> {
   switch (cmd) {
     case "render": {
       const host = hostOf(hosts, name ?? fail("usage: render <host>"));
-      process.stdout.write(plistOf(config, argvOf(config, host), expandHome(config.log)));
+      process.stdout.write(plistOf(config, argvOf(config, host), expandHome(config.log, host.home)));
       break;
     }
     case "argv":

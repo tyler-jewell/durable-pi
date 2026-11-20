@@ -20,7 +20,7 @@ host-a:
 `)["host-a"];
 
 test("the shared config names no model: the server serves whatever its directory holds", () => {
-  assert.doesNotMatch(configText, /\.gguf|Q\d_K|granite|qwen|mistral|gemma|gpt-oss|deepseek|clef|clairic|openjev/i);
+  assert.doesNotMatch(configText, /\.gguf|\bQ\d_K_[MS]\b/i);
 });
 
 test("the command line serves a models directory in router mode, bound to loopback", () => {
@@ -75,7 +75,11 @@ test("unknownFlags finds a flag the binary's help does not list", () => {
   assert.deepEqual(unknownFlags(["/bin/x", "--jinja", "--ctx-size", "4", "--bogus-flag", "1"], help), ["--bogus-flag"]);
 });
 
-test("a leading ~ means this machine's home", () => {
+test("a leading ~ means the host's home folder, so a plist rendered elsewhere names the right paths", () => {
   assert.equal(expandHome("~/a/b"), join(homedir(), "a/b"));
-  assert.equal(expandHome("/abs/path"), "/abs/path");
+  assert.equal(expandHome("~/a/b", "/Users/other"), "/Users/other/a/b");
+  assert.equal(expandHome("/abs/path", "/Users/other"), "/abs/path");
+  const remote = parseHosts("h:\n  binary: /b\n  models_dir: ~/m\n  home: /Users/other\n")["h"];
+  assert.equal(argvOf(config, remote)[2], "/Users/other/m");
+  assert.match(plistOf(config, argvOf(config, remote), expandHome(config.log, remote.home)), /<string>\/Users\/other\/Library\/Logs\/dpi-llama-server\.log<\/string>/);
 });

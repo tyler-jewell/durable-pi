@@ -1,11 +1,13 @@
 # Copy to llama/hosts.yaml on each host (not committed). One entry per host, keyed by its name in apps/dpi-mcp/mesh.json.
 #   hostname:    `hostname -s` on that machine. `apply` refuses to run on any other machine. Optional.
+#   home:        that host's home folder, which `~` means in its paths. Optional: defaults to the machine's own.
 #   binary:      the llama-server executable on that host.
 #   models_dir:  the folder of GGUF files that host serves.
 #   replaces:    launch agents from earlier setups. `apply` unloads them and moves their plists aside.
 #   args:        flags that override config.yaml for this host only.
 studio:
   hostname: <hostname -s on the Studio>
+  home: /Users/<user on the Studio>
   binary: /opt/homebrew/bin/llama-server
   models_dir: ~/local/models/gguf
   replaces: [com.dpi.llama-router]

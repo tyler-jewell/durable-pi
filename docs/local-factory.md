@@ -47,7 +47,7 @@ Studio (127.0.0.1)
    checks each result against the opposite reviewer verdict to rule out a fallback-only pass.
 2. **Model tools** (`apps/dpi-mcp/src/models.ts`, `tool-store.ts`, `model-tools.ts`, `discovery-tools.ts`,
    `host-inspect.ts`): agents discover, enable, and call models with MCP tools alone: `discover_models` →
-   `inspect_host` → `list_tools` → `enable_tool` → `ask_model`. The store is `~/.dpi-mcp/tools.json` (set `DPI_MCP_TOOLS` to
+   `inspect_host` → `probe_tool_use` → `list_tools` → `enable_tool` → `ask_model`. The store is `~/.dpi-mcp/tools.json` (set `DPI_MCP_TOOLS` to
    move it). `apps/dpi-mcp/tests/zero-agent.eval.ts` runs the discovery loop against a
    mock host.
 3. **Mesh over Cloudflare** (`apps/dpi-mcp/src/mesh-config.ts`, `models.ts` `meshFetch`): each host's model server is
@@ -68,22 +68,24 @@ context budget, and meters the call. Tool calls go both ways in OpenAI form: the
 endpoint and returns the `tool_calls` the model made. An answer cut off at the output limit is flagged `truncated`, and
 its tool calls are withheld.
 
-Tool calls depend on the model, not only the server. llama-server parses a model's tool calls with its chat template
-(Jinja is on by default in this build, and the config pins it). Some models still return their call as plain text. One
-served model did that on the Studio while another returned structured calls from the same server. Until each model
-passes a tool-use probe, the tool store cannot tell which models are safe for agents (issue #26).
+Tool calls depend on the model, not only the server: llama-server parses a model's tool calls with its chat template
+(Jinja is on by default in this build), and some models answer a tool request in plain text instead. So `probe_tool_use`
+checks each chat tool with a fixed call, using the same `tool_choice` agent turns send. A model that returns a structured
+call with the requested value gets the `tool-use` tag, and turns that offer tools require it. A model that fails loses
+the tag. On the current hosts, seven of the eight enabled chat tools passed. The one that failed answered in text.
 
 Proof: `apps/dpi-backend/scripts/prove-mesh-agent.mts` runs one agent turn that calls a tool through `ask_model`, returns
-the result, and checks the answer. Against a local router it called `get_weather` with `{"city":"Paris"}`, used the
-result, and recorded two metered local calls at zero cloud cost. It needs `DPI_MCP_URL` and `DPI_MCP_TOKEN`.
+the result, and checks the answer. It needs `DPI_MCP_URL` and `DPI_MCP_TOKEN`. Against the live server, with its real
+tool store, three runs each made a tool call and used its result. Metering showed the turns spread across the probed
+models. Calls were local and cost nothing in cloud tokens.
 
 ## Local model servers (llama.cpp)
 
 Every host's server is defined once in `llama/config.yaml`. The file names no model: the server runs in router mode over
 a models directory, so it serves every GGUF in that directory with at most one resident at a time, and unloads after ten
 idle minutes. Flags are listed there, with a comment on each. Per-host values live in `llama/hosts.yaml`, which is not
-committed (copy `llama/hosts.example.yaml`): the binary, the models directory, the hostname that `apply` checks, and the
-launch agents a host's apply replaces.
+committed (copy `llama/hosts.example.yaml`): the binary, the models directory, the home folder that `~` means in those
+paths, the hostname that `apply` checks, any flag overrides, and the launch agents a host's apply replaces.
 
 ```
 just llama check                        # the config is valid, and every flag exists in this machine's llama-server
@@ -97,17 +99,18 @@ just llama test                         # unit tests for the config, the command
 `apply` keeps any plist it overwrites, and any launch agent it replaces, beside the original as `<name>.plist.replaced`.
 Restore the file and bootstrap it again to roll back.
 
-Status, checked with `drift` (see issue #26 for what remains):
+Status, checked with `drift` (issue #26 tracks what remains):
 
-- **MacBook Pro**: applied. The running server matches the config, and tool calls return structured results.
-- **Studio**: not yet applied. Its running router differs in two ways: the slot-introspection endpoint is enabled
-  (the config disables it), and Jinja is implicit rather than pinned. Applying the config on that machine closes both.
+- **MacBook Pro**: applied. Its overlay sets `cache-ram` to 2048 MiB, because the host has 8 GB of memory. The running
+  server matches the config.
+- **Studio**: not applied. Its running router differs from the config in three ways: `cache-ram` is 0 (the config sets
+  8192), the slot-introspection endpoint is enabled (the config disables it), and Jinja is implicit rather than pinned.
+  Applying the config on that machine closes all three.
 
-Open decisions:
-
-- `cache-ram` is 0 on the Studio, which disables the prompt cache. The llama default is 8192 MiB. Measure agent-turn
-  latency with and without it before choosing.
-- The per-host overlay is not version-controlled, and the Studio's launch agent still predates the config (issue #26).
+Prompt cache (`cache-ram`): the config sets llama's default, 8192 MiB, because agents alternate prompts on one model.
+Measured on the MacBook Pro with two 6,000-token system prompts alternating across six requests, the prefill took about
+31 s per request with the cache off. With it on, the repeated prompts took about 0.2 s, with almost all tokens served
+from cache. The Studio's value was 0 before this change, which made every alternation a full prefill.
 
 ## Mesh over Cloudflare: adding a host
 
@@ -148,10 +151,10 @@ The tool store is data derived from each host's own API, not hand-written config
 
 ## Remaining work (ordered)
 
-1. **Apply the llama config on the Studio** (issue #26): `just llama apply <host>` on that machine, then
-   `just llama drift` must be clean.
-2. **Add a tool-use probe per model**, so the tool store can tag which models answer agent tool calls correctly.
-3. **Run the durable factory on the mesh.** Run `create-app` with `DPI_PROVIDER=mesh` and check its metered calls. The
+1. **Apply the llama config on the Studio** (issue #26): copy `llama/hosts.example.yaml` to `llama/hosts.yaml`, set the
+   Studio's `hostname` and `home`, then run `just llama apply studio` on that machine. Afterwards `just llama drift`
+   against its loopback URL must report no differences.
+2. **Run the durable factory on the mesh.** Run `create-app` with `DPI_PROVIDER=mesh` and check its metered calls. The
    roster's `provider`/`model` fields are advisory: the device's `DPI_PROVIDER` decides the route.
 4. **Expose zero bootstrap in the browser.** Verify discovery, approval and enablement, then prove the full local-only
    factory job from the hub and isolated browser box. Verify the installed iOS PWA over the Access-protected HTTPS route.
