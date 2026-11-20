@@ -109,7 +109,7 @@ export class PiAgent extends DurableObject<Env> {
 
   workspace = new Workspace({
     storage: this.storage,
-    backends: [new CodemodeBackend({ loader: this.env.LOADER })],
+    backends: [new CodemodeBackend({ loader: this.env.LOADER as never })],
   });
 
   /** Run one DO entry point with metering: request count, active duration, and a telemetry flush at the end. */
