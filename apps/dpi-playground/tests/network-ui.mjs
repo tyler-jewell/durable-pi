@@ -256,7 +256,7 @@ try {
   await expect(toolRow("bash")).not.toHaveClass(/disabled/);
   pass("read only disables the tools that write, then restores them");
 
-  // Extensions: custom harness capabilities turn on and off per agent and apply from the next request.
+  // Extensions: custom harness extensions turn on and off per agent and apply from the next request.
   await tab("Extend");
   await expect(page.locator(".ext-card")).toHaveCount(2);
   const jevSwitch = page.getByRole("switch", { name: "Jev damage control" });

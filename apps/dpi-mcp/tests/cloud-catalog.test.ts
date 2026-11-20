@@ -1,8 +1,8 @@
 import { CF_NAMESPACE } from "./naming-fixtures.js";
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { parseCatalog, parsePrice, syncCloudCapabilities, tokenCostUsd } from "../src/cloud-catalog.js";
-import type { CapabilityRegistry } from "../src/capabilities.js";
+import { parseCatalog, parsePrice, syncCloudTools, tokenCostUsd } from "../src/cloud-catalog.js";
+import { emptyStore } from "../src/tool-store.js";
 
 // Fixture in the catalog's own shape, with generic names.
 const FIXTURE = [
@@ -32,21 +32,21 @@ test("tokenCostUsd uses the per-million rates", () => {
   assert.ok(Math.abs((tokenCostUsd({ inPerM: 0.2, outPerM: 0.3 }, 85, 64) ?? NaN) - (85 * 0.2 + 64 * 0.3) / 1e6) < 1e-15);
 });
 
-test("syncCloudCapabilities records every model as recommended, never enabled, and keeps a person's choice", () => {
-  const reg: CapabilityRegistry = { hosts: [], capabilities: [] };
+test("syncCloudTools records every model as a disabled tool, and keeps a person's choice", () => {
+  const reg = emptyStore();
   const models = parseCatalog(FIXTURE);
-  const first = syncCloudCapabilities(reg, models, "https://api.example/accounts/x", 1);
+  const first = syncCloudTools(reg, models, "https://api.example/accounts/x", 1);
   assert.deepEqual(first, { added: 3, refreshed: 0 });
-  assert.ok(reg.capabilities.every((c) => c.state === "recommended" && c.host === "cloudflare" && c.transport === "cloudflare-workers-ai"));
-  assert.equal(reg.capabilities.find((c) => c.model === CF_NAMESPACE + "vendor/beta-judge")?.pricing?.cachedInPerM, 0.004);
+  assert.ok(reg.tools.every((t) => !t.enabled && t.source === "cloud" && t.transport === "cloudflare-workers-ai"));
+  assert.equal(reg.tools.find((t) => t.model === CF_NAMESPACE + "vendor/beta-judge")?.pricing?.cachedInPerM, 0.004);
 
   // A person enables one; the next discovery refreshes its price and keeps it enabled.
-  const chat = reg.capabilities.find((c) => c.model === CF_NAMESPACE + "vendor/alpha-chat")!;
-  chat.state = "enabled";
+  const chat = reg.tools.find((t) => t.model === CF_NAMESPACE + "vendor/alpha-chat")!;
+  chat.enabled = true;
   const repriced = models.map((m) => (m.name === CF_NAMESPACE + "vendor/alpha-chat" ? { ...m, price: { inPerM: 9, outPerM: 9 } } : m));
-  const second = syncCloudCapabilities(reg, repriced, "https://api.example/accounts/x", 2);
+  const second = syncCloudTools(reg, repriced, "https://api.example/accounts/x", 2);
   assert.deepEqual(second, { added: 0, refreshed: 3 });
-  const after = reg.capabilities.find((c) => c.model === CF_NAMESPACE + "vendor/alpha-chat")!;
-  assert.equal(after.state, "enabled", "discovery never changes a person's enable choice");
+  const after = reg.tools.find((t) => t.model === CF_NAMESPACE + "vendor/alpha-chat")!;
+  assert.equal(after.enabled, true, "discovery never changes a person's enable choice");
   assert.equal(after.pricing?.inPerM, 9, "prices always come from the latest catalog");
 });

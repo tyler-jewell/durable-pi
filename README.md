@@ -98,7 +98,7 @@ The network has three levels. A **device** runs one `dpi-backend`. A **session**
 
 ## What a durable agent can do
 
-Every capability below is in the web client's inspector and in the [v1 API](apps/dpi-backend/API.md), and the agent can use most of them as tools. Every change applies from the agent's next request, and nothing restarts.
+Every feature below is in the web client's inspector and in the [v1 API](apps/dpi-backend/API.md), and the agent can use most of them as tools. Every change applies from the agent's next request, and nothing restarts.
 
 ### Compaction in the background
 
@@ -171,27 +171,21 @@ The verdict is a durable memo (a restart never re-asks) and fails open (if Jev i
   <img src="docs/images/jev/jev-4-allow.png" width="760" alt="ls allowed: read-only">
 </p>
 
-### 2. Capability lifecycle — discover → validate → deploy → notify
+### 2. Model tools — discover, enable, ask
 
-An agent can bring a **brand-new model capability online by itself**, with no hardcoded facts about the host. It probes a host, inspects how the model server actually runs over SSH, proposes a capability, and a validation gate checks the evidence before anything is turned on — then the team is told it's ready.
+Every model on the mesh, and every model in the cloud catalog, is a tool on this system's MCP server. Nothing is
+enabled until someone chooses it, and a chosen model is served at once as a tool of its own name.
 
-<p align="center">
-  <img src="docs/images/capability-loop.svg" width="820" alt="Seven-step capability lifecycle: discover, inspect, recommend, validate, deploy, end-to-end, notify — with the readiness entry landing in the shared team feed">
-</p>
-
-The agent uses the MCP tools alone — `discover_host`, `inspect_host`, `recommend_capability`, `enable_capability`, `run_llm`/`run_decision`, and `notify_ready`. A real run against the Studio:
-
-```text
-1. discover: studio exposes 9 models
-2. inspect: 4 llama-server process(es), 0 launchd auto-start(s), live test ok (1.4 s)
-3. recommend: studio-decision-clef-flash-q4-k-m (decision, state=recommended)
-4. gate: passed (llama-server present + live test ok)
-5. deploy: studio-decision-clef-flash-q4-k-m enabled (autoEnable=true)
-6. end-to-end: OpenJev-Q4_K_M → approve (20.2 s)
-7. notify: team feed now has 1 entry — validated and deployed on studio
+```
+discover_models (scope: mesh | cloud | all)   # every model found, added disabled, with its kind and served window
+list_tools (enabled?, kind?)                  # what exists, what is on, what it costs
+enable_tool (name)                            # serve it now
+ask_model (kind, requires?, messages | state + questions)   # pick one enabled tool by its tags (A/B random) and call it
 ```
 
-Every fact comes from the tools: the host's models, its server config, its launchd auto-start state, and the live test. A capability that fails the gate stays `recommended` and is never enabled. `notify_ready` writes the validation evidence to a shared team feed (`~/.dpi-mcp/team-feed.json`), which any agent or settings UI reads with `team_feed`. The full harness is [`scripts/prove-capability-loop.mts`](apps/dpi-mcp/scripts/prove-capability-loop.mts), and the same loop is covered deterministically in [`zero-agent.eval.ts`](apps/dpi-mcp/tests/zero-agent.eval.ts).
+Every call checks the context budget first, so a prompt that cannot fit its model's served window is refused
+before anything is sent, and a cut-off answer is flagged. Every call is metered, and the local and cloud costs
+are kept side by side. The tool model and its rules are in [`apps/dpi-mcp/README.md`](apps/dpi-mcp/README.md#model-tools).
 
 More use cases follow here.
 
@@ -204,10 +198,10 @@ The end-to-end paths the system proves today. Each starts from a prompt (or a `j
 | Flow | Start | End | Proof |
 |---|---|---|---|
 | **Agentic install** | `just install` + `just net up` | every device online, backend + hub serving | `just net status`, `just check` |
-| **Capability lifecycle** | `discover_host studio` | a validated, deployed model capability, team notified | [`prove-capability-loop.mts`](apps/dpi-mcp/scripts/prove-capability-loop.mts), [`zero-agent.eval.ts`](apps/dpi-mcp/tests/zero-agent.eval.ts) |
+| **Model tools** | `discover_models` → `enable_tool` → `ask_model` | every discovered model served as a tool, chosen models enabled, calls budgeted and metered | [`zero-agent.eval.ts`](apps/dpi-mcp/tests/zero-agent.eval.ts), [`tool-store.test.ts`](apps/dpi-mcp/tests/tool-store.test.ts) |
 | **Zero bootstrap** | `npx tsx apps/dpi-mcp/scripts/zero.mts` | every mesh host discovered over Cloudflare Access, its local models enabled and tested, A/B mode set | [proof run](docs/zero-bootstrap-run.md), [`zero-bootstrap.eval.ts`](apps/dpi-mcp/tests/zero-bootstrap.eval.ts) |
 | **Factory create-app** | `create_app "a todo app"` (browser or API) | a scaffolded, reviewed, deployed Workers app | durable job `create-app` + `.tsf` roster |
-| **Model compare** | `run_llm`/`run_decision` on both backs | cloud $/min rate vs local electricity + wait-time opportunity | [`profile-models.mts`](apps/dpi-mcp/scripts/profile-models.mts), `compare_costs` |
+| **Model compare** | `ask_model` on both sides of a family | cloud $/min rate vs local electricity + wait-time opportunity | [`profile-models.mts`](apps/dpi-mcp/scripts/profile-models.mts), `compare_costs` |
 | **Jev gates** | flip `jev-damage-control` on | every bash command decided (allow / needs approval / block) | [`jev-browser.mjs`](apps/dpi-playground/tests/jev-browser.mjs), screenshots below |
 
 ## Any client: web, terminal, curl

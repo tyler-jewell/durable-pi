@@ -1,15 +1,16 @@
-// Apples-to-apples profile: for every model family that has BOTH an enabled local capability and a priced cloud
-// twin in the registry, send the same prompt to both and compare tokens, latency and cost. Nothing is named here:
-// the pairs come from discovery (see `discover_cloud` and the zero bootstrap).
+// Apples-to-apples profile: for every model family that has an enabled mesh tool AND a priced cloud tool of the
+// same kind, send the same prompt to both and compare tokens, latency and cost. Nothing is named here: the pairs
+// come from the tool store (discover_models and the zero bootstrap fill it).
 //
-//   npx tsx scripts/profile-models.mts            # runs the pairs the registry holds
+//   npx tsx scripts/profile-models.mts            # runs the pairs the store holds
 //
 // Cloud calls cost money (priced from the catalog, per token). Local calls cost electricity, marginal only.
 // The report prints the exact names it used on each side, because a family can differ in quantization.
-
-import { loadRegistry, runDecision, runLlm, type Capability, type CapabilityRegistry, type DecisionQuestion } from "../src/capabilities.js";
+import { loadStore, type ModelTool, type ToolStore } from "../src/tool-store.js";
+import { callChat, callDecision } from "../src/model-tools.js";
 import { marginalElectricityUsd, DEFAULT_SETTINGS } from "../src/meter.js";
 import { tokenCostUsd } from "../src/cloud-catalog.js";
+import type { DecisionQuestion } from "../src/models.js";
 
 const LLM_PROMPT = [{ role: "user" as const, content: "Explain the difference between a process and a thread, in under 60 words." }];
 const DECISION_QUESTION: Record<string, DecisionQuestion> = {
@@ -20,38 +21,35 @@ const STATE = { plan: "add a status page", facts: "tests pass; the build is gree
 interface Pair {
   family: string;
   kind: "llm" | "decision";
-  local: Capability;
-  cloud: Capability;
+  local: ModelTool;
+  cloud: ModelTool;
 }
 
-/** Families with an enabled local capability and a priced cloud twin of the same kind. */
-export function pairsOf(reg: CapabilityRegistry): Pair[] {
+/** Families with an enabled mesh tool and a priced cloud tool of the same kind. */
+export function pairsOf(store: ToolStore): Pair[] {
   const pairs: Pair[] = [];
-  for (const local of reg.capabilities.filter((c) => c.state === "enabled" && c.host !== "cloudflare")) {
-    const cloud = reg.capabilities.find((c) => c.host === "cloudflare" && c.kind === local.kind && c.family === local.family && c.pricing);
+  for (const local of store.tools.filter((t) => t.enabled && t.source === "mesh")) {
+    const cloud = store.tools.find((t) => t.source === "cloud" && t.kind === local.kind && t.family === local.family && t.pricing);
     if (cloud) pairs.push({ family: local.family, kind: local.kind, local, cloud });
   }
   return pairs;
 }
 
-async function run(cap: Capability): Promise<{ ms: number; inToks: number; outToks: number; truncated: boolean }> {
-  // A cloud twin takes its key from the environment (CLOUDFLARE_API_KEY) unless the capability stores one.
-  const stored = cap.inputs.find((i) => i.secret)?.value;
-  const apiKey = stored ?? (cap.transport === "cloudflare-workers-ai" ? process.env.CLOUDFLARE_API_KEY : undefined);
-  const opts = { transport: cap.transport, apiKey, contextWindow: cap.contextWindow };
+async function run(store: ToolStore, tool: ModelTool): Promise<{ ms: number; inToks: number; outToks: number; truncated: boolean }> {
   const t0 = Date.now();
-  const r =
-    cap.kind === "llm"
-      ? await runLlm(cap.address, cap.model, LLM_PROMPT, opts)
-      : await runDecision(cap.address, cap.model, STATE, DECISION_QUESTION, opts);
-  return { ms: Date.now() - t0, inToks: r.inToks, outToks: r.outToks, truncated: "truncated" in r ? Boolean(r.truncated) : false };
+  if (tool.kind === "llm") {
+    const r = await callChat(store, tool, LLM_PROMPT);
+    return { ms: Date.now() - t0, inToks: r.inToks, outToks: r.outToks, truncated: r.truncated };
+  }
+  const r = await callDecision(store, tool, STATE, DECISION_QUESTION);
+  return { ms: Date.now() - t0, inToks: r.inToks, outToks: r.outToks, truncated: false };
 }
 
 async function main() {
-  const reg = loadRegistry();
-  const pairs = pairsOf(reg);
+  const store = loadStore();
+  const pairs = pairsOf(store);
   if (pairs.length === 0) {
-    console.log("profile: no family has both an enabled local capability and a priced cloud twin. Run discover_cloud, then enable the local model.");
+    console.log("profile: no family has both an enabled mesh tool and a priced cloud tool. Run discover_models, then enable the local model.");
     return;
   }
   console.log(`profile: ${pairs.length} pair(s)\n`);
@@ -59,18 +57,18 @@ async function main() {
     console.log(`${p.kind} · family ${p.family}`);
     // One failing side (a retired catalog model, an offline host) is reported and the profile carries on.
     try {
-      const l = await run(p.local);
-      const localCost = marginalElectricityUsd(l.ms, DEFAULT_SETTINGS);
+      const l = await run(store, p.local);
+      const cost = marginalElectricityUsd(l.ms, DEFAULT_SETTINGS);
       const cut = l.truncated ? "  TRUNCATED at the output limit" : "";
-      console.log(`  local  ${p.local.model.padEnd(44)} ${(l.ms / 1000).toFixed(2)}s  in ${l.inToks} out ${l.outToks}  electricity $${localCost.toFixed(6)}${cut}`);
+      console.log(`  local  ${p.local.model.padEnd(44)} ${(l.ms / 1000).toFixed(2)}s  in ${l.inToks} out ${l.outToks}  electricity $${cost.toFixed(6)}${cut}`);
     } catch (e) {
       console.log(`  local  ${p.local.model}  FAILED: ${String((e as Error).message).slice(0, 140)}`);
     }
     try {
-      const c = await run(p.cloud);
-      const cloudCost = tokenCostUsd(p.cloud.pricing, c.inToks, c.outToks) ?? 0;
+      const c = await run(store, p.cloud);
+      const cost = tokenCostUsd(p.cloud.pricing, c.inToks, c.outToks) ?? 0;
       const cut = c.truncated ? "  TRUNCATED at the output limit" : "";
-      console.log(`  cloud  ${p.cloud.model.padEnd(44)} ${(c.ms / 1000).toFixed(2)}s  in ${c.inToks} out ${c.outToks}  billed $${cloudCost.toFixed(6)}${cut}`);
+      console.log(`  cloud  ${p.cloud.model.padEnd(44)} ${(c.ms / 1000).toFixed(2)}s  in ${c.inToks} out ${c.outToks}  billed $${cost.toFixed(6)}${cut}`);
     } catch (e) {
       console.log(`  cloud  ${p.cloud.model}  FAILED: ${String((e as Error).message).slice(0, 140)}`);
     }

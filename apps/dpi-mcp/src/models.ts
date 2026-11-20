@@ -1,30 +1,16 @@
-// Per-host capability discovery and a capability lifecycle, driven entirely by MCP tools.
-//
-// Two layers:
-//   hosts         what a probe found on a machine (llama.cpp /v1/models → text vs decisions)
-//   capabilities  what an agent (or a person) has turned a host resource into: a named,
-//                 callable thing with a state (recommended → enabled/disabled), the inputs
-//                 it needs, and the options it exposes. Enabled capabilities are what the
-//                 factory binds to (e.g. a `jev-quality` decision model).
-//
-// Auto-discover / auto-implement: `probeHost` is discovery; `recommendCapability` + the
-// enable/disable state are the registry; `runLlm`/`runDecision` are implementation and are
-// driven by the registry alone. A future host kind adds a probe spec + a capability kind —
-// nothing else changes.
-
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { homedir } from "node:os";
-import { join } from "node:path";
+// The model transport: how this system finds a model and calls it. Discovery (probeHost), the Access headers
+// every mesh call carries (meshFetch), the context budget (context.ts), and the two calls (runLlm, runDecision).
+// Nothing here stores anything. Which models are enabled, and the MCP tools they become, live in tool-store.ts
+// and model-tools.ts.
 import { accessHeadersFor } from "./mesh-config.js";
-import type { Price } from "./cloud-catalog.js";
 import { budget, estimateTokens, MIN_OUTPUT_TOKENS, servedContextOf, type Budget } from "./context.js";
 
-export type CapabilityKind = "llm" | "decision";
-export type CapabilityState = "recommended" | "enabled" | "disabled";
+export type ModelKind = "llm" | "decision";
+export type Transport = "openai-compat" | "cloudflare-workers-ai";
 
 export interface ModelInfo {
   id: string;
-  kind: CapabilityKind; // `text` → llm, `decisions` → decision (from output_modalities)
+  kind: ModelKind; // `text` → llm, `decisions` → decision (from output_modalities)
   aliases: string[];
   /** The window the server runs with. The budget uses this. Undefined when the host does not say. */
   servedContext?: number;
@@ -32,7 +18,7 @@ export interface ModelInfo {
   trainedContext?: number;
 }
 
-export interface HostCapability {
+export interface HostProbe {
   host: string;
   /** Canonical endpoint on the mesh, e.g. `https://<host>.<your-zone>` (Cloudflare Tunnel + Access). */
   address: string;
@@ -49,87 +35,6 @@ export interface HostCapability {
   error?: string;
 }
 
-/** A value a capability needs to work (a key, a URL, a model id). */
-export interface CapabilityInput {
-  name: string;
-  description: string;
-  required: boolean;
-  secret?: boolean; // masked in listings
-  default?: string;
-  value?: string; // filled by discovery or the enabler
-}
-
-/** A knob a capability exposes once enabled (thresholds, budgets, which role it serves). */
-export interface CapabilityOption {
-  name: string;
-  description: string;
-  type: "string" | "number" | "boolean" | "enum";
-  default?: unknown;
-  value?: unknown;
-  choices?: string[]; // for enum
-}
-
-export type CapabilityTransport = "openai-compat" | "cloudflare-workers-ai";
-
-export interface Capability {
-  id: string; // stable slug, e.g. studio-decision-clef-flash
-  name: string; // display name
-  kind: CapabilityKind;
-  host: string; // discovery source; "" for a manual capability
-  address: string; // callable HTTP base (host.address or a manual URL)
-  model: string; // model id to call
-  /** How to call the endpoint: a local OpenAI-compatible server, or the CF Workers AI API. */
-  transport: CapabilityTransport;
-  /** Canonical model family, shared by the local + cloud twins so costs can be paired. */
-  family: string;
-  /** The served window, from discovery. The context budget uses it. Undefined means unknown, and calls are unguarded. */
-  contextWindow?: number;
-  /** Cloud models only: the catalog price, from discovery. Never a hardcoded table. */
-  pricing?: Price;
-  description: string;
-  /** Roles this capability can fill, e.g. ["jev-quality"] or ["builder", "planner"]. */
-  purpose: string[];
-  state: CapabilityState;
-  /** Auto turn-on: re-enable on next startup/discovery without asking again. */
-  autoEnable: boolean;
-  source: "discovered" | "agent";
-  inputs: CapabilityInput[];
-  options: CapabilityOption[];
-  createdAt: number;
-  updatedAt: number;
-}
-
-export type SelectionMode = "auto" | "ab";
-
-export interface CapabilityRegistry {
-  hosts: HostCapability[];
-  capabilities: Capability[];
-  /** Default model selection: `ab` picks randomly from the filtered candidates (A/B), `auto`
-   *  picks the most-recently-used local first with cloud fallback. `ab` is the default. */
-  selectionMode?: SelectionMode;
-}
-
-const REGISTRY = process.env.DPI_MCP_CAPABILITIES ?? join(homedir(), ".dpi-mcp", "capabilities.json");
-
-function migrate(raw: unknown): CapabilityRegistry {
-  if (Array.isArray(raw)) return { hosts: raw as HostCapability[], capabilities: [], selectionMode: "ab" }; // pre-lifecycle shape
-  const r = (raw ?? {}) as Partial<CapabilityRegistry>;
-  return { hosts: Array.isArray(r.hosts) ? r.hosts : [], capabilities: Array.isArray(r.capabilities) ? r.capabilities : [], selectionMode: r.selectionMode ?? "ab" };
-}
-
-export function loadRegistry(): CapabilityRegistry {
-  try {
-    return migrate(JSON.parse(readFileSync(REGISTRY, "utf8")));
-  } catch {
-    return { hosts: [], capabilities: [], selectionMode: "ab" };
-  }
-}
-
-export function saveRegistry(reg: CapabilityRegistry): void {
-  mkdirSync(join(homedir(), ".dpi-mcp"), { recursive: true });
-  writeFileSync(REGISTRY, JSON.stringify(reg, null, 2) + "\n");
-}
-
 /** The canonical model family. It strips the quantization/format suffix and the cloud namespace, so a
  *  local GGUF and its cloud twin share one family: a quantized local file and its
  *  catalog name map to the same family key. Cost comparisons pair twins by this key. */
@@ -142,126 +47,6 @@ export function familyOf(model: string): string {
 }
 
 export const slug = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
-
-export function findCapability(reg: CapabilityRegistry, id: string): Capability | undefined {
-  return reg.capabilities.find((c) => c.id === id);
-}
-
-/** An enabled capability that can fill `purpose`; undefined when none is enabled. */
-export function resolveCapability(reg: CapabilityRegistry, purpose: string): Capability | undefined {
-  return reg.capabilities.find((c) => c.state === "enabled" && c.purpose.includes(purpose));
-}
-
-/** Select the model to call, the zero system's default surface.
- *
- *  - an explicit `capability` is deterministic (the agent decides),
- *  - otherwise the enabled candidates of `kind` are filtered by `required` purposes (all must
- *    match), and `mode` picks: `ab` (the default) selects randomly from what remains — the A/B
- *    default — while `auto` reuses the most-recently-used local model with cloud fallback.
- */
-export function selectCapability(
-  reg: CapabilityRegistry,
-  kind: CapabilityKind,
-  opts: { capability?: string; prefer?: "local" | "cloud"; required?: string[]; mode?: SelectionMode } = {},
-): Capability {
-  if (opts.capability) {
-    const cap = findCapability(reg, opts.capability);
-    if (!cap) throw new Error(`capability "${opts.capability}" is not in the registry; list_capabilities shows what is available`);
-    if (cap.state !== "enabled") throw new Error(`capability "${opts.capability}" is ${cap.state}; enable it first (enable_capability)`);
-    if (cap.kind !== kind) throw new Error(`capability "${opts.capability}" is ${cap.kind}, not ${kind}`);
-    return cap;
-  }
-  let enabled = reg.capabilities.filter((c) => c.state === "enabled" && c.kind === kind);
-  if (opts.required?.length) {
-    enabled = enabled.filter((c) => opts.required!.every((p) => c.purpose.includes(p)));
-    if (!enabled.length) throw new Error(`no enabled ${kind} capability has every required purpose [${opts.required.join(", ")}]`);
-  }
-  if (!enabled.length) throw new Error(`no enabled ${kind} capability; list_capabilities + enable_capability first`);
-  if ((opts.mode ?? reg.selectionMode ?? "ab") === "ab") return enabled[Math.floor(Math.random() * enabled.length)];
-  const local = enabled.filter((c) => c.host !== "cloudflare").sort((a, b) => (b.updatedAt ?? 0) - (a.updatedAt ?? 0));
-  const cloud = enabled.filter((c) => c.host === "cloudflare");
-  const first = opts.prefer === "cloud" ? cloud : local;
-  const second = opts.prefer === "cloud" ? local : cloud;
-  return first[0] ?? second[0] ?? enabled[0];
-}
-
-export interface RecommendArgs {
-  host: string;
-  model: string;
-  name?: string;
-  description: string;
-  purpose: string[];
-  transport?: CapabilityTransport;
-  inputs?: { name: string; description?: string; required?: boolean; secret?: boolean; default?: string }[];
-  options?: { name: string; description?: string; type: "string" | "number" | "boolean" | "enum"; default?: unknown; choices?: string[] }[];
-}
-
-/** Turn a discovered host model into a `recommended` capability (upsert by id). Returns it. */
-export function recommendCapability(reg: CapabilityRegistry, args: RecommendArgs): Capability {
-  const host = reg.hosts.find((h) => h.host === args.host);
-  if (!host) throw new Error(`host "${args.host}" is not discovered yet; run discover_host first`);
-  const m = host.models.find((x) => x.id === args.model);
-  if (!m) throw new Error(`model "${args.model}" not found on ${args.host}; list_models shows what it exposes`);
-  const now = Date.now();
-  const id = slug(`${args.host}-${m.kind}-${args.model}`) || slug(args.model);
-  const existing = findCapability(reg, id);
-  const cap: Capability = {
-    id,
-    name: args.name ?? args.model,
-    kind: m.kind,
-    host: host.host,
-    address: host.address,
-    model: args.model,
-    transport: args.transport ?? "openai-compat",
-    family: familyOf(args.model),
-    contextWindow: (host.models.find((x) => x.id === args.model)?.servedContext),
-    description: args.description,
-    purpose: args.purpose,
-    state: "recommended",
-    autoEnable: false,
-    source: "agent",
-    inputs: (args.inputs ?? []).map((i) => ({ name: i.name, description: i.description ?? "", required: i.required ?? false, secret: i.secret ?? false, default: i.default, value: i.default })),
-    options: (args.options ?? []).map((o) => ({ name: o.name, description: o.description ?? "", type: o.type, default: o.default, value: o.default, choices: o.choices })),
-    createdAt: existing?.createdAt ?? now,
-    updatedAt: now,
-  };
-  reg.capabilities = [...reg.capabilities.filter((c) => c.id !== id), cap];
-  return cap;
-}
-
-/** Enable a capability: apply inputs/options, check required inputs, set enabled + autoEnable. */
-export function enableCapability(
-  reg: CapabilityRegistry,
-  id: string,
-  opts: { inputs?: { name: string; value: string }[]; options?: { name: string; value: unknown }[]; autoEnable?: boolean } = {},
-): Capability {
-  const cap = findCapability(reg, id);
-  if (!cap) throw new Error(`capability "${id}" is not in the registry; list_capabilities shows what is available`);
-  for (const [name, value] of (opts.inputs ?? []).map((i) => [i.name, i.value] as const)) {
-    const input = cap.inputs.find((x) => x.name === name);
-    if (input) input.value = value;
-  }
-  for (const [name, value] of (opts.options ?? []).map((o) => [o.name, o.value] as const)) {
-    const opt = cap.options.find((x) => x.name === name);
-    if (opt) opt.value = value;
-  }
-  const missing = cap.inputs.filter((i) => i.required && !i.value).map((i) => i.name);
-  if (missing.length) throw new Error(`capability "${id}" needs these inputs to enable: ${missing.join(", ")}`);
-  cap.state = "enabled";
-  cap.autoEnable = opts.autoEnable ?? true;
-  cap.updatedAt = Date.now();
-  return cap;
-}
-
-/** Disable a capability in place (kept in the registry for re-enable). Returns it. */
-export function disableCapability(reg: CapabilityRegistry, id: string): Capability {
-  const cap = findCapability(reg, id);
-  if (!cap) throw new Error(`capability "${id}" is not in the registry`);
-  cap.state = "disabled";
-  cap.updatedAt = Date.now();
-  return cap;
-}
-
 /** A short-lived fetch; returns the response or undefined on network failure. */
 /** The one fetch every model call uses. Mesh URLs (Cloudflare Tunnel + Access) get their service-token
  *  headers here, so no caller can forget them; local and cloud URLs are passed through unchanged. */
@@ -283,9 +68,9 @@ async function fetchJson(url: string, init: RequestInit, timeoutMs: number): Pro
  * and `/v1/models` (each model lists `architecture.output_modalities`: `text` or `decisions`);
  * a host that exposes `/v1/systemone` answers System One decision questions.
  */
-export async function probeHost(host: string, address: string, timeoutMs = 5000, headers?: Record<string, string>): Promise<HostCapability> {
+export async function probeHost(host: string, address: string, timeoutMs = 5000, headers?: Record<string, string>): Promise<HostProbe> {
   const base = address.replace(/\/+$/, "");
-  const cap: HostCapability = { host, address: base, health: "offline", reachable: false, models: [], discoveredAt: Date.now() };
+  const cap: HostProbe = { host, address: base, health: "offline", reachable: false, models: [], discoveredAt: Date.now() };
   const health = await fetchJson(`${base}/health`, { method: "GET", headers }, timeoutMs);
   if (health && (health.status === 401 || health.status === 403)) {
     // Cloudflare Access (or the host's own auth) refused the request: say so, not "no model server".
@@ -367,7 +152,7 @@ export async function runLlm(
   address: string,
   model: string,
   messages: { role: "system" | "user" | "assistant"; content: string }[],
-  opts: { transport?: CapabilityTransport; apiKey?: string; timeoutMs?: number; contextWindow?: number } = {},
+  opts: { transport?: Transport; apiKey?: string; timeoutMs?: number; contextWindow?: number } = {},
 ): Promise<LlmResult> {
   const timeoutMs = opts.timeoutMs ?? 120_000;
   const base = address.replace(/\/+$/, "");
@@ -421,7 +206,7 @@ export async function runDecision(
   model: string,
   state: unknown,
   questions: Record<string, DecisionQuestion>,
-  opts: { transport?: CapabilityTransport; apiKey?: string; timeoutMs?: number; contextWindow?: number } = {},
+  opts: { transport?: Transport; apiKey?: string; timeoutMs?: number; contextWindow?: number } = {},
 ): Promise<DecisionResult> {
   const timeoutMs = opts.timeoutMs ?? 60_000;
   const base = address.replace(/\/+$/, "");
@@ -454,3 +239,4 @@ export async function runDecision(
   if (data.error) throw new Error(`Decision ${model}: ${data.error.message}`);
   return { answers: data.answers ?? {}, inToks: data.usage?.input_tokens ?? 0, outToks: data.usage?.output_tokens ?? 0, guarded: b.guarded };
 }
+

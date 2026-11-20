@@ -1,8 +1,9 @@
 import { QUANT, CF_NAMESPACE } from "./naming-fixtures.js";
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { candidatesOf, parseSelection, purposeOf, realizedCost, type ModelTest } from "../src/zero.js";
-import { familyOf } from "../src/capabilities.js";
+import { candidatesOf, parseSelection, realizedCost, type ModelTest } from "../src/zero.js";
+import { kindTags } from "../src/tool-store.js";
+import { familyOf } from "../src/models.js";
 import { marginalElectricityUsd, DEFAULT_SETTINGS } from "../src/meter.js";
 import { tokenCostUsd } from "../src/cloud-catalog.js";
 
@@ -42,7 +43,7 @@ test("marginal electricity is the power above idle, priced per kWh", () => {
 });
 
 test("realizedCost saves only on priced runs and never guesses an unpriced one", () => {
-  const t = (over: Partial<ModelTest>): ModelTest => ({ capability: "c", host: "h", model: "m", kind: "llm", ok: true, ms: 1, inToks: 1, outToks: 1, electricityUsd: 0, sample: "", ...over });
+  const t = (over: Partial<ModelTest>): ModelTest => ({ tool: "t", host: "h", model: "m", kind: "llm", ok: true, ms: 1, inToks: 1, outToks: 1, electricityUsd: 0, sample: "", ...over });
   const r = realizedCost([
     t({ electricityUsd: 0.00005, cloudEquivUsd: 0.00004 }), // priced: local cost more than cloud
     t({ electricityUsd: 0.00001, cloudEquivUsd: 0.00003 }), // priced: local cost less
@@ -62,6 +63,6 @@ test("candidatesOf lists models only from hosts that answered, and purposes foll
     { host: { name: "b", hostname: "b.example" }, models: [], error: "access denied (HTTP 401)" },
   ]);
   assert.deepEqual(cands.map((c) => [c.host, c.id, c.kind]), [["a", "J", "decision"], ["a", "L", "llm"]]);
-  assert.deepEqual(purposeOf("decision"), ["jev-quality"]);
-  assert.deepEqual(purposeOf("llm"), ["agent"]);
+  assert.deepEqual(kindTags("decision"), ["decision"]);
+  assert.deepEqual(kindTags("llm"), ["chat"]);
 });

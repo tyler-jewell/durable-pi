@@ -1,26 +1,27 @@
-// The zero bootstrap: take a bare system to a working local model surface in one run.
+// The zero bootstrap: take a bare system to a working set of local models in one run.
 //
 //   discover every mesh host (mesh.json, Cloudflare Tunnel + Access)
-//   → choose which local models to enable (the dialog; defaults to all, pre-checked)
-//   → enable each as a capability (autoEnable) and test it live with a real call
-//   → report realized cost (marginal electricity, vs the same tokens priced on cloud)
-//   → prove the A/B selection covers every required-purpose candidate
-//   → "all models tested, systems a go", with the default mode set to A/B random.
+//   → choose which local models to enable (the dialog; every discovered model is pre-checked)
+//   → enable each as a tool and test it live with a real call
+//   → report realized cost: electricity, against the same tokens priced on the cloud twin
+//   → prove the A/B selection reaches every eligible tool and nothing else
+//   → "all models tested, systems a go", with the selection mode set to A/B random.
 //
-// Validation runs on local models only. A cloud twin is priced from its catalog rate and the tokens the
-// local run used. It is never called, so zero cloud spend is possible here. Opportunity cost (wait time)
-// is deliberately NOT counted: the report shows realized spend only.
-import { disableCapability, loadRegistry, recommendCapability, enableCapability, runDecision, runLlm, saveRegistry, selectCapability, type Capability, type CapabilityKind, type CapabilityRegistry, type DecisionQuestion } from "./capabilities.js";
+// Validation calls local models only. A cloud twin is priced from its catalog rate and the tokens the local run
+// used. It is never called. Opportunity cost (wait time) is not counted: the report shows realized spend only.
+import { callChat, callDecision } from "./model-tools.js";
+import { marginalElectricityUsd, DEFAULT_SETTINGS, type CostSettings } from "./meter.js";
+import { syncCloudTools, tokenCostUsd, type CatalogModel } from "./cloud-catalog.js";
 import type { MeshModelDiscovery } from "./mesh.js";
-import { DEFAULT_SETTINGS, loadMeter, marginalElectricityUsd, recordUsage, type CostSettings } from "./meter.js";
-import { syncCloudCapabilities, tokenCostUsd, type CatalogModel } from "./cloud-catalog.js";
 import { notifyReady } from "./notify.js";
+import { loadStore, saveStore, select, setEnabled, upsertMeshTool, kindTags, type ModelTool, type ToolStore } from "./tool-store.js";
+import type { DecisionQuestion } from "./models.js";
 
 export interface Candidate {
   host: string;
   address: string;
   id: string;
-  kind: CapabilityKind;
+  kind: "llm" | "decision";
 }
 
 /** Every discovered local model, in host order. A host with no model contributes nothing. */
@@ -29,7 +30,7 @@ export function candidatesOf(discovered: MeshModelDiscovery[]): Candidate[] {
 }
 
 /**
- * Apply the user's answer to the checklist. `defaults` is the pre-checked state (the auto-selection).
+ * Apply the user's answer to the checklist. `defaults` is the pre-checked state.
  *   ""                 → submit the defaults
  *   "a" / "all"        → every model
  *   "n" / "none"       → none
@@ -49,30 +50,23 @@ export function parseSelection(answer: string, count: number, defaults: boolean[
   return out;
 }
 
-/** The auto-selection policy. Every discovered local model is pre-checked: the decision models for
- *  jev-quality, and every chat model so the A/B selection has a real candidate set. The user can
- *  deselect any of them in the dialog before submitting. */
+/** The auto-selection policy: every discovered local model is pre-checked. The user can deselect any of them. */
 export function autoSelection(candidates: Candidate[]): boolean[] {
   return candidates.map(() => true);
 }
 
-/** The purposes a candidate serves once enabled. */
-export function purposeOf(kind: CapabilityKind): string[] {
-  return kind === "decision" ? ["jev-quality"] : ["agent"];
-}
-
 export interface ModelTest {
-  capability: string;
+  tool: string;
   host: string;
   model: string;
-  kind: CapabilityKind;
+  kind: "llm" | "decision";
   ok: boolean;
   ms: number;
   inToks: number;
   outToks: number;
   /** Marginal electricity for this run (realized, excludes opportunity cost). */
   electricityUsd: number;
-  /** The same tokens priced on the cloud twin in the registry. Undefined when no priced twin exists. */
+  /** The same tokens priced on the cloud twin. Undefined when there is no priced twin. */
   cloudEquivUsd?: number;
   cloudModel?: string;
   sample: string;
@@ -84,14 +78,14 @@ const PROBE_QUESTION: Record<string, DecisionQuestion> = {
 };
 const PROBE_STATE = { plan: "zero bootstrap probe", facts: "the model server answered /health" };
 
-/** The cloud twin: a cloud capability of the same kind and family, priced from the catalog. */
-export function cloudTwinOf(reg: CapabilityRegistry, cap: Capability): Capability | undefined {
-  return reg.capabilities.find((c) => c.host === "cloudflare" && c.kind === cap.kind && c.family === cap.family);
+/** The cloud twin: a cloud tool of the same kind and family. */
+export function cloudTwinOf(store: ToolStore, tool: ModelTool): ModelTool | undefined {
+  return store.tools.find((t) => t.source === "cloud" && t.kind === tool.kind && t.family === tool.family);
 }
 
-/** Run one live call on an enabled local capability and record it in the meter. */
-export async function testCapability(reg: CapabilityRegistry, cap: Capability, settings: CostSettings = DEFAULT_SETTINGS): Promise<ModelTest> {
-  const base = { capability: cap.id, host: cap.host, model: cap.model, kind: cap.kind };
+/** Run one live call on an enabled local tool. The call is metered, and the store records when it was used. */
+export async function testTool(store: ToolStore, tool: ModelTool, settings: CostSettings = DEFAULT_SETTINGS): Promise<ModelTest> {
+  const base = { tool: tool.name, host: tool.host, model: tool.model, kind: tool.kind };
   const t0 = Date.now();
   let ok = false;
   let sample = "";
@@ -99,16 +93,16 @@ export async function testCapability(reg: CapabilityRegistry, cap: Capability, s
   let outToks = 0;
   let error: string | undefined;
   try {
-    if (cap.kind === "decision") {
-      const r = await runDecision(cap.address, cap.model, PROBE_STATE, PROBE_QUESTION, { transport: cap.transport, timeoutMs: 120_000, contextWindow: cap.contextWindow });
+    if (tool.kind === "decision") {
+      const r = await callDecision(store, tool, PROBE_STATE, PROBE_QUESTION);
       const answer = r.answers.verdict;
       ok = answer?.type === "choice" && typeof answer.choice === "string";
       sample = answer?.type === "choice" ? `${answer.choice} (${(answer.confidence ?? 0).toFixed(2)})` : JSON.stringify(answer);
       inToks = r.inToks;
       outToks = r.outToks;
     } else {
-      const r = await runLlm(cap.address, cap.model, [{ role: "user", content: "Reply with exactly: OK" }], { transport: cap.transport, timeoutMs: 180_000, contextWindow: cap.contextWindow });
-      ok = /\bOK\b/i.test(r.text);
+      const r = await callChat(store, tool, [{ role: "user", content: "Reply with exactly: OK" }]);
+      ok = /\bOK\b/i.test(r.text) && !r.truncated;
       sample = r.text.trim().slice(0, 60);
       inToks = r.inToks;
       outToks = r.outToks;
@@ -117,11 +111,7 @@ export async function testCapability(reg: CapabilityRegistry, cap: Capability, s
     error = String((e as Error).message).slice(0, 200);
   }
   const ms = Date.now() - t0;
-  // Record the run. Local calls carry their interval, so the meter's kWh stays right.
-  recordUsage(loadMeter(), { startedAt: t0, endedAt: t0 + ms, model: cap.family, kind: cap.kind, transport: cap.transport, inToks, outToks, costUsd: 0 });
-
-  const twin = cloudTwinOf(reg, cap);
-  const cloudEquivUsd = tokenCostUsd(twin?.pricing, inToks, outToks);
+  const twin = cloudTwinOf(store, tool);
   return {
     ...base,
     ok: ok && !error,
@@ -129,7 +119,7 @@ export async function testCapability(reg: CapabilityRegistry, cap: Capability, s
     inToks,
     outToks,
     electricityUsd: marginalElectricityUsd(ms, settings),
-    cloudEquivUsd,
+    cloudEquivUsd: tokenCostUsd(twin?.pricing, inToks, outToks),
     cloudModel: twin?.model,
     sample,
     error,
@@ -143,7 +133,7 @@ export interface RealizedCost {
   pricedElectricityUsd: number;
   /** Sum of the cloud-equivalent over runs that had a priced twin. */
   cloudEquivUsd: number;
-  /** Savings over those priced runs: cloud-equivalent minus the electricity those same runs used. */
+  /** Cloud-equivalent minus the electricity those same runs used. */
   savedUsd: number;
   pricedRuns: number;
   unpricedRuns: number;
@@ -174,40 +164,39 @@ export function realizedCost(tests: ModelTest[]): RealizedCost {
   };
 }
 
-/** A/B coverage proof: sample the default selection under each required purpose and count the picks.
- *  Every candidate that matches the filter must be reachable, and nothing outside it may be picked. */
-export function abCoverage(reg: CapabilityRegistry, purposes: string[][], draws = 300): { required: string[]; counts: Record<string, number>; reachable: string[]; leaked: string[] }[] {
-  return purposes.map((required) => {
-    const kind = (["jev-quality"].some((p) => required.includes(p)) ? "decision" : "llm") as CapabilityKind;
-    const eligible = reg.capabilities.filter((c) => c.state === "enabled" && c.kind === kind && c.host !== "cloudflare" && required.every((p) => c.purpose.includes(p)));
+/** The A/B coverage proof: sample the selection under each required tag set and count the picks. Every eligible
+ *  tool must be reachable, and nothing outside the filter may be picked. */
+export function abCoverage(store: ToolStore, requirements: { kind: "llm" | "decision"; requires: string[] }[], draws = 300, random: () => number = Math.random) {
+  return requirements.map(({ kind, requires }) => {
+    const eligible = store.tools.filter((t) => t.enabled && t.kind === kind && requires.every((r) => t.tags.includes(r)));
     const counts: Record<string, number> = {};
     const reached = new Set<string>();
     if (eligible.length) {
       for (let i = 0; i < draws; i++) {
-        const cap = selectCapability(reg, kind, { required, mode: "ab" });
-        counts[cap.id] = (counts[cap.id] ?? 0) + 1;
-        reached.add(cap.id);
+        const tool = select(store, kind, { requires, mode: "ab", random });
+        counts[tool.name] = (counts[tool.name] ?? 0) + 1;
+        reached.add(tool.name);
       }
     }
-    const eligibleIds = new Set(eligible.map((c) => c.id));
+    const eligibleNames = new Set(eligible.map((t) => t.name));
     return {
-      required,
+      kind,
+      requires,
       counts,
-      reachable: eligible.map((c) => c.id).filter((id) => reached.has(id)),
-      leaked: [...reached].filter((id) => !eligibleIds.has(id)),
+      reachable: eligible.map((t) => t.name).filter((n) => reached.has(n)),
+      leaked: [...reached].filter((n) => !eligibleNames.has(n)),
     };
   });
 }
 
 export interface ZeroDeps {
   discover: () => Promise<MeshModelDiscovery[]>;
-  /** Optional cloud catalog. When present, its models are recorded as recommended capabilities (never enabled),
-   *  so the cost comparison has its twins. A failed read is logged and the run goes on with local models. */
-  cloud?: { models: () => CatalogModel[]; address: string };
   /** Ask the user. Gets the candidates and the auto-selection; returns the chosen flags. */
   choose: (candidates: Candidate[], defaults: boolean[]) => Promise<boolean[]>;
   log: (line: string) => void;
   settings?: CostSettings;
+  /** Optional cloud catalog. Its models are recorded as disabled tools, so the cost comparison has its twins. */
+  cloud?: { models: () => CatalogModel[]; address: string };
 }
 
 export interface ZeroReport {
@@ -221,13 +210,13 @@ export interface ZeroReport {
   selectionMode: "ab";
 }
 
-/** The whole bootstrap. Pure orchestration over injected discovery, dialog and logging, so the CLI and the
- *  offline eval run exactly the same code. */
+/** The whole bootstrap. Orchestration over injected discovery, dialog and logging, so the CLI and the offline
+ *  eval run the same code. */
 export async function bootstrap(deps: ZeroDeps): Promise<ZeroReport> {
   const { log } = deps;
   const settings = deps.settings ?? DEFAULT_SETTINGS;
 
-  // 1. Discover the whole mesh. Hosts with no model server are still listed, with the reason.
+  // 1. Discover the whole mesh. Hosts with no model server are listed with the reason.
   const discovered = await deps.discover();
   log("== mesh");
   for (const d of discovered) {
@@ -239,70 +228,70 @@ export async function bootstrap(deps: ZeroDeps): Promise<ZeroReport> {
   // 2. The dialog: every discovered local model, pre-checked. The answer decides what gets enabled.
   const candidates = candidatesOf(discovered);
   if (candidates.length === 0) throw new Error("zero: no local models found on any mesh host");
-  const defaults = autoSelection(candidates);
-  const chosen = await deps.choose(candidates, defaults);
+  const chosen = await deps.choose(candidates, autoSelection(candidates));
   const picked = candidates.filter((_, i) => chosen[i]);
   if (picked.length === 0) throw new Error("zero: nothing selected");
   log(`\n== enabling ${picked.length} of ${candidates.length} model(s)`);
 
-  // 3. Enable each selection as a capability, then test it live. Local only: a cloud capability is never
-  //    enabled or called here. The probe is the same for every model, so the results compare directly.
-  const reg = loadRegistry();
-  reg.hosts = [
-    ...reg.hosts.filter((h) => !discovered.some((d) => d.host.name === h.host)),
-    ...discovered.filter((d) => d.models.length && d.address).map((d) => ({ host: d.host.name, address: d.address!, health: "online" as const, reachable: true, models: d.models, discoveredAt: Date.now() })),
-  ];
+  // 3. Record the discovery, and the cloud catalog if one was given. Nothing cloud is enabled here.
+  const store = loadStore();
+  for (const d of discovered) {
+    if (!d.address) continue;
+    store.hosts = [...store.hosts.filter((h) => h.host !== d.host.name), { host: d.host.name, address: d.address, lastProbeAt: Date.now(), error: d.error }];
+    for (const m of d.models) upsertMeshTool(store, d.host.name, d.address, m);
+  }
   if (deps.cloud) {
     try {
-      const r = syncCloudCapabilities(reg, deps.cloud.models(), deps.cloud.address);
-      log(`  cloud catalog: ${r.added} added, ${r.refreshed} refreshed (recommended only, none enabled)`);
+      const r = syncCloudTools(store, deps.cloud.models(), deps.cloud.address);
+      log(`  cloud catalog: ${r.added} added, ${r.refreshed} refreshed (disabled until enabled)`);
     } catch (e) {
       log(`  cloud catalog unavailable (${String((e as Error).message).slice(0, 120)}); continuing with local models`);
     }
   }
-  const enabled: Capability[] = [];
+
+  // 4. Enable the selection; every other local tool is switched off, so an earlier run cannot leave a model live.
+  const enabled: ModelTool[] = [];
+  for (const t of store.tools.filter((t) => t.source === "mesh" && t.enabled)) {
+    if (!picked.some((c) => c.host === t.host && c.id === t.model)) setEnabled(store, t.name, false);
+  }
   for (const c of picked) {
-    const cap = recommendCapability(reg, { host: c.host, model: c.id, description: `Local ${c.kind} model enabled by the zero bootstrap`, purpose: purposeOf(c.kind) });
-    enableCapability(reg, cap.id, { autoEnable: true });
-    enabled.push(cap);
+    const tool = store.tools.find((t) => t.host === c.host && t.model === c.id && t.source === "mesh");
+    if (!tool) throw new Error(`zero: ${c.host}/${c.id} was discovered but has no tool record`);
+    setEnabled(store, tool.name, true);
+    enabled.push(tool);
   }
-  // The dialog answer defines what is on. A local capability left unchecked is switched off, so a model
-  // enabled in an earlier run cannot stay live after the user unchecked it.
-  const keep = new Set(enabled.map((c) => c.id));
-  for (const c of reg.capabilities) {
-    if (c.host !== "cloudflare" && c.state === "enabled" && !keep.has(c.id)) disableCapability(reg, c.id);
-  }
-  saveRegistry(reg);
+  saveStore(store);
 
   log("\n== testing (live, local only)");
   const tests: ModelTest[] = [];
-  for (const [i, cap] of enabled.entries()) {
-    const t = await testCapability(reg, cap, settings);
+  for (const [i, tool] of enabled.entries()) {
+    const t = await testTool(store, tool, settings);
     tests.push(t);
-    const mark = t.ok ? "✓" : "✗";
     const cost = t.cloudEquivUsd === undefined ? "cloud: no priced twin" : `cloud-equiv $${t.cloudEquivUsd.toFixed(6)} vs electricity $${t.electricityUsd.toFixed(6)}`;
-    log(`  ${mark} [${i + 1}/${enabled.length}] ${cap.host}/${cap.model}  ${(t.ms / 1000).toFixed(1)}s  ${t.sample || t.error || ""}  (${cost})`);
+    log(`  ${t.ok ? "✓" : "✗"} [${i + 1}/${enabled.length}] ${tool.host}/${tool.model}  ${(t.ms / 1000).toFixed(1)}s  ${t.sample || t.error || ""}  (${cost})`);
   }
-  saveRegistry(reg);
+  saveStore(store);
 
-  // 4. Realized cost, and the A/B proof. Neither counts opportunity cost.
+  // 5. Realized cost, and the A/B proof. Neither counts opportunity cost.
   const realized = realizedCost(tests);
-  const ab = abCoverage(reg, [["jev-quality"], ["agent"]]);
-  saveRegistry(reg);
+  const ab = abCoverage(store, [
+    { kind: "decision", requires: kindTags("decision") },
+    { kind: "llm", requires: kindTags("llm") },
+  ]);
   log("\n== realized cost (electricity only; wait time not counted)");
   log(`  priced runs (${realized.pricedRuns}, a cloud twin exists): electricity $${realized.pricedElectricityUsd.toFixed(6)}  vs  cloud $${realized.cloudEquivUsd.toFixed(6)}  →  saved $${realized.savedUsd.toFixed(6)}`);
   log(`  all runs (${tests.length}): electricity $${realized.electricityUsd.toFixed(6)}  (${realized.unpricedRuns} run(s) have no priced cloud twin, so they are not compared)`);
-  log("\n== A/B selection (300 draws per required purpose)");
+  log("\n== A/B selection (300 draws per required tag set)");
   for (const row of ab) {
-    const parts = Object.entries(row.counts).map(([id, n]) => `${id}=${n}`).join("  ");
-    log(`  required [${row.required.join(", ")}]: ${row.reachable.length} reachable, ${row.leaked.length} leaked  ${parts}`);
+    const parts = Object.entries(row.counts).map(([name, n]) => `${name}=${n}`).join("  ");
+    log(`  ${row.kind} requires [${row.requires.join(", ")}]: ${row.reachable.length} reachable, ${row.leaked.length} leaked  ${parts}`);
   }
 
-  // 5. The verdict. A model that failed its test keeps its capability but blocks "systems a go".
+  // 6. The verdict. A failed test keeps its tool enabled and blocks "systems a go".
   const allTested = tests.every((t) => t.ok) && ab.every((r) => r.leaked.length === 0 && r.reachable.length > 0);
-  reg.selectionMode = "ab";
-  saveRegistry(reg);
-  log(`\nselection mode: ab (A/B random, filtered by the required capabilities)`);
+  store.selectionMode = "ab";
+  saveStore(store);
+  log(`\nselection mode: ab (A/B random, filtered by the required tags)`);
   if (allTested) {
     log("all models tested, systems a go.");
   } else {
@@ -313,7 +302,7 @@ export async function bootstrap(deps: ZeroDeps): Promise<ZeroReport> {
   const report: ZeroReport = { at: Date.now(), mesh, selected: picked.map((c) => `${c.host}/${c.id}`), tests, allTested, realized, ab, selectionMode: "ab" };
   notifyReady({
     at: report.at,
-    kind: "capability-ready",
+    kind: "ready",
     message: allTested
       ? `zero bootstrap: ${tests.length} local model(s) enabled and tested across ${mesh.filter((m) => m.models).length} host(s); A/B mode`
       : `zero bootstrap: not ready (${tests.filter((t) => !t.ok).length} failed)`,

@@ -60,7 +60,7 @@ devices:
   #   start_dirs: ["~/dpi-work"]
 
   # The Mac Studio: the local-only software factory. Models are not hardcoded here — the
-  # MCP capability registry (see docs/local-factory.md) discovers the Studio's llama-server
+  # MCP tool store (see docs/local-factory.md) discovers the Studio's llama-server
   # models and the factory's jev-quality gate routes to the local Clef decision model.
   # studio:
   #   name: Studio

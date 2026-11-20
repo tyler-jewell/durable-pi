@@ -36,16 +36,16 @@ Studio (127.0.0.1)
 ├── dpi-backend      create-app durable job: planner → builder → scout → test → review → document → deploy
 │     ├── coding agents ──► local LLM (OpenAI /v1)            ← the missing text model
 │     └── review phase ──► askJev ──► /v1/systemone (Clef)     ← already works, no code change
-├── dpi-mcp          MCP tools (create_app/check/test/push + capability lifecycle)
+├── dpi-mcp          MCP tools (create_app/check/test/push, model discovery, ask_model)
 └── llama-server     8080 (router, one GGUF at a time from ~/local/models/gguf)
 ```
 
-- **Every model call** (coding agents, `jev-quality`, the feedback loop) goes through the MCP
-  capability registry (`run_llm` / `run_decision`). The backend has no local-vs-cloud provider
-  and no model IDs (AGENTS.md). Local hosts are reached over Cloudflare Tunnel + Access (below).
-- **`jev-quality`** is the review gate's decision model. It is the registry's enabled `decision`
-  capability with `purpose: ["jev-quality"]`; the backend still reads `JEV_BASE_URL` until the
-  binding in "Remaining work" step 5 lands. The gate fails open to the model reviewer when Jev is
+- **Every model call** (coding agents, the review gate, the feedback loop) goes through an MCP tool:
+  `ask_model` picks an enabled model tool by its tags, or a caller names one. The backend has no
+  local-vs-cloud provider and no model IDs (AGENTS.md). Local hosts are reached over Cloudflare
+  Tunnel + Access (below).
+- **The review gate's decision model** is an enabled decision tool. The backend still reads
+  `JEV_BASE_URL` until the binding in "Remaining work" step 2 lands. The gate fails open to the model reviewer when Jev is
   unreachable, so a sleeping model server never blocks a run.
 
 ## What is built
@@ -54,18 +54,15 @@ Studio (127.0.0.1)
    Jev a bounded `choice` (approve/revise/reject) on `{ plan, facts, review }`; `approve`
    passes, anything else fails the run, and an unreachable Jev fails open to the model
    reviewer. `reviewVerdict()` is exported + unit-tested (`tsf.test.ts`, 25 backend tests).
-2. **Per-host capability registry + MCP lifecycle** (`dpi-mcp/src/capabilities.ts`,
-   `capability-tools.ts`, `host-inspect.ts`): agents drive discovery and enablement with MCP
-   tools alone — `discover_host` → `inspect_host` (ssh: config + launchd auto-start + a live
-   test) → `list_models` → `recommend_capability` → `enable_capability` (with `autoEnable`,
-   auto-turn-on) or leave it `recommended` in `list_capabilities` for a later settings toggle
-   → `run_llm` / `run_decision`. Registry at `~/.dpi-mcp/capabilities.json`
-   (`DPI_MCP_CAPABILITIES` override). The core eval `tests/zero-agent.eval.ts` proves the
-   whole loop offline: a zero-code-base agent, given only a host address + ssh target,
-   identifies the decision models/server/config/launchd auto-start, tests it live, proposes,
-   and — only if the config is right — is approved and validated with auto-turn-on set. 5 unit
-   tests + 1 eval.
-3. **Mesh over Cloudflare, step 1** (`dpi-mcp/src/mesh-config.ts`, `capabilities.ts`
+2. **Model tools** (`dpi-mcp/src/models.ts`, `tool-store.ts`, `model-tools.ts`,
+   `discovery-tools.ts`, `host-inspect.ts`): agents drive discovery and enablement with MCP tools
+   alone — `discover_models` (mesh and cloud) → `inspect_host` (ssh: config + launchd auto-start +
+   a live test) → `list_tools` → `enable_tool` → `ask_model`. The store is `~/.dpi-mcp/tools.json`
+   (`DPI_MCP_TOOLS` override). Each enabled model is served as its own tool. The core eval
+   `tests/zero-agent.eval.ts` proves the discovery loop offline: a zero-code-base agent, given only
+   a host address and an ssh target, identifies the decision models, the server, its configuration
+   and launchd auto-start, tests it live, and — only if the configuration is right — enables it.
+3. **Mesh over Cloudflare, step 1** (`dpi-mcp/src/mesh-config.ts`, `models.ts`
    `meshFetch`): the Studio's llama-server is reached at its Cloudflare Tunnel hostname behind a
    Cloudflare Access service-token policy. Discovery and every model call attach the token for
    mesh hostnames only. Verified: no token → `401`; token → the Studio's 9 models, a real local
@@ -126,34 +123,27 @@ Access apps and tokens are created with the `cf` CLI's account login. The API to
 
 ## Auto-discover / auto-implement
 
-The registry is **data derived from the host's own API**, not hand-written config:
+The tool store is **data derived from each host's own API**, not hand-written config:
 
-- `probeHost` reads `/health` + `/v1/models`; llama.cpp 1.0.0 already reports each model's
-  `output_modalities`, so `text` → `llm` and `decisions` → `decision` fall out of the probe.
-- `recommend_capability` turns a discovered model into a `Capability` with a `purpose`
-  (e.g. `["jev-quality"]`), `inputs` and `options`, in state `recommended`.
-- `enable_capability` supplies inputs/options and sets `enabled`; `resolveCapability(reg,
-  purpose)` is the single in-process binding the factory consumes. A `decision` capability
-  with `purpose: ["jev-quality"]` is what the reviewer gate should prefer over env vars.
-- A future host kind adds **one probe spec + one capability kind** — browsers, speech,
-  image models — and the same `discover → recommend → enable → run_*` loop applies.
+- `probeHost` reads `/health` and `/v1/models`. llama.cpp reports each model's `output_modalities`, so
+  `text` becomes a chat tool and `decisions` becomes a decision tool. Each model's served window comes
+  from the server's own arguments, and never from its trained length.
+- Discovery adds every model as a **disabled** tool. `enable_tool` serves it, and `ask_model` selects
+  among the enabled tools by the tags a caller requires.
+- A new host kind adds one probe and one tool kind. Browsers, speech, or image models use the same
+  `discover → enable → ask` loop.
 
 ## Remaining work (ordered)
 
-1. **Coding LLM on the Studio.** Done: the 9 registry models include text models with tool use
-   (Qwen3-30B-A3B, Mistral-Small-3.1-24B, gpt-oss-20b). Pick the coding default by benchmark, not
-   by name, through the registry.
-2. ~~`local` provider~~ — removed. Model access is the MCP registry only.
-3. ~~Mesh reachability~~ — done (step 3 above and the runbook).
-5. **PWA on iOS.** Serve the hub UI (`apps/dpi-playground`) from the Studio over HTTPS
+1. **PWA on iOS.** Serve the hub UI (`apps/dpi-playground`) from the Studio over HTTPS
    (the Cloudflare Tunnel gives that), and add a web app manifest + service worker + Apple touch
    icon so "Add to Home Screen" installs it as a standalone app. The hub already serves the
-   Vue frontend; the manifest/worker/icons are the new bits, plus iOS Safari specifics
+   Vue frontend; the manifest, worker, and icons are the new parts, plus iOS Safari specifics
    (`apple-mobile-web-app-capable`, full-screen `display: standalone`, no service-worker
    assumptions on iOS).
-6. **Bind the factory to enabled capabilities.** Have the review phase resolve `jev-quality`
-   through `selectCapability` (A/B, local-first) instead of `JEV_BASE_URL`, and the coding
-   agents resolve an enabled `llm` capability — the last "auto-implement" stitch.
+2. **Bind the factory to enabled tools.** Have the review phase call `ask_model` for the decision
+   kind (local tools first, by the `decision` tag) instead of `JEV_BASE_URL`, and the coding agents
+   call an enabled chat tool. This is the last "auto-implement" stitch.
 
 See `apps/dpi-mcp/README.md` for the tool list and `docs/tsf-factory-design.md` for the
 phase graph.

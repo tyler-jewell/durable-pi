@@ -38,7 +38,7 @@ async function set(patch: { name: string; enabled: boolean } | { prompt: string;
       <Puzzle :size="18" />
     </div>
     <p class="hint">
-      Custom harness capabilities for this agent. Turn one on and the next request uses it. The choice is stored
+      Custom harness extensions for this agent. Turn one on and the next request uses it. The choice is stored
       with the agent, so it survives restarts.
     </p>
     <p v-if="!data" class="task-empty">Loading extensions…</p>

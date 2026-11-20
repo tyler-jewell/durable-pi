@@ -1,15 +1,13 @@
-// The team feed: the capability lifecycle's "tell the team when it's ready" channel.
-// A readiness entry is appended to one shared JSON feed that any client — a settings UI,
-// another agent, or a human — can read. The proof that a discovered host capability was
-// validated, deployed and is ready lands here.
+// The team feed: readiness announcements that the team and any agent can read. Each entry is appended to one
+// shared JSON feed. A settings UI, another agent, or a person reads it.
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 
 export interface TeamFeedEntry {
   at: number;
-  kind: "capability-ready" | "capability-deployed" | "note";
-  capability?: string;
+  kind: "ready" | "deployed" | "note";
+  tool?: string;
   host?: string;
   model?: string;
   purpose?: string[];

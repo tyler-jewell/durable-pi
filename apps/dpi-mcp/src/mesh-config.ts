@@ -1,5 +1,5 @@
 // The mesh's host list and Cloudflare Access credentials. No dependencies, so the model transport
-// (capabilities.ts) and discovery (mesh.ts) can both use it without an import cycle.
+// (models.ts) and discovery (mesh.ts) can both use it without an import cycle.
 //
 // Every mesh host is a Cloudflare Tunnel hostname protected by Cloudflare Access. Calls to it carry
 // an Access service token (CF-Access-Client-Id / CF-Access-Client-Secret), read from the env var named

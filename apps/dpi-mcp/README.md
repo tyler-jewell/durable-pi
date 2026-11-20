@@ -57,21 +57,18 @@ run without them.
 | `app_verify` | full Modern Web Guidance browser verification (`scripts/app-verify.mts`) | — | no |
 | `delete_app` | archive the source to R2, delete the Workers deployment, remove `apps/<app>` + pipeline state | — | no |
 | `revive_app` | restore an archived app (≤30 days) and redeploy it to Cloudflare | — | no |
-| `list_models` | read each host's discovered LLMs / decision models | — | yes |
-| `list_capabilities` | the settings surface: every capability's state, inputs and options | — | yes |
-| `discover_host` | probe a host and record its models | — | yes |
-| `inspect_host` | SSH a host: model-server config, launchd auto-start, and a live test | — | yes |
-| `recommend_capability` | turn a discovered model into a named capability (recommended) | — | no |
-| `enable_capability` | supply inputs/options and turn a capability on | — | yes |
-| `disable_capability` | toggle a capability off (kept in settings) | — | yes |
-| `run_llm` | chat completion on an enabled LLM capability (auto: local hot-first, cloud fallback) | — | no |
-| `run_decision` | System One (Jev/Clef) decision on an enabled decision capability | — | no |
+| `discover_models` | probe the mesh hosts and/or read the cloud catalog; each model is recorded as a disabled tool | — | yes |
+| `list_tools` | every model tool: enabled or not, kind, tags, served window, price (never a secret) | — | yes |
+| `enable_tool` | serve a model tool: it appears in the server's tool list at once | — | no |
+| `disable_tool` | remove a model tool from the list; its record and tags are kept | — | no |
+| `ask_model` | the router: pick an enabled tool of a kind by the tags you require (A/B random), and call it | — | no |
+| `set_selection_mode` | how `ask_model` picks: `ab` (random, the default) or `auto` (most recently used, cloud as fallback) | — | yes |
+| `inspect_host` | SSH a host: server processes and their served window, launchd auto-start, and a live test | — | yes |
 | `list_usage` | local kWh + cost at the configured electricity price | — | yes |
-| `discover_cloud` | read the Cloudflare model catalog: every text model, its kind and its catalog price, recorded as recommended (never enabled) | — | yes |
 | `compare_costs` | per model: cloud $/min rate vs local electricity + wait-time opportunity | — | yes |
 | `update_settings` | edit electricity price/kWh and idle/load watts | — | yes |
 | `notify_ready` | append a readiness entry (with validation evidence) to the team feed | — | no |
-| `team_feed` | read the feed of capability-readiness announcements | — | yes |
+| `team_feed` | read the feed of readiness announcements | — | yes |
 
 Every tool returns `structuredContent` with a full ordered `events` array
 (`{ step, status, ts, detail, durMs }`) so the caller sees the progress of each step, and
@@ -113,9 +110,9 @@ Project config at `.pi/mcp.json` (committed):
 tools appear as `mcp__dpi_mcp__create_app`, `mcp__dpi_mcp__check`, `mcp__dpi_mcp__test`,
 `mcp__dpi_mcp__push`, `mcp__dpi_mcp__app_add_route`, `mcp__dpi_mcp__app_add_page`,
 `mcp__dpi_mcp__app_verify`, `mcp__dpi_mcp__delete_app`, `mcp__dpi_mcp__revive_app`,
-`mcp__dpi_mcp__list_models`, `mcp__dpi_mcp__list_capabilities`, `mcp__dpi_mcp__discover_host`,
-`mcp__dpi_mcp__inspect_host`, `mcp__dpi_mcp__recommend_capability`, `mcp__dpi_mcp__enable_capability`,
-`mcp__dpi_mcp__disable_capability`, `mcp__dpi_mcp__run_llm`, and `mcp__dpi_mcp__run_decision`.
+`mcp__dpi_mcp__discover_models`, `mcp__dpi_mcp__list_tools`, `mcp__dpi_mcp__enable_tool`,
+`mcp__dpi_mcp__disable_tool`, `mcp__dpi_mcp__ask_model`, `mcp__dpi_mcp__inspect_host`, and one
+`mcp__dpi_mcp__model_<host>_<model>` for each enabled model.
 
 For a bare-bones container, run the server where the container can reach it (for an Apple
 container that is the host bridge, `192.168.64.1:4789`), set `DPI_MCP_TOKEN` in the
@@ -153,71 +150,51 @@ A/B random and exits `0` only when every model passed. A host that refuses its t
 
 The proof run is in [docs/zero-bootstrap-run.md](../../docs/zero-bootstrap-run.md).
 
-## Capabilities (per-host LLMs and decision models)
+## Model tools
 
-A second registry, `~/.dpi-mcp/capabilities.json` (override with `DPI_MCP_CAPABILITIES`),
-holds two layers and is driven entirely by MCP tools:
+Every model this system knows about is one record in the tool store (`~/.dpi-mcp/tools.json`, override with
+`DPI_MCP_TOOLS`), local or cloud. A record that is **enabled** is served on this server as an MCP tool of
+its own name, `model_<host>_<model>`, and a disabled one is not in the list. Enabling and disabling change the
+list at once, with no restart.
 
-- **`hosts`** — raw discovery: `discover_host` probes a host's `/health` and `/v1/models`
-  and records each model as a chat `llm` or a `decision` model (llama.cpp 1.0.0 reports each
-  model's `output_modalities`).
-- **`capabilities`** — what agents have made usable: a named thing with a
-  `recommended → enabled/disabled` state, the `inputs` it needs and the `options` it exposes.
-
-An agent loops the whole lifecycle with tools alone:
+The loop an agent runs, with tools alone:
 
 ```
-discover_host (host, address, ssh?)   # probe → hosts[]
-inspect_host (host)                   # ssh config + launchd auto-start + a live test
-list_models                           # see what was found
-recommend_capability (host, model, purpose, inputs?, options?)   # → recommended
-enable_capability (id, inputs?, options?, autoEnable?)           # turn it on now, or…
-list_capabilities                 # …it stays here in settings for a later toggle
-run_llm / run_decision            # use an enabled capability (local default, cloud fallback)
-notify_ready (capability, host, model, validated, message)  # tell the team it's ready
-team_feed                         # read every readiness announcement, newest last
+discover_models (scope: mesh | cloud | all)   # every model found, added disabled
+list_tools (enabled?, kind?)                  # what exists and what is on
+enable_tool (name)                            # serve it now
+ask_model (kind, requires?, name?, messages | state + questions)   # call one of the enabled tools
+notify_ready (tool, validated, message)       # tell the team it is ready
+team_feed                                     # read every readiness announcement, newest last
 ```
 
-The proof runs the whole loop live with no hardcoded host facts (the host comes from `mesh.json`):
+`ask_model` is the one router. It filters the enabled tools of the kind by the tags the caller requires (every
+tag must match), then picks one **at random** (A/B), the default. `set_selection_mode auto` picks the most
+recently used mesh tool instead, with cloud as the fallback. Passing `name` calls that tool deterministically.
+A tool's tags are `chat` or `decision` (from the model's kind), plus any tags a caller adds.
 
-```bash
-DPI_MCP_SSH_HOST=studio npx tsx apps/dpi-mcp/scripts/prove-capability-loop.mts
-# 1. discover: studio exposes 9 models
-# 2. inspect: 4 llama-server process(es), 0 launchd auto-start(s), live test ok (1.4 s)
-# 3. recommend: studio-decision-clef-flash-q4-k-m (decision, state=recommended)
-# 4. gate: passed (llama-server present + live test ok)
-# 5. deploy: studio-decision-clef-flash-q4-k-m enabled (autoEnable=true)
-# 6. end-to-end: OpenJev-Q4_K_M → approve (20.2 s)
-# 7. notify: team feed now has 1 entry — validated and deployed on studio
-```
+Each call goes through the same path, whichever tool serves it. The **context budget** is checked first: the
+window the server runs with (llama-server `--ctx-size`, or the cloud catalog's `context_window`) is shared by
+the prompt and the output, so the output cap is clamped to what is left, and a prompt with no room is refused
+before anything is sent. A model whose served window is unknown is called unguarded, and the result says so.
+A cut-off answer is flagged `truncated` in its text and its structure. Every call is **metered**: local calls
+record their interval for kWh, and cloud calls are billed from the catalog price times the tokens.
 
-`notify_ready` writes the validation evidence to `~/.dpi-mcp/team-feed.json`
-(`DPI_MCP_TEAM_FEED` to override) — the "tell the team when ready" channel any agent or
-settings UI reads with `team_feed`.
+Discovery never reads a model's trained length as its window: `context_length` is the trained length, and the
+served window is the `--ctx-size` the server was started with.
 
-Model access is one surface: `run_llm`/`run_decision` call a capability by id (the agent
-decides deterministically), or, with no id, resolve **automatically** — the next-best-cheapest:
-an enabled local capability, most-recently-used first (so the already-loaded model is reused and
-no swap is paid), falling back to cloud. A capability carries a `transport` (`openai-compat` for a
-local llama-server/Ollama, `cloudflare-workers-ai` for the Cloudflare Workers AI API), so the
-same tool reaches both. Nothing is seeded by hand. The zero bootstrap (`scripts/zero.mts`) discovers and
-enables local models, and `discover_cloud` records the Cloudflare catalog as recommended cloud
-capabilities with their catalog prices. The registry always reflects the current system.
+`discover_models scope=cloud` reads the Cloudflare Workers AI catalog. A cloud model's kind comes from the
+catalog's own description (a decision model says so), and its price is stored on its record. Nothing in this
+repo names a model. `update_settings` edits `electricityUsdPerKwh` (default 0.15), `idleWatts` and `loadWatts`.
 
-**Local cost is metered.** Every local `run_llm`/`run_decision` call records its interval;
-`list_usage` reports total kWh (idle power over elapsed time plus load power over the **union** of
-call intervals, so concurrent/parallel calls share the load and never double-count) and the dollar
-cost at the configured price. `update_settings` edits `electricityUsdPerKwh` (global price/kWh,
-default 0.15), `idleWatts` and `loadWatts` — these are system settings, not hardcoded.
+**Pi's profile is generated from the store.** `scripts/pi-profile.mts <dir>` writes pi's `models.json` with
+each enabled local chat model's served window, and `env.sh` exports the Access header variables from the token
+file, with no values written. A model with an unknown window is skipped and listed, never guessed.
 
-`enable_capability` reports any missing required inputs and sets `autoEnable` (auto-turn-on:
-re-enable after startup/discovery without re-asking, default true); `disable_capability` keeps
-the capability (and its inputs/options) for re-enable. Secret input values are masked in every
-listing. `resolveCapability(registry, purpose)` is the in-process binding the factory uses — a
-`decision` capability with `purpose: ["jev-quality"]` is what the `create-app` reviewer
-gate should consume when enabled (see `docs/local-factory.md`).
+The **zero bootstrap** (`scripts/zero.mts`) is the one command that gets a system here: discover, choose,
+enable, test every chosen model live, report realized cost, and prove the A/B coverage. See the section above.
 
-The **core eval** `tests/zero-agent.eval.ts` proves the loop offline: a zero-code-base agent,
-given only a host address + ssh target, identifies the decision models, the server, its config
-and launchd auto-start, tests it live, proposes the capability, and — only if the config is
-right — gets approved and validated with auto-turn-on set.
+The **core eval** `tests/zero-agent.eval.ts` proves the discovery loop offline: a zero-code-base agent, given only
+a host address and an ssh target, identifies the decision models, the server, its configuration and launchd
+auto-start, tests it live, records the model as a disabled tool, and, only if the configuration is right,
+enables it and sees `ask_model` select it.

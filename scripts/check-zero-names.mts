@@ -1,5 +1,5 @@
 // The zero-names ratchet: the repo holds no model names. Nothing here is a model list. The names to look for
-// come from this machine's discovered registry (local hosts and the cloud catalog), so the repo never has to
+// come from this machine's tool store (local hosts and the cloud catalog), so the repo never has to
 // contain them, and the baseline stores only file paths and counts.
 //
 //   npx tsx scripts/check-zero-names.mts            # fail if any file has more names than its baseline
@@ -12,21 +12,21 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 
 const BASELINE = "scripts/zero-names-baseline.json";
-const REGISTRY = process.env.DPI_MCP_CAPABILITIES ?? join(homedir(), ".dpi-mcp", "capabilities.json");
+const TOOL_STORE = process.env.DPI_MCP_TOOLS ?? join(homedir(), ".dpi-mcp", "tools.json");
 const MIN_NAME = 4;
 
 /** Model-identifier patterns that need no discovery: a cloud catalog namespace and a quantization suffix. */
 const PATTERNS: RegExp[] = [/@cf\//, /-Q[2-8]_[A-Z0-9_]+/, /MXFP4/];
 
-/** Names from the discovered registry: the model id, the display name and the family of every capability. */
-export function discoveredNames(registryPath = REGISTRY): string[] {
-  if (!existsSync(registryPath)) {
-    console.warn(`zero-names: no registry at ${registryPath}; checking the patterns only (run discovery for the full check)`);
+/** Names from the tool store: the model id, the tool name and the family of every tool. */
+export function discoveredNames(storePath = TOOL_STORE): string[] {
+  if (!existsSync(storePath)) {
+    console.warn(`zero-names: no tool store at ${storePath}; checking the patterns only (run discovery for the full check)`);
     return [];
   }
-  const reg = JSON.parse(readFileSync(registryPath, "utf8")) as { capabilities?: { model?: string; name?: string; family?: string }[] };
+  const store = JSON.parse(readFileSync(storePath, "utf8")) as { tools?: { model?: string; name?: string; family?: string }[] };
   const names = new Set<string>();
-  for (const c of reg.capabilities ?? []) {
+  for (const c of store.tools ?? []) {
     for (const v of [c.model, c.name, c.family]) if (v && v.length >= MIN_NAME) names.add(v);
   }
   return [...names].sort((a, b) => b.length - a.length); // longest first, so "Foo-Bar" wins over "Foo"

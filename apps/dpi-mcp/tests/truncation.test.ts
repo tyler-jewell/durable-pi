@@ -4,7 +4,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { createServer } from "node:http";
 import { once } from "node:events";
-import { finishOf, runLlm } from "../src/capabilities.js";
+import { finishOf, runLlm } from "../src/models.js";
 
 test("finishOf: known reasons pass through; anything unknown is 'other', never silently 'stop'", () => {
   assert.equal(finishOf("stop"), "stop");

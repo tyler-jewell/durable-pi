@@ -22,6 +22,10 @@ command, and exits non-zero when any verdict is wrong.
 Add a monitor that checks an in-progress model download every five minutes, reports the percentage and the ETA to
 the team feed through `notify_ready`, and stops when the download is complete.
 
+## model-discovery-proof — pending
+
+Add a proof that takes a host with a local model server from nothing to a served tool: discover its models, inspect how its server runs over SSH, record the decision model as a disabled tool, enable it, make one live call through `ask_model`, and announce it to the team with `notify_ready`.
+
 ## e2e-lifecycle-audit — pending
 
 Write an audit of the app lifecycle (create, check, test, push, delete, revive): list every MCP tool and every

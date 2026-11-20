@@ -19,7 +19,7 @@ const TOKEN_ID = "eval-alpha.access";
 const TWIN_PRICE = { inPerM: 0.2, outPerM: 0.3 }; // the cloud twin's catalog price, from discovery
 const TOKEN_SECRET = "eval-secret";
 // Isolate every store before the modules load (they read these at import time).
-process.env.DPI_MCP_CAPABILITIES = join(dir, "capabilities.json");
+process.env.DPI_MCP_TOOLS = join(dir, "tools.json");
 process.env.DPI_MCP_METER = join(dir, "usage.json");
 process.env.DPI_MCP_TEAM_FEED = join(dir, "team-feed.json");
 process.env.DPI_MCP_MESH = join(dir, "mesh.json");
@@ -27,7 +27,8 @@ process.env.CF_ACCESS_EVAL_ALPHA = `${TOKEN_ID}:${TOKEN_SECRET}`;
 writeFileSync(process.env.DPI_MCP_MESH, JSON.stringify({ hosts: [{ name: "alpha", hostname: "127.0.0.1", service_token_env: "CF_ACCESS_EVAL_ALPHA" }] }));
 
 const { bootstrap } = await import("../src/zero.js");
-const { probeHost, loadRegistry, saveRegistry } = await import("../src/capabilities.js");
+const { probeHost } = await import("../src/models.js");
+const { loadStore, saveStore } = await import("../src/tool-store.js");
 const { loadMeter } = await import("../src/meter.js");
 const { tokenCostUsd } = await import("../src/cloud-catalog.js");
 const { loadTeamFeed } = await import("../src/notify.js");
@@ -72,13 +73,13 @@ async function discoverMock() {
 }
 
 function seedCloudTwin() {
-  const reg = loadRegistry();
-  reg.capabilities.push({
-    id: "cloudflare-llm-alpha-chat", name: CF_NAMESPACE + "vendor/alpha-chat", kind: "llm", host: "cloudflare", address: "http://127.0.0.1:9", model: CF_NAMESPACE + "vendor/alpha-chat",
-    transport: "cloudflare-workers-ai", family: "alpha-chat", description: "cloud twin (must never be called)", purpose: ["agent"], state: "recommended", autoEnable: false,
-    source: "agent", inputs: [], options: [], createdAt: 0, updatedAt: 0, pricing: TWIN_PRICE,
+  const store = loadStore();
+  store.tools.push({
+    name: "model_cloudflare_alpha_chat", source: "cloud", host: "cloudflare", address: "http://127.0.0.1:9", model: CF_NAMESPACE + "vendor/alpha-chat",
+    kind: "llm", transport: "cloudflare-workers-ai", family: "alpha-chat", description: "cloud twin (must never be called)", tags: ["chat"], enabled: false,
+    pricing: TWIN_PRICE, discoveredAt: 0, updatedAt: 0,
   });
-  saveRegistry(reg);
+  saveStore(store);
 }
 
 test("zero bootstrap: discovers the mesh, enables and tests every local model, reports realized cost, goes A/B", async () => {
@@ -109,7 +110,7 @@ test("zero bootstrap: discovers the mesh, enables and tests every local model, r
   assert.ok(chat?.cloudEquivUsd !== undefined, "the chat run is priced against its cloud twin");
   assert.ok(Math.abs((chat?.cloudEquivUsd ?? 0) - (tokenCostUsd(TWIN_PRICE, 40, 2) ?? NaN)) < 1e-12, "priced from the actual tokens");
   assert.equal(report.tests.find((t) => t.kind === "decision")?.cloudEquivUsd, undefined, "no cloud twin, so not compared");
-  assert.equal(loadRegistry().capabilities.find((c) => c.id === "cloudflare-llm-alpha-chat")?.state, "recommended", "the cloud twin is never enabled");
+  assert.equal(loadStore().tools.find((t) => t.name === "model_cloudflare_alpha_chat")?.enabled, false, "the cloud twin is never enabled");
 
   // Realized cost: the priced run's electricity against its cloud equivalent; the decision run is not compared.
   assert.equal(report.realized.pricedRuns, 1);
@@ -125,12 +126,12 @@ test("zero bootstrap: discovers the mesh, enables and tests every local model, r
   assert.match(log.at(-1) ?? "", /systems a go|all models tested/);
 
   // The registry is in A/B mode and the team hears about it.
-  assert.equal(loadRegistry().selectionMode, "ab");
-  assert.equal(loadTeamFeed().at(-1)?.kind, "capability-ready");
+  assert.equal(loadStore().selectionMode, "ab");
+  assert.equal(loadTeamFeed().at(-1)?.kind, "ready");
   assert.ok(loadMeter().calls.length >= 2, "every validation run is metered");
 });
 
-test("zero bootstrap: a deselected decision model means the jev-quality gate is not ready", async () => {
+test("zero bootstrap: a deselected decision model means no decision tool is ready", async () => {
   const report = await bootstrap({
     discover: discoverMock,
     choose: async (candidates) => candidates.map((c) => c.kind !== "decision"), // turn off every decision model
@@ -138,7 +139,7 @@ test("zero bootstrap: a deselected decision model means the jev-quality gate is 
   });
   assert.equal(report.selected.length, 1);
   assert.equal(report.allTested, false, "no jev-quality candidate means not ready");
-  assert.equal(report.ab.find((r) => r.required.includes("jev-quality"))?.reachable.length, 0);
+  assert.equal(report.ab.find((r) => r.requires.includes("decision"))?.reachable.length, 0);
 });
 
 test.after(async () => {

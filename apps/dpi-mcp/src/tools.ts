@@ -9,7 +9,8 @@ import { z } from "zod";
 import { appDir, clip, fingerprint, loadState, saveState, run, ROOT, STATE_DIR } from "./util.js";
 import type { PipelineState } from "./util.js";
 import { archiveApp, restoreApp } from "./archive.js";
-import { registerCapabilityTools } from "./capability-tools.js";
+import { registerDiscoveryTools } from "./discovery-tools.js";
+import type { ModelTools } from "./model-tools.js";
 
 // ------------------------------------------------------------------ progress / events
 
@@ -225,8 +226,8 @@ async function runCadence(app: string, includePush: boolean, p: Progress) {
 
 // ------------------------------------------------------------------ tool registration
 
-export function registerTools(server: McpServer): void {
-  registerCapabilityTools(server);
+export function registerTools(server: McpServer, models: ModelTools): void {
+  registerDiscoveryTools(server, models);
   server.registerTool(
     "create_app",
     {

@@ -284,7 +284,7 @@ export class Store {
       defaultModel: this.defaultModel(),
       storage: { dataDir: this.options.dataDir, catalogPath: this.catalogPath, appStatePath: this.sharedStatePath },
       codeDir: CODE_DIR,
-      capabilities: ["events", "docs", "demo", "jobs"],
+      features: ["events", "docs", "demo", "jobs"],
       jobs: JOB_DEFS,
     };
   }

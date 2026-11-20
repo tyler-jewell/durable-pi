@@ -1,11 +1,11 @@
 import { QUANT } from "./naming-fixtures.js";
-// Core eval: the zero-code-base agent probes a remote host for decision-model capabilities.
+// Core eval: the zero-code-base agent probes a remote host for decision models.
 //
 // The agent is given only a host address + an ssh target and no facts about the host. It must
 //  1. identify the decision models, 2. identify the model server, 3. test the server live,
 //  4. determine how it is configured, 5. determine whether any launchd service auto-starts it,
-//  6. propose a capability, and then — only if the config is right — the eval approves it and
-//  7. validates the capability was added with auto-turn-on set.
+//  6. record the model as a disabled tool, and then — only if the config is right — the eval
+//  enables it and 7. checks that the decision tool is what `ask_model` selects for the decision kind.
 //
 // Everything the agent derives comes from `probeHost` / `inspectHost`; the ground truth lives
 // in the mock host + mock ssh below. The eval is offline and deterministic (<1 s).
@@ -16,13 +16,8 @@ import { once } from "node:events";
 import { chmodSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import {
-  enableCapability,
-  probeHost,
-  recommendCapability,
-  resolveCapability,
-  type CapabilityRegistry,
-} from "../src/capabilities.js";
+import { probeHost } from "../src/models.js";
+import { emptyStore, select, setEnabled, upsertMeshTool } from "../src/tool-store.js";
 import { inspectHost } from "../src/host-inspect.js";
 
 const GROUND_TRUTH = {
@@ -39,7 +34,7 @@ function listen(handler: (req: IncomingMessage, res: ServerResponse) => void) {
   return once(server, "listening").then(() => server);
 }
 
-test("zero-code-base agent discovers, tests, proposes and (if right) approves a decision capability", async () => {
+test("zero-code-base agent discovers, tests, records and (if right) approves a decision tool", async () => {
   // Mock remote host: llama.cpp-like decision server.
   const host = await listen((req, res) => {
     res.setHeader("content-type", "application/json");
@@ -110,17 +105,12 @@ test("zero-code-base agent discovers, tests, proposes and (if right) approves a 
     assert.ok((live?.ms ?? 0) >= 0);
     assert.match(live?.sample ?? "", /noul/);
 
-    // 6. It proposes the capability.
-    const reg: CapabilityRegistry = { hosts: [discovered], capabilities: [] };
-    const cap = recommendCapability(reg, {
-      host: "studio",
-      model: decision.id,
-      description: "Local System One decision model for the factory's jev-quality gate",
-      purpose: ["jev-quality"],
-    });
-    assert.equal(cap.state, "recommended");
-    assert.equal(cap.kind, "decision");
-    assert.equal(cap.model, decision.id);
+    // 6. It records the model as a tool, disabled until it is approved.
+    const store = emptyStore();
+    const tool = upsertMeshTool(store, "studio", discovered.address ?? "", decision, Date.now());
+    assert.equal(tool.enabled, false);
+    assert.equal(tool.kind, "decision");
+    assert.equal(tool.model, decision.id);
 
     // --- Approve only if the agent got the config right (the eval's gate) ---
     const configRight =
@@ -132,12 +122,11 @@ test("zero-code-base agent discovers, tests, proposes and (if right) approves a 
       live?.kind === "decision";
     assert.ok(configRight, "the agent got the config right, so we approve");
 
-    // 7. Validate the capability was added with auto-turn-on set.
-    enableCapability(reg, cap.id, { autoEnable: true });
-    const bound = resolveCapability(reg, "jev-quality");
-    assert.equal(bound?.id, cap.id, "the capability is bound to jev-quality");
-    assert.equal(bound?.state, "enabled");
-    assert.equal(bound?.autoEnable, true, "auto-turn-on is set");
+    // 7. Approved: the tool is enabled, and it is the one `ask_model` selects for the decision kind.
+    setEnabled(store, tool.name, true);
+    const picked = select(store, "decision", { requires: ["decision"] });
+    assert.equal(picked.name, tool.name, "the decision tool is what the router selects");
+    assert.equal(picked.enabled, true);
   } finally {
     process.env.DPI_MCP_SSH = prevSsh;
     rmSync(sshDir, { recursive: true, force: true });

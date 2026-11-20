@@ -5,8 +5,8 @@
 //
 // Secrets never enter the generated files. Access headers reference environment variables by name, and env.sh
 // reads the token file at run time.
-import type { CapabilityRegistry } from "./capabilities.js";
 import type { MeshHost } from "./mesh-config.js";
+import type { ToolStore } from "./tool-store.js";
 
 export interface PiProfile {
   /** The contents of models.json. */
@@ -27,14 +27,14 @@ export function headerVarsFor(serviceTokenEnv: string): { id: string; secret: st
 /** The provider key for a host: a stable, lowercase name, never a model name. */
 const providerKey = (host: string) => `mesh-${host.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`;
 
-export function buildPiProfile(reg: CapabilityRegistry, mesh: MeshHost[]): PiProfile {
+export function buildPiProfile(store: ToolStore, mesh: MeshHost[]): PiProfile {
   const providers: Record<string, unknown> = {};
   const skipped: { id: string; reason: string }[] = [];
   const headerVars: string[] = [];
 
-  for (const cap of reg.capabilities.filter((c) => c.state === "enabled" && c.kind === "llm" && c.host !== "cloudflare")) {
-    if (cap.contextWindow === undefined) {
-      skipped.push({ id: cap.id, reason: "the served context window is unknown; re-run discovery for this host" });
+  for (const cap of store.tools.filter((t) => t.enabled && t.kind === "llm" && t.source === "mesh")) {
+    if (cap.servedContext === undefined) {
+      skipped.push({ id: cap.name, reason: "the served context window is unknown; re-run discovery for this host" });
       continue;
     }
     const key = providerKey(cap.host);
@@ -54,7 +54,7 @@ export function buildPiProfile(reg: CapabilityRegistry, mesh: MeshHost[]): PiPro
       models: [],
     }) as { models: { id: string; contextWindow: number; maxTokens: number }[] };
     // The output cap is half the window: a turn keeps room for the prompt, the tool schemas and the history.
-    provider.models.push({ id: cap.model, contextWindow: cap.contextWindow, maxTokens: Math.max(256, Math.floor(cap.contextWindow / 2)) });
+    provider.models.push({ id: cap.model, contextWindow: cap.servedContext, maxTokens: Math.max(256, Math.floor(cap.servedContext / 2)) });
   }
 
   const tokenEnvs = [...new Set(mesh.filter((h) => h.serviceTokenEnv).map((h) => h.serviceTokenEnv!))];

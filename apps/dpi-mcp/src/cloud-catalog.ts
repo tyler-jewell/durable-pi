@@ -1,11 +1,12 @@
 // Cloud discovery: the Cloudflare Workers AI catalog is the source of truth for cloud models, their kind and
 // their prices. Nothing in this repo names a cloud model. The catalog is read at discovery time (`cf ai models
-// list`), and every model's price is stored on its capability.
+// list`), and every model's price is stored on its tool record.
 //
 // Kind comes from the provider's own description: a text-generation model whose description says it is a
 // decision model (or System One-style) is a `decision` model, and every other text-generation model is `llm`.
 import { execFileSync } from "node:child_process";
-import { familyOf, loadRegistry, saveRegistry, slug, type Capability, type CapabilityRegistry } from "./capabilities.js";
+import { familyOf } from "./models.js";
+import { kindTags, toolNameOf, type ModelTool, type ToolStore } from "./tool-store.js";
 
 export interface Price {
   /** USD per million input tokens. */
@@ -95,50 +96,40 @@ export function fetchCatalog(bin = process.env.DPI_MCP_CF ?? "cf", timeoutMs = 6
   return models;
 }
 
-/** Add or refresh one cloud capability per catalog model. Existing state is kept (a model a person enabled
- *  stays enabled), and prices always come from the latest catalog. New models are recommended, never enabled. */
-export function syncCloudCapabilities(reg: CapabilityRegistry, models: CatalogModel[], address: string, now = Date.now()): { added: number; refreshed: number } {
+/** Add or refresh one cloud tool per catalog model. A tool a person enabled stays enabled, and its tags stay.
+ *  Prices and the served window always come from the latest catalog. A new model is disabled until enabled. */
+export function syncCloudTools(store: ToolStore, models: CatalogModel[], address: string, now = Date.now()): { added: number; refreshed: number } {
   let added = 0;
   let refreshed = 0;
   for (const m of models) {
-    const id = `cloudflare-${m.kind}-${slug(m.name.split("/").pop() ?? m.name)}`;
-    const existing = reg.capabilities.find((c) => c.id === id);
-    const cap: Capability = {
-      id,
-      name: m.name,
-      kind: m.kind,
+    const name = toolNameOf("cloudflare", m.name);
+    const existing = store.tools.find((t) => t.name === name);
+    const tool: ModelTool = {
+      name,
+      source: "cloud",
       host: "cloudflare",
       address,
       model: m.name,
+      kind: m.kind,
       transport: "cloudflare-workers-ai",
       family: familyOf(m.name),
       description: m.description.slice(0, 400) || "Cloudflare Workers AI model",
-      purpose: existing?.purpose ?? (m.kind === "decision" ? ["jev-quality"] : ["agent"]),
-      state: existing?.state ?? "recommended",
-      autoEnable: existing?.autoEnable ?? false,
-      source: "agent",
-      inputs: existing?.inputs ?? [{ name: "api_key", description: "Cloudflare API token for Workers AI", required: true, secret: true }],
-      options: existing?.options ?? [],
+      tags: [...new Set([...kindTags(m.kind), ...(existing?.tags ?? []).filter((t) => t !== "chat" && t !== "decision")])],
+      enabled: existing?.enabled ?? false,
+      servedContext: m.contextWindow,
       pricing: m.price,
-      contextWindow: m.contextWindow,
-      createdAt: existing?.createdAt ?? now,
+      secretEnv: "CLOUDFLARE_API_KEY",
+      discoveredAt: existing?.discoveredAt ?? now,
       updatedAt: now,
+      lastUsedAt: existing?.lastUsedAt,
     };
     if (existing) {
-      reg.capabilities = reg.capabilities.map((c) => (c.id === id ? cap : c));
+      store.tools = store.tools.map((t) => (t.name === name ? tool : t));
       refreshed++;
     } else {
-      reg.capabilities.push(cap);
+      store.tools.push(tool);
       added++;
     }
   }
   return { added, refreshed };
-}
-
-/** Discover the catalog and persist it. Used by the tool and by the zero bootstrap. */
-export function discoverCloud(accountId: string, models: CatalogModel[] = fetchCatalog(), reg: CapabilityRegistry = loadRegistry()) {
-  const address = `https://api.cloudflare.com/client/v4/accounts/${accountId}`;
-  const result = syncCloudCapabilities(reg, models, address);
-  saveRegistry(reg);
-  return { ...result, total: models.length, decision: models.filter((m) => m.kind === "decision").length, priced: models.filter((m) => m.price).length };
 }

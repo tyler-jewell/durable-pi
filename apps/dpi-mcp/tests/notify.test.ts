@@ -15,8 +15,8 @@ test("notifyReady appends to the shared team feed and loadTeamFeed reads it", ()
     assert.deepEqual(loadTeamFeed(), []);
     const entries = notifyReady({
       at: 1,
-      kind: "capability-ready",
-      capability: "studio-decision-clef-flash-q4-k-m",
+      kind: "ready",
+      tool: "model_studio_decision_delta_judge",
       host: "studio",
       model: "Delta-Judge" + QUANT,
       purpose: ["jev-quality"],
@@ -24,7 +24,7 @@ test("notifyReady appends to the shared team feed and loadTeamFeed reads it", ()
       message: "validated and deployed",
     });
     assert.equal(entries.length, 1);
-    assert.equal(loadTeamFeed()[0].capability, "studio-decision-clef-flash-q4-k-m");
+    assert.equal(loadTeamFeed()[0].tool, "model_studio_decision_delta_judge");
     assert.equal(loadTeamFeed()[0].validated?.endToEndMs, 42);
   } finally {
     process.env.DPI_MCP_TEAM_FEED = prev;

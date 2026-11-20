@@ -1,7 +1,7 @@
 // Mesh discovery over Cloudflare: probe every mesh host (from mesh.json) for a local model server.
 // Every probe goes through Cloudflare Tunnel + Access with the host's service token. No tailscale,
 // no private IPs, no hardcoded host list.
-import { probeHost, type HostCapability } from "./capabilities.js";
+import { probeHost, type HostProbe } from "./models.js";
 import { accessHeaders, loadMeshConfig, type MeshHost } from "./mesh-config.js";
 
 export type { MeshHost } from "./mesh-config.js";
@@ -11,7 +11,7 @@ export const listMeshHosts = (): MeshHost[] => loadMeshConfig().hosts;
 export interface MeshModelDiscovery {
   host: MeshHost;
   address?: string;
-  models: HostCapability["models"];
+  models: HostProbe["models"];
   error?: string;
 }
 

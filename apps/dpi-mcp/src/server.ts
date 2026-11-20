@@ -7,6 +7,7 @@ import { createMcpExpressApp } from "@modelcontextprotocol/sdk/server/express.js
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import { isInitializeRequest } from "@modelcontextprotocol/sdk/types.js";
 import { registerTools } from "./tools.js";
+import { ModelTools } from "./model-tools.js";
 
 const PORT = Number(process.env.DPI_MCP_PORT ?? 4789);
 const HOST = process.env.DPI_MCP_HOST ?? "127.0.0.1";
@@ -19,9 +20,12 @@ if (!TOKEN || TOKEN.length < 16) {
   process.exit(2);
 }
 
+const models = new ModelTools();
+
 const newServer = () => {
   const server = new McpServer({ name: NAME, version: VERSION }, { capabilities: { logging: {} } });
-  registerTools(server);
+  registerTools(server, models);
+  models.attach(server);
   return server;
 };
 
@@ -76,7 +80,10 @@ app.all("/mcp", async (req, res) => {
   await transport.handleRequest(req, res, req.body);
   const sid = transport.sessionId;
   if (sid) {
-    transport.onclose = () => sessions.delete(sid);
+    transport.onclose = () => {
+      sessions.delete(sid);
+      models.detach(server);
+    };
     sessions.set(sid, { transport, open: 0, lastActive: Date.now() });
   }
 });

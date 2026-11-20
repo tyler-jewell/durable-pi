@@ -3,7 +3,7 @@
 // decision/LLM test against the host's HTTP endpoint. This is what turns "agents use MCP for
 // 99% of their work" into reality — the agent asks for an inspection, it never hand-rolls ssh.
 import { spawnSync } from "node:child_process";
-import { meshFetch, runDecision, runLlm, type DecisionQuestion } from "./capabilities.js";
+import { meshFetch, runDecision, runLlm, type DecisionQuestion } from "./models.js";
 
 export interface HostProcess {
   pid: number;

@@ -4,7 +4,7 @@ import assert from "node:assert/strict";
 import { createServer, type IncomingMessage } from "node:http";
 import { once } from "node:events";
 import { ContextBudgetError } from "../src/context.js";
-import { probeHost, runLlm } from "../src/capabilities.js";
+import { probeHost, runLlm } from "../src/models.js";
 
 function server(handler: (req: IncomingMessage, body: Record<string, unknown>) => { status?: number; json: unknown }) {
   const seen: Record<string, unknown>[] = [];
