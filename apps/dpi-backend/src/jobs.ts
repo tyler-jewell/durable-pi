@@ -144,6 +144,24 @@ export const JOB_DEFS: JobDef[] = [
     resultPath: `/${RESULT_ROOT}/create-app`,
     seconds: 90,
   },
+  {
+    id: "feedback",
+    title: "Feedback",
+    summary:
+      "See something, say something: triage an observation into a change, make it, and pass the same jev-quality review gate every job uses. A rejection is the review's reason (the root cause).",
+    phases: [
+      { id: "triage", label: "Triage", summary: "A subagent turns the observation into a concrete, scoped change" },
+      { id: "work", label: "Work", summary: "A subagent implements the change and runs the checks" },
+      { id: "review", label: "Review", summary: "The jev-quality gate returns approve, revise or reject" },
+      { id: "deploy", label: "Deploy", summary: "Deploy to Cloudflare Workers (skipped without credentials)" },
+    ],
+    inputs: [
+      { name: "observation", type: "string", default: "", description: "What you saw — the bug, improvement, idea or question, with any evidence" },
+    ],
+    approval: false,
+    resultPath: `/${RESULT_ROOT}/feedback`,
+    seconds: 60,
+  },
 ];
 
 export const jobDef = (id: string) => JOB_DEFS.find((d) => d.id === id);
@@ -216,6 +234,10 @@ const DEFAULT_PROMPTS: Record<string, { system: string; user: string }> = {
     system: "You are the planner of a software factory. Turn the request into a concrete plan. Do not edit files; reply with the plan only.",
     user: "Description: {{description}}\n\nWrite the plan (goal, pages, data, stack, acceptance checks).",
   },
+  triager: {
+    system: "You are the triager of a software factory. Turn a raw observation (a bug, improvement, idea or question) into a concrete, scoped change. Do not edit files; reply with the plan only.",
+    user: "Observation: {{observation}}\n\nWrite the plan: what exactly to change, why, and the acceptance check that proves it.",
+  },
   builder: {
     system: "You are the builder of a software factory. Implement the plan in this folder, then run the project's typecheck and build until they pass. You may create and edit files.",
     user: "App name: {{name}}\n\nPlan:\n{{plan}}\n\nImplement it, then make typecheck and build pass.",
@@ -280,6 +302,21 @@ export function reviewVerdict(answers: Record<string, JevAnswer> | undefined, mo
   }
   const reason = `jev-quality ${verdict.choice} (${verdict.confidence.toFixed(2)})`;
   return verdict.choice === "approve" ? { ok: true, reason } : { ok: false, reason: `${reason}: ${clip(modelVerdict, 160)}` };
+}
+
+/** The shared review phase: a reviewer subagent returns approve/revise/reject, Jev judges the
+ *  same facts, and the confidence-aware verdict is the single gate every job's review uses. */
+async function runReview(p: Phase, plan: string, facts: string): Promise<{ ok: boolean; reason: string }> {
+  const pr = await tsfPrompt(p, "reviewer", { plan, facts });
+  const modelVerdict = (await p.agent(pr.user, { tools: READ_TOOLS, instructions: pr.system })).trim();
+  let jev: Record<string, JevAnswer> | undefined;
+  try {
+    jev = await askJev({ plan, facts, review: modelVerdict }, REVIEW_QUESTIONS);
+  } catch {
+    jev = undefined; // Jev unreachable: fail open to the model reviewer's verdict.
+  }
+  const verdict = reviewVerdict(jev, modelVerdict);
+  return { ok: verdict.ok, reason: verdict.reason };
 }
 
 
@@ -457,15 +494,7 @@ const HANDLERS: Record<string, Record<string, Handler>> = {
     review: async (p) => {
       const plan = String(p.data.plan ?? "");
       const facts = String(p.data.facts ?? "");
-      const pr = await tsfPrompt(p, "reviewer", { plan, facts });
-      const modelVerdict = (await p.agent(pr.user, { tools: READ_TOOLS, instructions: pr.system })).trim();
-      let jev: Record<string, JevAnswer> | undefined;
-      try {
-        jev = await askJev({ plan, facts, review: modelVerdict }, REVIEW_QUESTIONS);
-      } catch {
-        jev = undefined; // Jev unreachable: fail open to the model reviewer's verdict.
-      }
-      const verdict = reviewVerdict(jev, modelVerdict);
+      const verdict = await runReview(p, plan, facts);
       if (verdict.ok) return { done: verdict.reason };
       throw Error(verdict.reason);
     },
@@ -486,6 +515,42 @@ const HANDLERS: Record<string, Record<string, Handler>> = {
       const out = await p.exec("npx wrangler deploy", "npx wrangler deploy");
       const url = out.match(/https:\/\/[a-z0-9.-]+\.workers\.dev/)?.[0];
       await p.saveResult({ run: p.run.n, at: new Date(p.now()).toISOString(), app: String(p.data.name), plan: String(p.data.plan ?? ""), deployed: true, url: url ?? null });
+      return { done: url ?? "Deployed" };
+    },
+  },
+  feedback: {
+    triage: async (p) => {
+      const observation = String(p.input.observation);
+      const pr = await tsfPrompt(p, "triager", { observation });
+      const plan = await p.agent(pr.user, { tools: READ_TOOLS, instructions: pr.system });
+      return { done: clip(plan, 120), data: { plan } };
+    },
+    work: async (p) => {
+      const pr = await tsfPrompt(p, "builder", { name: "feedback", plan: String(p.data.plan ?? "") });
+      await p.agent(pr.user, { tools: WRITE_TOOLS, instructions: pr.system });
+      const hasPkg = (await p.shell("test -f package.json && echo yes || echo no")).out.trim() === "yes";
+      if (hasPkg) {
+        await p.exec("npm run typecheck", "npm run typecheck");
+      }
+      return { done: "change implemented and typechecked" };
+    },
+    review: async (p) => {
+      const plan = String(p.data.plan ?? "");
+      const verdict = await runReview(p, plan, String(p.input.observation));
+      if (verdict.ok) return { done: verdict.reason };
+      throw Error(verdict.reason);
+    },
+    deploy: async (p) => {
+      const token = process.env.CLOUDFLARE_API_TOKEN ?? "";
+      const hasWrangler = (await p.shell("test -f wrangler.jsonc && echo yes || echo no")).out.trim() === "yes";
+      if (!token || !hasWrangler) {
+        await p.note("Skipping deploy", !token ? "CLOUDFLARE_API_TOKEN not set" : "no wrangler.jsonc");
+        await p.saveResult({ run: p.run.n, at: new Date(p.now()).toISOString(), observation: String(p.input.observation), deployed: false });
+        return { done: "Skipped deploy" };
+      }
+      const out = await p.exec("npx wrangler deploy", "npx wrangler deploy");
+      const url = out.match(/https:\/\/[a-z0-9.-]+\.workers\.dev/)?.[0];
+      await p.saveResult({ run: p.run.n, at: new Date(p.now()).toISOString(), observation: String(p.input.observation), deployed: true, url: url ?? null });
       return { done: url ?? "Deployed" };
     },
   },
