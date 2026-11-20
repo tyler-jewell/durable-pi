@@ -46,6 +46,11 @@ setup:
     cd pi/extensions/lsp && npm install --no-audit --no-fund
     @echo "setup: pre-commit gate installed (core.hooksPath=.githooks); servers and type packages installed"
 
+verify-setup:
+    @test "$(git config --get core.hooksPath)" = ".githooks" && echo "PASS: git hooks path is .githooks"
+    @test -f pi/extensions/lsp/index.ts && echo "PASS: LSP extension exists"
+    @command -v node >/dev/null 2>&1 && echo "PASS: node is on PATH"
+
 # Install dependencies for every network app
 install:
     cd apps/dpi-sdk && npm install --no-audit --no-fund

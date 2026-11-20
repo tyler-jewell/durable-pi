@@ -97,3 +97,7 @@ just tui attach local         # terminal client on the same device
 just net status               # probe every device in dpi-network.yaml
 just net up <id>              # after uncommenting an ssh, exe-dev, apple-container or macos-vm example in dpi-network.yaml
 ```
+
+### Self-verify
+
+After setup, run `just verify-setup`. Treat any non-zero exit code as a failed install.

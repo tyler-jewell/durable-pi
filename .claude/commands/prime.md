@@ -6,6 +6,10 @@ description: Understand Durable Pi: durable agents that run on any device, the v
 
 Orient yourself in the Durable Pi repo. Durable pi agents live on a device that runs `dpi-backend` and commit every step to SQLite, so their work survives restarts and outlives every client. Thin clients (the web hub, `dpi-tui`, curl) reach them by URL and bearer token.
 
+## Capability layers
+
+See [the agent capability convention](../../docs/agent-capability-convention.md) for the four layers: skill, subagent, command, and justfile.
+
 ## Workflow
 
 1. Run `git ls-files`, skipping `images/`, icons and lockfiles. The apps are `apps/dpi-sdk`, `apps/dpi-backend`, `apps/dpi-playground` (hub and Vue client), `apps/dpi-tui`, `apps/base-app` (shared Vue shell), and `apps/pi-object` (Durable Object agent).
