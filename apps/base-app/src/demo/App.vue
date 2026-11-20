@@ -146,22 +146,31 @@ const tick = () => {
 const timer = setInterval(tick, 800);
 onBeforeUnmount(() => clearInterval(timer));
 
-const notice = ref<{ title: string; body: string } | null>(null);
+const notice = ref<{ title: string; body: string; url: string } | null>(null);
 const QUESTION = "Publish the release notes?";
-function showNotice(title = "Approval waiting", body = QUESTION) {
-  notice.value = { title, body };
+function showNotice(title = "Approval waiting", body = QUESTION, url = "/#approval") {
+  notice.value = { title, body, url };
 }
 function openApproval() {
+  const url = notice.value?.url || "/#approval";
   notice.value = null;
+  if (url.startsWith("http")) {
+    location.assign(url);
+    return;
+  }
+  if (url.includes("#")) location.hash = url.slice(url.indexOf("#"));
   document.getElementById("approval")?.scrollIntoView({ block: "center" });
   document.querySelector<HTMLButtonElement>("#approval button.primary")?.focus();
 }
 onMounted(() => {
   void registerPushWorker();
   navigator.serviceWorker?.addEventListener("message", (event: MessageEvent) => {
-    const data = event.data as { type?: string; title?: string; body?: string };
-    if (data?.type === "push") showNotice(data.title, data.body);
-    if (data?.type === "open-approval") openApproval();
+    const data = event.data as { type?: string; title?: string; body?: string; url?: string };
+    if (data?.type === "push") showNotice(data.title, data.body, data.url);
+    if (data?.type === "open-approval") {
+      if (data.url) showNotice("Approval waiting", QUESTION, data.url);
+      openApproval();
+    }
   });
   if (location.hash === "#approval") openApproval();
 });
