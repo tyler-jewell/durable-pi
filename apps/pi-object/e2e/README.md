@@ -5,7 +5,7 @@ written, committed and pushed to a fresh Artifacts repo, and the host verifies t
 
 | Target | Agent runs in | Artifacts backend | Command |
 |---|---|---|---|
-| `local` | Apple container: the real pi 1.5.2 CLI, scripted model, bash `git` | Cloudflare Artifacts (deployed, `us`) | `npm run e2e` |
+| `local` | Apple container: the real pi 1.6.0 CLI, scripted model, bash `git` | Cloudflare Artifacts (deployed, `us`) | `npm run e2e` |
 | `remote` | Cloudflare Durable Object (workerd), scripted model, `git_commit_push` tool | Cloudflare Artifacts (deployed, `us`) | `npm run e2e:remote` |
 | `offline` | Apple container, as `local` | Artifacts local simulator (`wrangler dev`) | `npm run e2e:offline` |
 
@@ -56,7 +56,7 @@ Local image, once: `container build -t dpi-artifacts-dev:local -f e2e/Containerf
 | Image / worker | dpi-artifacts-dev:local (digest 60debdb90a65) | https://durable-pi-object.tyler-jewell.workers.dev | dpi-artifacts-dev:local (digest 60debdb90a65) |
 | Node / runtime version | v26.13.1 | workerd (Workers runtime, nodejs_compat) | v26.13.1 |
 | git | 2.39.5 | @cloudflare/computer git client (isomorphic-git over the workspace) | 2.39.5 |
-| wrangler / cf / pi | 4.165.0 / 1.0.0-rc.1 / 1.5.2 | wrangler 4.165.0 / pi-ai 1.5.2 | 4.165.0 / 1.0.0-rc.1 / 1.5.2 |
+| wrangler / cf / pi | 4.165.0 / 1.0.0-rc.1 / 1.6.0 | wrangler 4.165.0 / pi-ai 1.6.0 | 4.165.0 / 1.0.0-rc.1 / 1.6.0 |
 | CPU / memory | 2 vCPU / 1G | Workers limits (cpuMs 30000, subrequests 500) | 2 vCPU / 1G |
 | Model | scripted (pi CLI, faux provider) | scripted (pi-ai faux provider) | scripted (pi CLI, faux provider) |
 | Agent tools used | write, bash (git add/commit/push) | write, git_commit_push | write, bash (git add/commit/push) |

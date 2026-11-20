@@ -1,4 +1,4 @@
-# Dev image for the Artifacts e2e: Node 26, git, latest CLIs, and pi 1.5.2 with the deterministic extension.
+# Dev image for the Artifacts e2e: Node 26, git, latest CLIs, and pi 1.6.0 (from the lockfile) with the deterministic extension.
 FROM docker.io/library/node:26-bookworm-slim
 RUN apt-get update && apt-get install -y --no-install-recommends git ca-certificates \
  && rm -rf /var/lib/apt/lists/*

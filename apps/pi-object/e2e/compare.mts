@@ -80,7 +80,7 @@ const rows: Row[] = [
   ["Image / worker", (r) => (r.target === "remote" ? r.profile.worker : `${r.profile.image} (digest ${r.profile.image_digest ?? "n/a"})`)],
   ["Node / runtime version", (r) => r.profile.node ?? "workerd (Workers runtime, nodejs_compat)"],
   ["git", (r) => r.profile.git ?? "@cloudflare/computer git client (isomorphic-git over the workspace)"],
-  ["wrangler / cf / pi", (r) => (r.target === "remote" ? "wrangler 4.165.0 / pi-ai 1.5.2" : `${r.profile.wrangler} / ${r.profile.cf} / ${r.profile.pi}`)],
+  ["wrangler / cf / pi", (r) => (r.target === "remote" ? "wrangler 4.165.0 / pi-ai 1.6.0" : `${r.profile.wrangler} / ${r.profile.cf} / ${r.profile.pi}`)],
   ["CPU / memory", (r) => (r.target === "remote" ? "Workers limits (cpuMs 30000, subrequests 500)" : `${r.profile.cpus} vCPU / ${r.profile.memory}`)],
   ["Model", (r) => (r.target === "remote" ? "scripted (pi-ai faux provider)" : "scripted (pi CLI, faux provider)")],
   ["Agent tools used", (r) => (r.target === "remote" ? "write, git_commit_push" : "write, bash (git add/commit/push)")],

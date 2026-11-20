@@ -4,10 +4,10 @@
   "type": "module",
   "description": "Deterministic checks of the LSP extension (a session and a reload): pi's real CLI with a scripted model. Installed by run.sh and reload.sh.",
   "dependencies": {
-    "@earendil-works/pi-ai": "1.5.2"
+    "@earendil-works/pi-ai": "1.6.0"
   },
   "devDependencies": {
-    "@earendil-works/pi-coding-agent": "1.5.2",
+    "@earendil-works/pi-coding-agent": "1.6.0",
     "@types/node": "24.10.1",
     "typebox": "1.1.38"
   }
