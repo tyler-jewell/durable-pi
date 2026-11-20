@@ -12,9 +12,9 @@
     "migrate-playground": "tsx scripts/migrate-playground.ts"
   },
   "dependencies": {
-    "@earendil-works/chord": "1.5.2",
-    "@earendil-works/pi-ai": "1.5.2",
-    "@earendil-works/pi-durable": "1.5.2",
+    "@earendil-works/chord": "1.6.0",
+    "@earendil-works/pi-ai": "1.6.0",
+    "@earendil-works/pi-durable": "1.6.0",
     "@modelcontextprotocol/sdk": "^1.32.2",
     "express": "^5.1.0",
     "tsx": "^4.20.0",

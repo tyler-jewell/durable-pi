@@ -21,7 +21,7 @@
   },
   "dependencies": {
     "@cloudflare/computer": "0.11.3",
-    "@earendil-works/pi-ai": "1.5.2",
+    "@earendil-works/pi-ai": "1.6.0",
     "@platformatic/vfs": "0.5.0",
     "just-bash": "^3.6.0",
     "zod": "^4.6.6"
