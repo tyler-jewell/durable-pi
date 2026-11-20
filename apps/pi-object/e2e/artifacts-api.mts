@@ -23,8 +23,8 @@ function loadEnv(): Record<string, string> {
 }
 
 const env = loadEnv();
-export const accountId = env.CLOUDFLARE_ACCOUNT_ID;
-const apiToken = env.CLOUDFLARE_API_TOKEN;
+export const accountId = process.env.CLOUDFLARE_ACCOUNT_ID || env.CLOUDFLARE_ACCOUNT_ID;
+const apiToken = process.env.CLOUDFLARE_API_TOKEN || env.CLOUDFLARE_API_TOKEN;
 if (!accountId || !apiToken) throw new Error(".env needs CLOUDFLARE_ACCOUNT_ID and CLOUDFLARE_API_TOKEN");
 export const artifactsBase = `https://api.cloudflare.com/client/v4/accounts/${accountId}/artifacts/namespaces`;
 
