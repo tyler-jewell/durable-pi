@@ -1,0 +1,23 @@
+# The llama.cpp server every host that serves local models to the mesh runs. This file defines it; a host adds only
+# its own paths in hosts.yaml (not committed; see hosts.example.yaml). Models are not named here: the server runs in
+# router mode over a models directory, so every GGUF in that directory is served, and at most `models_max` are
+# resident at once. Render, check, compare and apply it with `just llama`.
+label: com.dpi.llama-server
+host: 127.0.0.1           # loopback only: the Cloudflare Tunnel is the only way in
+port: 8080
+models_max: 1             # one resident model at a time
+sleep_idle_seconds: 600   # unload after ten idle minutes
+log: ~/Library/Logs/dpi-llama-server.log
+
+# llama-server flags. A number or text is `--name value`, `true` is the bare `--name`, `false` leaves the flag out.
+args:
+  ctx-size: 16384         # the served window; the MCP context budget uses the window the server reports
+  jinja: true             # chat templates, so a model's tool calls come back as tool_calls
+  parallel: 1             # one request at a time per model
+  flash-attn: auto
+  n-gpu-layers: 999       # every layer on the GPU
+  threads: 8
+  threads-batch: 8
+  cache-ram: 0            # no prompt cache kept in RAM
+  no-webui: true          # no web UI behind the tunnel
+  no-slots: true          # no slot introspection endpoint behind the tunnel

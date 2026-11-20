@@ -38,3 +38,6 @@ infra/terraform.tfvars
 infra/.terraform/
 infra/*.tfstate
 infra/*.tfstate.*
+
+# this machine's llama-server host overlay (template: llama/hosts.example.yaml)
+llama/hosts.yaml

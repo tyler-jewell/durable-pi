@@ -27,6 +27,9 @@ mod test 'just/test'
 # The .tsf software factory: stamp the roster + prompts
 mod tsf 'just/tsf'
 
+# llama.cpp on this host and the mesh: render, check, compare and apply llama/config.yaml
+mod llama 'just/llama'
+
 
 # List command groups
 default:
@@ -67,7 +70,7 @@ names:
     npx tsx scripts/check-zero-names.mts
 
 # Type checks and unit tests, every app
-check: copies names test::unit
+check: copies names test::unit llama::test
 
 # Vue type check on another TypeScript, in a clean container (default 7.0.2; TS_VERSION=5.9.3 is the control)
 ts-probe *args:
