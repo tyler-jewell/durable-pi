@@ -321,7 +321,7 @@ durable-pi/
 ├── pi/                                # language servers for agents and the git gate
 │   ├── extensions/lsp/                # core.mjs (servers), index.ts (pi extension), gate.mjs (pre-commit gate)
 │   ├── (.pi/extensions/lsp/)          # the installed copy of the extension, version controlled (just lsp install)
-│   └── lsp/                           # install.sh, gate and session tests, reload test, agent evals; README.md has the design
+│   └── lsp/                           # install.sh, gate and session tests, reload test; README.md has the design
 ├── templates/pwa-vue/                 # the app scaffold behind `just app add`
 ├── scripts/                           # app scaffolding and verification, declared-copies check, ssh bootstrap helpers
 ├── docs/                              # web-apps.md, the Cloudflare alignment audit, and the IndyDevDan deep-dive decision guide
@@ -350,7 +350,6 @@ just test smoke faux       # TUI end to end in tmux against a faux backend
 just lsp plan              # the file extensions in this repo and the language servers they call for
 just lsp check             # every file clean by the servers' standard (what the pre-commit gate enforces)
 just lsp test              # gate, extension session and /reload tests (free, no model)
-just lsp eval              # does DeepSeek Flash reach for the servers on its own? 3 cases in Apple containers
 ```
 
 ### What has been checked
@@ -362,9 +361,8 @@ just lsp eval              # does DeepSeek Flash reach for the servers on its ow
 | `just test device apple-box` with a real model (DeepSeek V4 Flash via the gateway): the web UI, steer, dedupe, subagents, jobs, compaction, reset, and quitting the browser mid-tool | **18 of 18** |
 | `just test e2e apple-box` with a real model: TUI and web on one run, steer from the web, both clients closed, device restarted mid-tool, fork, TUI reattach | **pass**: 9 tool results, 1 interrupted by the restart, each prompt admitted once |
 | `just test smoke faux`: TUI streaming, steer, Esc, fork, exit and reattach by name | **pass** |
-| `just lsp check`: every file clean by the language servers' standard, one server per language | **pass**: 264 files |
-| `just lsp test` (no model): 17 gate cases with real servers, 19 session checks (plan, one process per language, every strategy, edit then re-check, bypass blocked, nothing left behind), and `/reload` with its control | **pass** |
-| `just lsp eval`: DeepSeek Flash, 3 coding tasks that never mention language servers, each in an Apple container; `CONTROL=none` (no extension) fails all 3 | **3 of 3** in 10 to 14 s each |
+| `just lsp check`: every file clean by the language servers' standard, one server per language | **pass**: 289 files |
+| `just lsp test` (no model): 21 gate cases with real servers (two commit through the real hook), 26 session checks in each of two layouts (plan, one process per language, every strategy, edit then re-check, bypass blocked, nothing left behind), and `/reload` with its control | **pass** |
 | `apps/pi-object` `npm run e2e:offline`: scripted agent in an Apple container pushes to a local Artifacts simulator, then full teardown | **pass** in 14 s |
 | Every device: `/healthz` 200 and `/v1/*` without a token 401 (`just net probe <id>`) | **pass** |
 | `apple-container` and `macos-vm` devices: `just net up` from nothing, `/healthz` + tokenless 401, an agent round-trip, and the restart/down/up lifecycle | **pass** |
@@ -384,7 +382,7 @@ just lsp eval              # does DeepSeek Flash reach for the servers on its ow
 - **`dpi-backend` binds `127.0.0.1` unless told otherwise.** For `ssh` and `exe-dev` devices, `just net up` writes `DPI_HOST=0.0.0.0` (the default for the YAML's `host`) so clients can reach them, and the token guards everything under `/v1`.
 - **`jev-damage-control` is a guard, not a sandbox.** It sends each command to a third-party API, and when Jev is unreachable the command runs.
 - **macOS devices run as a LaunchAgent** in the logged-in session, so unattended reboots need auto-login.
-- **pi-durable is experimental.** This repo pins 1.5.2.
+- **pi-durable is experimental.** This repo pins 1.6.0.
 
 ---
 
@@ -411,7 +409,7 @@ Every node is proved the same way: **test in a container → review code (remove
 - [ ] A test asserting no configured secret value appears in any streamed/logged frame.
 
 ### Phase 0 — Baseline at latest versions
-- [x] Pin latest: `cf@1.0.0-rc.1` (the 1.0 release candidate, announced 17 Nov 2026), `wrangler@4.165.0`, `pi-*@1.5.2`, Node 26 LTS, TypeScript 7.0.2 where Vue tooling allows it (see Known issues). `pi-object` builds with the Wrangler bundler under `cf`, so the Vite plugin is not needed there; `@cloudflare/vite-plugin` 2.0 applies only to a future Vite-built app.
+- [x] Pin latest: `cf@1.0.0-rc.1` (the 1.0 release candidate, announced 17 Nov 2026), `wrangler@4.165.0`, `pi-*@1.6.0`, Node 26 LTS, TypeScript 7.0.2 where Vue tooling allows it (see Known issues). `pi-object` builds with the Wrangler bundler under `cf`, so the Vite plugin is not needed there; `@cloudflare/vite-plugin` 2.0 applies only to a future Vite-built app.
 - [x] Rebuild the test container on `node:26` (v26.13.1) and bump the YAML `node` default 24 → 26 (centralized `DEFAULT_CONTAINER_IMAGE`).
 - [x] Confirm the container has Git 2.32+ (git 2.39.5, installed by the new apple-container `provision` step).
 

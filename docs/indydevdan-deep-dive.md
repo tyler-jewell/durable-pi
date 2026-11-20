@@ -142,7 +142,7 @@ concrete change it implies.
   the demo?
 
 ### I. Validation of "remaining work"
-- What proves the system? The LSP suites (`just lsp test`, `just lsp eval`), the device suite (`just test device`), the
+- What proves the system? The LSP suites (`just lsp test`), the device suite (`just test device`), the
   e2e (`just test e2e`) and pi-object's e2e (local/remote/offline). Each discussion item above
   should name the test that proves it before it is "done" — matching his "observable" and "gate-first" principles.
 

@@ -1,1 +1,0 @@
-The UserCard component renders an empty name and a broken avatar image. Fix it.

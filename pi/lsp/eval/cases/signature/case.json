@@ -1,9 +1,0 @@
-{
-  "lsp": "\\.ts$",
-  "files": [
-    { "path": "src/money.ts", "must": ["currency"] },
-    { "path": "src/invoice.ts", "must": ["price\\([^)]*,\\s*\"USD\"\\)"] },
-    { "path": "src/cart.ts", "must": ["\"USD\""] },
-    { "path": "src/receipt.ts", "must": ["\"USD\""] }
-  ]
-}

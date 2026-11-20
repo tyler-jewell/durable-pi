@@ -14,7 +14,7 @@ import { fileURLToPath } from "node:url";
 import { LANGUAGES, LSP_BUILD, SEVERITY, Workspace, langOf } from "./core.mjs";
 import type { Diagnostic, LangId } from "./core.mjs";
 
-// The same definition the eval scores: a commit or push that skips hooks, or a command that sets hooksPath to a value.
+// The same definition the git gate enforces: a commit or push that skips hooks, or a command that sets hooksPath to a value.
 // Reading the hooks (git config --get core.hooksPath) is allowed. Blocked before they run; the gate is the only way in.
 const BYPASS = /git\s+(commit|push)\b[^;&|]*--no-verify|git\s+(-c\s+core\.hooksPath=|config\s+(?!--get)(\S+\s+)*core\.hooksPath\s+[^\s|&;])|\bSKIP=/;
 /** Files one project-wide check covers per language. A larger repo is checked in parts, by path. */

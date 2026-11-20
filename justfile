@@ -44,7 +44,6 @@ setup:
     sh pi/lsp/install.sh .
     # Type-check packages for the folders the gate checks (their node_modules are not in git).
     cd pi/extensions/lsp && npm install --no-audit --no-fund
-    cd pi/lsp/eval && npm install --no-audit --no-fund
     @echo "setup: pre-commit gate installed (core.hooksPath=.githooks); servers and type packages installed"
 
 # Install dependencies for every network app

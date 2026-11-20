@@ -32,8 +32,3 @@ test:
     sh pi/lsp/check/reload.sh .
     sh pi/lsp/check/tracked.sh .
 
-# Agent eval: DeepSeek Flash, three coding tasks that never mention language servers, each in its own Apple container.
-# Does the agent reach for ours? Needs the container system and a DeepSeek key in ~/.pi/agent/auth.json.
-[no-cd]
-eval *cases:
-    sh pi/lsp/eval/run.sh . {{cases}}

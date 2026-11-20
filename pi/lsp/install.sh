@@ -2,7 +2,7 @@
 # Installs the language servers, pi, and the LSP extension, on this machine or a device. Idempotent: running it again
 # changes nothing that is already right. Everything goes to a dedicated prefix (~/.dpi/lsp-tools), so a global `tsc`
 # or `python` that other projects use is never replaced. The extension is copied to <src-dir>/.pi/extensions/lsp, which
-# is version controlled, so pi loads it for that project only (LSP_EXTENSION_DIR moves it: the tests and the eval do).
+# is version controlled, so pi loads it for that project only (LSP_EXTENSION_DIR moves it: the tests do).
 #
 #   sh pi/lsp/install.sh <src-dir>     src-dir holds pi/extensions/lsp and pi/lsp (the repo root, or a copy of them)
 #
@@ -13,7 +13,7 @@ SRC="${1:?usage: install.sh <src-dir>}"
 TOOLS="$HOME/.dpi/lsp-tools"
 mkdir -p "$TOOLS"
 # Pinned: each server, the TypeScript that the TypeScript server reads (5.9.3), and pi.
-PINS='typescript@5.9.3 typescript-language-server@6.1.0 vscode-langservers-extracted@4.10.0 bash-language-server@5.8.1 pyright@1.1.414 @vue/language-server@3.3.14 vue@3.5.43 @earendil-works/pi-coding-agent@1.5.2'
+PINS='typescript@5.9.3 typescript-language-server@6.1.0 vscode-langservers-extracted@4.10.0 bash-language-server@5.8.1 pyright@1.1.414 @vue/language-server@3.3.14 vue@3.5.43 @earendil-works/pi-coding-agent@1.6.0'
 want_ok=1
 for pin in $PINS; do
   name="${pin%@*}"; ver="${pin##*@}"

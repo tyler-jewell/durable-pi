@@ -1,1 +1,0 @@
-I just added a required `email` field to the `User` interface in src/types.ts. Bring the rest of the code in line with it. Use admin@example.com for the admin and guest@example.com for guests.

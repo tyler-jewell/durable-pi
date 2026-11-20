@@ -1,8 +1,0 @@
-{
-  "name": "dpi-lsp-eval",
-  "private": true,
-  "description": "Development types for the eval's scripts (checked by the git gate). Installed by `just setup`.",
-  "devDependencies": {
-    "@types/node": "24.10.1"
-  }
-}
