@@ -55,6 +55,16 @@ container eval use it.
 `just lsp test` checks the copy as well: `pi/lsp/check/tracked.sh` installs into a scratch folder and fails if
 `.pi/extensions/lsp` differs from what the source produces.
 
+## Extension rules
+
+Rules for any pi extension in this repo, from pi 1.2.0's changes to the event model:
+
+- A `before_agent_start` handler that acts only on prompts checks `event.messageType === "user"`. It also fires for runs started
+  by `pi.sendMessage(..., { triggerTurn: true })` while idle, which have no `prompt`. The LSP handler does not need the check: it
+  sets the same `language-servers` section on every run.
+- Work that follows a run goes in `agent_settled`, not `agent_end`: `agent_end` is not a final-idle signal. A `pi.sendUserMessage()`
+  made while the agent is busy needs `deliverAs`. The reload check exercises the `agent_settled` path.
+
 ## Tests
 
 | Command | What it proves | Needs |
