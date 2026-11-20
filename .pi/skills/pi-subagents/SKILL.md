@@ -12,6 +12,10 @@ A subagent is a separate `pi` process. It has its own context window, and the pa
 - Use it for independent reads or reviews that can run in parallel, for recon whose raw output would crowd the context, and for a second opinion on a diff.
 - Don't use it for a single edit, for work that must share state with this turn, or for anything that needs a permission the parent does not have.
 
+## Discovering the model
+
+The caller discovers the model at runtime with `pi --list-models` and passes `--model provider/id` from that output. Do not write that name into a tracked file. See the Pi tooling section of `AGENTS.md`.
+
 ## How (the CLI; works in scripts and the dashboard)
 
 ```sh
@@ -25,6 +29,15 @@ pi --mode json -p --no-session --model <model> --tools read,grep,find,ls [--no-m
 - Pass `--model` explicitly. Without it the child uses the default model from settings.
 - Use only flags that exist. `pi --help` lists them. `--no-tui` and `--json` are not pi flags: pi reports them as unknown and carries on, so a parser then reads plain text and every count is zero.
 - Piped stdin is prepended to the prompt: `git diff | pi -p "Review this diff"`.
+
+## Isolated parallel edits
+
+- Give each editing child its own git worktree and branch from `HEAD`; the child's cwd is that worktree.
+- Start parallel children together. Each prompt names the one path that child may change. Children do not push or pass `--no-verify`.
+- Before merging, verify each worktree's `git status` shows only its own change and neither worktree contains the other child's new file.
+- Merge each branch with a merge commit. Stage only the paths the children were told to change.
+- Before pushing, inspect `git log @{u}..HEAD`: a push publishes every commit already ahead of the remote.
+- Record evidence: both pids, both start times, both exit codes, both commit ids, and the isolation check.
 
 ## Reading the result
 

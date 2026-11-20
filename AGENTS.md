@@ -37,5 +37,8 @@ Cloudflare, Terraform, credentials, and mesh hosts are described in the `durable
 - `find` patterns are relative to `path`. From a monorepo root, pass `path: "apps/dpi-tui"` with `src/**/*.ts`, or use `**/src/**/*.ts` to match at any depth. A pattern with no `/` matches file names at any depth.
 - MCP tools on `codemode` servers are not in the tool list. Find them with `searchTools("…")` and read their signatures with `describeTool(name)` inside a `codemode` script. `direct` servers appear as tools.
 - Never change the hooks path, pass `--no-verify`, or set a `SKIP` variable to get a commit through. The LSP extension blocks those commands, and the git gate is the only way in (`pi/lsp/README.md`).
-- Before starting a subagent, read `.pi/skills/pi-subagents/SKILL.md`.
+- Before starting a pi child, read `.pi/skills/pi-subagents/SKILL.md`. Discover models at runtime with `pi --list-models`; pass `--model provider/id` from that output. Never write the chosen name into tracked files, commit messages, or this file.
+- A coding child uses `pi --mode json -p --no-session --model <provider>/<id> --tools <allowlist>`. Add `--no-mcp` unless MCP is needed; never pass `--no-extensions`. Use only flags listed by `pi --help`; `--json` and `--no-tui` are not pi flags.
+- A run finishes at `agent_settled` or process exit; its answer is the last assistant `message_end`. Sum `message.usage.cost.total` across those events. `dpi-mcp ask_model` is a metered model-tool call and does not edit the repo; a pi child is for reads and edits.
+- For isolated parallel edits, follow the procedure in `.pi/skills/pi-subagents/SKILL.md`.
 - Packages are not updated at startup (pi 0.60.0). `pi update --extensions` updates packages, and `pi update --self` updates pi. `pi mcp list --json` reports `resources: true` for a server that offers resources; nothing in this repo parses that output.
