@@ -89,6 +89,15 @@ const costText = (c: CostReadout) => {
   overflow: auto;
   min-width: 0;
 }
+@media (max-width: 800px) {
+  .base-app__body {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .base-app__nav,
+  .base-app__right {
+    display: none;
+  }
+}
 .base-app__footer {
   padding: 8px 14px;
   border-top: 1px solid var(--base-app-border, #1f2937);

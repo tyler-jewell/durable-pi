@@ -177,7 +177,7 @@ const approvalPhase = computed(() => props.run.phases.find((p) => p.status === "
       </details>
     </div>
 
-    <div v-if="run.approval === 'pending'" class="job-approval" role="group" aria-label="Approval">
+    <div v-if="run.approval === 'pending'" id="approval" class="job-approval" role="group" aria-label="Approval" data-approval>
       <div><ShieldCheck :size="20" /><strong>Approve to continue</strong></div>
       <p>
         {{ approvalPhase ? phaseSpec(approvalPhase.id)?.summary : "This run waits for you" }}. It is paused on a saved

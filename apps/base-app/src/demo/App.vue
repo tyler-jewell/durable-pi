@@ -1,6 +1,8 @@
 <script setup lang="ts">
-import { onBeforeUnmount, ref } from "vue";
+import { onBeforeUnmount, onMounted, ref } from "vue";
 import { AppShell, NavRail, type NavItem } from "../index";
+import ApprovalNotice from "../shell/ApprovalNotice.vue";
+import { registerPushWorker } from "../shell/push";
 import JobCard from "../left/JobCard.vue";
 import StateEditor from "../left/StateEditor.vue";
 import Transcript from "../left/Transcript.vue";
@@ -143,10 +145,31 @@ const tick = () => {
 };
 const timer = setInterval(tick, 800);
 onBeforeUnmount(() => clearInterval(timer));
+
+const notice = ref<{ title: string; body: string } | null>(null);
+const QUESTION = "Publish the release notes?";
+function showNotice(title = "Approval waiting", body = QUESTION) {
+  notice.value = { title, body };
+}
+function openApproval() {
+  notice.value = null;
+  document.getElementById("approval")?.scrollIntoView({ block: "center" });
+  document.querySelector<HTMLButtonElement>("#approval button.primary")?.focus();
+}
+onMounted(() => {
+  void registerPushWorker();
+  navigator.serviceWorker?.addEventListener("message", (event: MessageEvent) => {
+    const data = event.data as { type?: string; title?: string; body?: string };
+    if (data?.type === "push") showNotice(data.title, data.body);
+    if (data?.type === "open-approval") openApproval();
+  });
+  if (location.hash === "#approval") openApproval();
+});
 </script>
 
 <template>
-  <AppShell title="Base app" app-id="demo" status="live" model="@cf/meta/llama-3.3">
+  <ApprovalNotice v-if="notice" :title="notice.title" :body="notice.body" @open="openApproval" />
+  <AppShell title="Base app" app-id="demo" status="live">
     <template #nav>
       <NavRail :items="objects" :selected="selectedObject" @select="selectedObject = $event" />
     </template>
