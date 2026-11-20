@@ -41,3 +41,6 @@ infra/*.tfstate.*
 
 # this machine's llama-server host overlay (template: llama/hosts.example.yaml)
 llama/hosts.yaml
+
+# the R2 state endpoint carries the account id: copy infra/backend.hcl.example
+infra/backend.hcl

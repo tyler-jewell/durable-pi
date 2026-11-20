@@ -9,14 +9,13 @@ terraform {
     }
   }
 
-  # State lives in R2 (private bucket). Credentials come from the environment:
+  # State lives in R2 (private bucket). The endpoint comes from backend.hcl (git-ignored; see backend.hcl.example):
+  #   terraform init -reconfigure -backend-config=backend.hcl
+  # Credentials come from the environment:
   # AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY / AWS_SESSION_TOKEN (the R2 API token's three values).
   backend "s3" {
     bucket = "durable-pi-terraform-state"
     key    = "terraform.tfstate"
-    endpoints = {
-      s3 = "https://09f27fe672991450d128a652b5fb4d73.r2.cloudflarestorage.com"
-    }
     region                      = "auto"
     skip_credentials_validation = true
     skip_region_validation      = true

@@ -1,9 +1,8 @@
-# Cloudflare credentials inventory (personal account `09f27fe…`)
+# Cloudflare credentials inventory (the personal account)
 
 Single source of truth for every Cloudflare credential used by this repo:
 what it is, where it lives, how to get/rotate it, and how to use it. All writes
-are against the **personal** account (`vgrdz5h54y@privaterelay.appleid.com` /
-account id `09f27fe672991450d128a652b5fb4d73`), never flagseeker.
+are against the **personal** account, whose id is `CLOUDFLARE_ACCOUNT_ID` in the git-ignored `.env`, never flagseeker.
 
 There are **three** kinds of Cloudflare credential, managed in different places.
 Do not confuse them.
@@ -85,7 +84,7 @@ security add-generic-password -U -a r2-access-key-id    -s durable-pi-terraform-
 security add-generic-password -U -a r2-secret-access-key -s durable-pi-terraform-r2 -w "<secret>"
 ```
 Used by Terraform's `backend "s3"` (no `AWS_SESSION_TOKEN`); endpoint
-`https://09f27fe672991450d128a652b5fb4d73.r2.cloudflarestorage.com`.
+`https://<account-id>.r2.cloudflarestorage.com`.
 
 ### `dpi-container` (container API token)
 Account-owned token created Nov 18 for the device/e2e container. To regenerate,

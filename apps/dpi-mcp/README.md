@@ -36,7 +36,7 @@ with the `cf` CLI (see [docs/local-factory.md](../../docs/local-factory.md#mesh-
 cd apps/dpi-mcp && npm install
 DPI_MCP_TOKEN=<32+ chars> \
 CLOUDFLARE_API_TOKEN=<workers deploy token> \
-CLOUDFLARE_ACCOUNT_ID=09f27fe672991450d128a652b5fb4d73 \
+CLOUDFLARE_ACCOUNT_ID=<account-id> \
 npm start            # http://127.0.0.1:4789/mcp
 ```
 

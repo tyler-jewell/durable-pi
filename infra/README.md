@@ -57,7 +57,7 @@ feeding it the `tunnel_token` and `short_lived_cert_ca_public_key` outputs.
 
 ## Gotchas encoded here (do not undo)
 
-1. **Correct account.** `09f27fe…` (jewell-labs). Never the flagseeker account.
+1. **Correct account.** The personal account (`CLOUDFLARE_ACCOUNT_ID` in `.env`). Never the flagseeker account.
 2. **Per-app short-lived cert CA** — separate from the legacy account-level SSH CA.
 3. **OTP IdP** (`onetimepin`) must exist or login shows "no login methods available".
 4. **`app_launcher_visible = false`** on ssh apps.
