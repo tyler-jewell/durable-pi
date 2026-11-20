@@ -2,6 +2,7 @@
 // The canonical layout: top bar · nav rail · left (generated view + approval) · right (the DO
 // streaming itself) · footer. Identity comes from props; content comes from named slots.
 import type { CostReadout } from "./cost";
+import { pushAvailable, registerPushWorker } from "./push";
 
 const props = defineProps<{
   title: string;
@@ -12,6 +13,9 @@ const props = defineProps<{
   costs?: CostReadout[];
 }>();
 const emit = defineEmits<{ toggleFreeTier: [id: string, enabled: boolean] }>();
+const enableNotifications = () => {
+  void registerPushWorker();
+};
 
 const costText = (c: CostReadout) => {
   if (c.usd !== null) return `${c.freeTier ? "free-tier assumed" : "list"} ${c.usd.toFixed(2)}`;
@@ -26,6 +30,7 @@ const costText = (c: CostReadout) => {
       <span v-if="appId" class="base-app__appid muted">{{ appId }}</span>
       <span class="spacer" />
       <span v-if="model" class="muted">{{ model }}</span>
+      <button v-if="pushAvailable()" type="button" class="base-app__notify" @click="enableNotifications">Enable phone notifications</button>
       <span v-if="status" class="base-app__status" data-status>{{ status }}</span>
       <span v-for="c in props.costs ?? []" :key="c.id" class="base-app__cost" :data-cost="c.id" :title="c.basis + (c.note ? ' · ' + c.note : '')">
         {{ c.label }} {{ costText(c) }}

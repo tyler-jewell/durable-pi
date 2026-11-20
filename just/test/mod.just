@@ -18,7 +18,7 @@ unit:
     cd apps/dpi-tui && npm run check && npm test
     cd apps/dpi-mcp && npm run typecheck && npm test
     cd apps/pi-object && npm run typecheck && npm test
-    cd apps/base-app && npm run check && npm run build
+    cd apps/base-app && npm run check && npm test && npm run build
 
 # Web UI suite against two faux devices (builds the UI first)
 [no-cd]
