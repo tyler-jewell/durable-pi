@@ -9,6 +9,27 @@ API credentials.
 pi (any agent) ──HTTP + SSE, Bearer DPI_MCP_TOKEN──► dpi-mcp ──► templates/pwa-vue, vue-tsc, agent-browser, wrangler
 ```
 
+## Mesh over Cloudflare (no tailscale)
+
+Every mesh host is a **Cloudflare Tunnel hostname behind Cloudflare Access**. Nothing is reachable
+on a private IP, and nothing is reached without a service token.
+
+- **`mesh.json`** (gitignored; template `mesh.example.json`) lists the hosts:
+
+  ```json
+  { "hosts": [ { "name": "studio", "hostname": "<host>.<your-zone>", "service_token_env": "CF_ACCESS_STUDIO" } ] }
+  ```
+
+- **`~/.dpi-mcp/access.env`** (mode 0600, outside the repo) holds one line per host,
+  `CF_ACCESS_STUDIO=<client_id>:<client_secret>`. It is loaded automatically; `DPI_MCP_ACCESS`
+  overrides the path.
+- **Every model call** goes through `meshFetch`, which attaches `CF-Access-Client-Id` and
+  `CF-Access-Client-Secret` for mesh hostnames only. Local and cloud URLs are untouched, and a
+  token never reaches any other host.
+
+Without a token, Access answers `401`; with one, the host's llama-server answers. Set up one host
+with the `cf` CLI (see [docs/local-factory.md](../../docs/local-factory.md#mesh-over-cloudflare-step-1)).
+
 ## Run it
 
 ```bash
@@ -138,11 +159,10 @@ notify_ready (capability, host, model, validated, message)  # tell the team it's
 team_feed                         # read every readiness announcement, newest last
 ```
 
-The proof runs the whole loop live with no hardcoded host facts:
+The proof runs the whole loop live with no hardcoded host facts (the host comes from `mesh.json`):
 
 ```bash
-LLAMA_BASE_URL=http://127.0.0.1:18080 DPI_MCP_SSH_HOST=studio \
-  npx tsx apps/dpi-mcp/scripts/prove-capability-loop.mts
+DPI_MCP_SSH_HOST=studio npx tsx apps/dpi-mcp/scripts/prove-capability-loop.mts
 # 1. discover: studio exposes 9 models
 # 2. inspect: 4 llama-server process(es), 0 launchd auto-start(s), live test ok (1.4 s)
 # 3. recommend: studio-decision-clef-flash-q4-k-m (decision, state=recommended)
@@ -161,7 +181,7 @@ decides deterministically), or, with no id, resolve **automatically** — the ne
 an enabled local capability, most-recently-used first (so the already-loaded model is reused and
 no swap is paid), falling back to cloud. A capability carries a `transport` (`openai-compat` for a
 local llama-server/Ollama, `cloudflare-workers-ai` for the Cloudflare Workers AI API), so the
-same tool reaches both. `scripts/seed-capabilities.mts` probes `LLAMA_BASE_URL` and seeds one
+same tool reaches both. `scripts/seed-capabilities.mts` probes the host's mesh address and seeds one
 enabled capability per local model plus recommended cloud fallbacks — the registry always
 reflects the current system.
 

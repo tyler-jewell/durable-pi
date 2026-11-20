@@ -3,7 +3,7 @@
 // decision/LLM test against the host's HTTP endpoint. This is what turns "agents use MCP for
 // 99% of their work" into reality — the agent asks for an inspection, it never hand-rolls ssh.
 import { spawnSync } from "node:child_process";
-import { runDecision, runLlm, type DecisionQuestion } from "./capabilities.js";
+import { meshFetch, runDecision, runLlm, type DecisionQuestion } from "./capabilities.js";
 
 export interface HostProcess {
   pid: number;
@@ -81,7 +81,7 @@ export async function inspectHost(
 
   const base = address.replace(/\/+$/, "");
   const t0 = Date.now();
-  const health = await fetch(`${base}/health`, { signal: AbortSignal.timeout(8000) }).then((r) => (r.ok ? "ok" : String(r.status))).catch((e) => `unreachable: ${String(e)}`);
+  const health = await meshFetch(`${base}/health`, { signal: AbortSignal.timeout(8000) }).then((r) => (r.ok ? "ok" : String(r.status))).catch((e) => `unreachable: ${String(e)}`);
   let sample: string | undefined;
   try {
     if (model.kind === "decision") {

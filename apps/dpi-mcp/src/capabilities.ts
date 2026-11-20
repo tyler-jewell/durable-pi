@@ -15,6 +15,7 @@
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
+import { accessHeadersFor } from "./mesh-config.js";
 
 export type CapabilityKind = "llm" | "decision";
 export type CapabilityState = "recommended" | "enabled" | "disabled";
@@ -27,7 +28,7 @@ export interface ModelInfo {
 
 export interface HostCapability {
   host: string;
-  /** Canonical endpoint on the mesh, e.g. `https://studio.jewell-labs.com` (Cloudflare Tunnel). */
+  /** Canonical endpoint on the mesh, e.g. `https://<host>.<your-zone>` (Cloudflare Tunnel + Access). */
   address: string;
   /** SSH target for config/launch-agent inspection, e.g. `studio` (from ~/.ssh/config). */
   ssh?: string;
@@ -240,9 +241,16 @@ export function disableCapability(reg: CapabilityRegistry, id: string): Capabili
 }
 
 /** A short-lived fetch; returns the response or undefined on network failure. */
+/** The one fetch every model call uses. Mesh URLs (Cloudflare Tunnel + Access) get their service-token
+ *  headers here, so no caller can forget them; local and cloud URLs are passed through unchanged. */
+export function meshFetch(url: string, init: RequestInit = {}): Promise<Response> {
+  const headers = { ...accessHeadersFor(url), ...((init.headers as Record<string, string> | undefined) ?? {}) };
+  return fetch(url, { ...init, headers });
+}
+
 async function fetchJson(url: string, init: RequestInit, timeoutMs: number): Promise<Response | undefined> {
   try {
-    return await fetch(url, { ...init, signal: AbortSignal.timeout(timeoutMs), redirect: "error" });
+    return await meshFetch(url, { ...init, signal: AbortSignal.timeout(timeoutMs), redirect: "error" });
   } catch {
     return undefined;
   }
@@ -295,7 +303,7 @@ export async function runLlm(
   const base = address.replace(/\/+$/, "");
   if (opts.transport === "cloudflare-workers-ai") {
     // Chat models serve an OpenAI-compatible endpoint at /ai/v1/chat/completions.
-    const res = await fetch(`${base}/ai/v1/chat/completions`, {
+    const res = await meshFetch(`${base}/ai/v1/chat/completions`, {
       method: "POST",
       headers: { "Content-Type": "application/json", ...(opts.apiKey ? { Authorization: `Bearer ${opts.apiKey}` } : {}) },
       body: JSON.stringify({ model, messages, max_tokens: 2048 }),
@@ -307,7 +315,7 @@ export async function runLlm(
     if (data.errors?.length) throw new Error(`LLM ${model}: ${data.errors[0].message}`);
     return { text: data.choices?.[0]?.message?.content ?? "", inToks: data.usage?.prompt_tokens ?? 0, outToks: data.usage?.completion_tokens ?? 0 };
   }
-  const res = await fetch(`${base}/v1/chat/completions`, {
+  const res = await meshFetch(`${base}/v1/chat/completions`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ model, messages, temperature: 0, max_tokens: 2048 }),
@@ -345,7 +353,7 @@ export async function runDecision(
   const timeoutMs = opts.timeoutMs ?? 60_000;
   const base = address.replace(/\/+$/, "");
   if (opts.transport === "cloudflare-workers-ai") {
-    const res = await fetch(`${base}/ai/run`, {
+    const res = await meshFetch(`${base}/ai/run`, {
       method: "POST",
       headers: { "Content-Type": "application/json", ...(opts.apiKey ? { Authorization: `Bearer ${opts.apiKey}` } : {}) },
       body: JSON.stringify({ model, input: { state, questions } }),
@@ -359,7 +367,7 @@ export async function runDecision(
     const answers = data.result?.answers ?? data.result?.result?.answers ?? {};
     return { answers, inToks: data.result?.usage?.input_tokens ?? 0, outToks: data.result?.usage?.output_tokens ?? 0 };
   }
-  const res = await fetch(`${base}/v1/systemone`, {
+  const res = await meshFetch(`${base}/v1/systemone`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ model, state, questions }),

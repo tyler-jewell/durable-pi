@@ -1,12 +1,15 @@
-// Seed the capability registry from the current system: probe a local llama-server
-// (LLAMA_BASE_URL, e.g. an SSH tunnel to the Studio) and enable one capability per model —
+// Seed the capability registry from the current system: probe the host's llama-server over its
+// mesh address (mesh.json, Cloudflare Tunnel + Access; LLAMA_BASE_URL overrides) and enable one capability per model —
 // local text models for chat, local decision models for Jev/Clef — plus a set of Cloudflare
 // Workers AI capabilities (recommended, cloud transport) so run_llm/run_decision can fall
 // back to cloud. The registry is the source of truth for what models exist.
 import { probeHost, saveRegistry, type Capability, type CapabilityRegistry } from "../src/capabilities.js";
+import { loadMeshConfig } from "../src/mesh-config.js";
 
-const base = (process.env.LLAMA_BASE_URL ?? "http://127.0.0.1:18080").replace(/\/+$/, "");
 const hostName = process.env.LLAMA_HOST ?? "studio";
+const meshHost = loadMeshConfig().hosts.find((h) => h.name === hostName);
+const base = (process.env.LLAMA_BASE_URL ?? (meshHost ? `https://${meshHost.hostname}` : "")).replace(/\/+$/, "");
+if (!base) throw new Error(`no mesh host "${hostName}" in mesh.json and no LLAMA_BASE_URL`);
 const cfAccount = process.env.CLOUDFLARE_ACCOUNT_ID ?? "";
 const cfEndpoint = cfAccount ? `https://api.cloudflare.com/client/v4/accounts/${cfAccount}` : "";
 

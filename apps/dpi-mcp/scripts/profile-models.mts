@@ -8,9 +8,13 @@
 // Cost: Workers AI prices (USD per M tokens) are billing facts from the CF catalog;
 // local marginal cost is $0 — the Studio is a fixed-cost box (electricity is estimated).
 
+import { loadMeshConfig } from "../src/mesh-config.js";
+
 const CF_ACCOUNT = process.env.CLOUDFLARE_ACCOUNT_ID ?? "";
 const CF_KEY = process.env.CLOUDFLARE_API_KEY ?? "";
-const LOCAL_BASE = (process.env.LLAMA_BASE_URL ?? "http://127.0.0.1:18080").replace(/\/+$/, "");
+const meshHost = loadMeshConfig().hosts.find((h) => h.name === (process.env.LLAMA_HOST ?? "studio"));
+const LOCAL_BASE = (process.env.LLAMA_BASE_URL ?? (meshHost ? `https://${meshHost.hostname}` : "")).replace(/\/+$/, "");
+if (!LOCAL_BASE) throw new Error("no local host: set LLAMA_BASE_URL or add the host to mesh.json");
 const CF_BASE = `https://api.cloudflare.com/client/v4/accounts/${CF_ACCOUNT}`;
 
 // Billing facts (Workers AI catalog, 19 Nov 2026): $ per million tokens.

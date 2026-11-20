@@ -1,6 +1,5 @@
 {
   "hosts": [
-    { "name": "studio", "hostname": "studio.jewell-labs.com", "service_token_env": "CF_ACCESS_STUDIO" },
-    { "name": "macbook-pro", "hostname": "mbp.jewell-labs.com", "service_token_env": "CF_ACCESS_MBP" }
+    { "name": "studio", "hostname": "llm-studio.example.com", "service_token_env": "CF_ACCESS_STUDIO" }
   ]
 }

@@ -5,13 +5,16 @@
 // The script is the "agent": every fact comes from probeHost/inspectHost, the gate checks the
 // evidence, and the readiness lands in the shared team feed.
 //
-//   LLAMA_BASE_URL=http://127.0.0.1:18080 DPI_MCP_SSH_HOST=studio npx tsx apps/dpi-mcp/scripts/prove-capability-loop.mts
+//   DPI_MCP_SSH_HOST=studio npx tsx apps/dpi-mcp/scripts/prove-capability-loop.mts   (host from mesh.json)
 import { enableCapability, loadRegistry, probeHost, recommendCapability, resolveCapability, runDecision, runLlm, saveRegistry } from "../src/capabilities.js";
 import { inspectHost } from "../src/host-inspect.js";
 import { notifyReady } from "../src/notify.js";
+import { loadMeshConfig } from "../src/mesh-config.js";
 
 const host = process.env.DPI_MCP_SSH_HOST ?? "studio";
-const address = process.env.LLAMA_BASE_URL ?? "https://studio.jewell-labs.com";
+const meshHost = loadMeshConfig().hosts.find((h) => h.name === host);
+const address = process.env.LLAMA_BASE_URL ?? (meshHost ? `https://${meshHost.hostname}` : "");
+if (!address) throw new Error(`no mesh host "${host}" in mesh.json and no LLAMA_BASE_URL`);
 
 // 1. discover
 const discovered = await probeHost(host, address);

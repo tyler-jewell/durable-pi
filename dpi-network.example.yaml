@@ -67,7 +67,7 @@ devices:
   #   kind: ssh
   #   ssh: studio                       # Host studio in ~/.ssh/config (reached over Cloudflare Tunnel)
   #   service: launchd
-  #   url: https://studio.jewell-labs.com   # Cloudflare Access-protected Tunnel hostname
+  #   url: https://<host>.<your-zone>       # Cloudflare Access-protected Tunnel hostname
   #   start_dirs: ["~/dpi-work"]
 
   # An Apple Container (the macOS `container` CLI): the backend runs in a Linux arm64

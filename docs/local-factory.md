@@ -40,14 +40,13 @@ Studio (127.0.0.1)
 └── llama-server     8080 (router, one GGUF at a time from ~/local/models/gguf)
 ```
 
-- **Coding agents** (planner/builder/scout/reviewer/documenter) need a *text* model with
-  tool calling. `dpi-backend` routes every agent through one provider (`DPI_PROVIDER`); a new
-  `local` provider (OpenAI-compatible → `LLAMA_BASE_URL`) is the only backend change.
-- **`jev-quality`** (step 3, implemented) already calls `askJev`; setting
-  `JEV_BASE_URL=http://127.0.0.1:8080/v1/systemone` and `JEV_MODEL=Clef-Flash-Q4_K_M`
-  routes it to the local Clef with **no code change** — the System One envelope llama.cpp
-  serves matches `dpi-backend/src/jev.ts` exactly. The reviewer gate fails open to the model
-  reviewer when Jev is unreachable, so a sleeping model server never blocks a run.
+- **Every model call** (coding agents, `jev-quality`, the feedback loop) goes through the MCP
+  capability registry (`run_llm` / `run_decision`). The backend has no local-vs-cloud provider
+  and no model IDs (AGENTS.md). Local hosts are reached over Cloudflare Tunnel + Access (below).
+- **`jev-quality`** is the review gate's decision model. It is the registry's enabled `decision`
+  capability with `purpose: ["jev-quality"]`; the backend still reads `JEV_BASE_URL` until the
+  binding in "Remaining work" step 5 lands. The gate fails open to the model reviewer when Jev is
+  unreachable, so a sleeping model server never blocks a run.
 
 ## What is built
 
@@ -66,12 +65,41 @@ Studio (127.0.0.1)
    identifies the decision models/server/config/launchd auto-start, tests it live, proposes,
    and — only if the config is right — is approved and validated with auto-turn-on set. 5 unit
    tests + 1 eval.
-3. **`local` provider** (`dpi-backend/src/providers.ts`): `DPI_PROVIDER=local` routes every
-   coding agent to an ambient OpenAI-compatible endpoint (`LLAMA_BASE_URL`, default
-   `http://127.0.0.1:8080/v1`) with two text-model aliases (Qwen3 Coder 8B, DeepSeek Coder V2
-   Lite). No credentials. The browser trigger is wired too: the Main agent's prompt maps
-   `create app: <description>` → `run_durable_job create-app`. `dpi-network.example.yaml`
-   shows the Studio device stanza that turns this on.
+3. **Mesh over Cloudflare, step 1** (`dpi-mcp/src/mesh-config.ts`, `capabilities.ts`
+   `meshFetch`): the Studio's llama-server is reached at its Cloudflare Tunnel hostname behind a
+   Cloudflare Access service-token policy. Discovery and every model call attach the token for
+   mesh hostnames only. Verified: no token → `401`; token → the Studio's 9 models, a real local
+   decision verdict and a real LLM answer. No tailscale anywhere.
+4. **Feedback loop** (`dpi-backend/src/jobs.ts`, job `feedback`): an observation runs
+   `triage → work → review → deploy`; the review phase is the same `runReview()` gate `create-app`
+   uses. "See something, say something" in AGENTS.md is this job.
+
+## Mesh over Cloudflare (step 1)
+
+Each host is one Cloudflare Tunnel connector and one Access-protected hostname. This is the
+runbook; every value below is a placeholder (`<host>`, `<zone>`, `<tunnel-id>`, `<app-id>`).
+Secrets are written to `~/.dpi-mcp/access.env` (mode 0600), never to the repo or a command line.
+
+1. **Tunnel ingress** (on the host's existing tunnel, which runs `cloudflared` on the host):
+   `cf tunnels config update <tunnel-id> --tunnel-config-ingress '[{"hostname":"<host>-llm.<zone>","service":"http://localhost:8080"},{"service":"http_status:404"}]'`
+   (keep the host's existing SSH ingress in the same list.)
+2. **DNS**: a proxied CNAME `<host>-llm.<zone>` → `<tunnel-id>.cfargotunnel.com`
+   (`cf dns records create --zone <zone> --body '{...}'`).
+   **Use a one-level name** (`<host>-llm.<zone>`). Universal SSL covers `*.<zone>` only, so a
+   two-level name like `llm.<host>.<zone>` fails the TLS handshake.
+3. **Access**: a reusable policy with `decision: non_identity` and
+   `include: [{"any_valid_service_token": {}}]`, then a self-hosted app on the hostname with that
+   policy (`cf zero-trust access policies create`, `cf zero-trust access applications create`).
+   `service_auth_401_redirect: true` makes a missing token a plain `401`.
+4. **Service token**: `cf zero-trust access service-tokens create --name <name> --duration 8760h`.
+   Write `CF_ACCESS_<HOST>=<client_id>:<client_secret>` to `~/.dpi-mcp/access.env` (0600).
+5. **Mesh file**: add the host to `apps/dpi-mcp/mesh.json` (copy `mesh.example.json`).
+6. **Verify**: `curl` without headers → `401`; with the two `CF-Access-*` headers → `{"status":"ok"}`.
+   Then `npx tsx` `discoverMeshModels()` lists the host's models.
+
+Access apps and tokens are created with the `cf` CLI's account login. The API token in
+`dpi-network.yaml` is scoped for tunnels and DNS, not Access, so Access calls fail with
+`auth.forbidden` if you try them with it.
 
 ## Auto-discover / auto-implement
 
@@ -89,29 +117,20 @@ The registry is **data derived from the host's own API**, not hand-written confi
 
 ## Remaining work (ordered)
 
-1. **Add a coding LLM to the Studio.** Download a text+tool-calling GGUF (a ~8–14B Q4 model
-   fits the 32 GB box beside Clef-Flash; the `local` provider lists Qwen3 Coder 8B and
-   DeepSeek Coder V2 Lite as the expected aliases) into
-   `~/local/models/gguf`, and let the 8080 router serve it. This is a deliberate
-   choice (model, size, quantization); pick it explicitly before a multi-GB download.
-2. ~~`local` provider~~ — done (step 3 above).
-3. **Mesh reachability.** `llama-server` binds `127.0.0.1` today, so other hosts (MacBook,
-   iPhone) cannot reach the Studio's models. For the factory itself this is fine (it runs on
-   the Studio); to let *all* agents use the MCP `run_llm`/`run_decision` tools from anywhere,
-   expose the model server through a Cloudflare Tunnel hostname protected by Cloudflare Access
-   (a service token, sent as `CF-Access-Client-Id` / `CF-Access-Client-Secret`), or restart
-   the server with `--host 0.0.0.0` and route the Tunnel ingress to `:8080`. Then re-run
-   `discover_host` with the mesh URL.
+1. **Coding LLM on the Studio.** Done: the 9 registry models include text models with tool use
+   (Qwen3-30B-A3B, Mistral-Small-3.1-24B, gpt-oss-20b). Pick the coding default by benchmark, not
+   by name, through the registry.
+2. ~~`local` provider~~ — removed. Model access is the MCP registry only.
+3. ~~Mesh reachability~~ — done (step 3 above and the runbook).
 4. **PWA on iOS.** Serve the hub UI (`apps/dpi-playground`) from the Studio over HTTPS
    (the Cloudflare Tunnel gives that), and add a web app manifest + service worker + Apple touch
    icon so "Add to Home Screen" installs it as a standalone app. The hub already serves the
    Vue frontend; the manifest/worker/icons are the new bits, plus iOS Safari specifics
    (`apple-mobile-web-app-capable`, full-screen `display: standalone`, no service-worker
    assumptions on iOS).
-5. **Bind the factory to enabled capabilities.** Once `local` (step 2) and the capability
-   lifecycle exist, have the reviewer phase prefer `resolveCapability("jev-quality")` over
-   raw env, and the coding agents prefer the enabled `llm` capability — the last "auto-
-   implement" stitch.
+5. **Bind the factory to enabled capabilities.** Have the review phase resolve `jev-quality`
+   through `selectCapability` (A/B, local-first) instead of `JEV_BASE_URL`, and the coding
+   agents resolve an enabled `llm` capability — the last "auto-implement" stitch.
 
 See `apps/dpi-mcp/README.md` for the tool list and `docs/tsf-factory-design.md` for the
 phase graph.

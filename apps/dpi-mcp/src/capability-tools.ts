@@ -133,7 +133,7 @@ export function registerCapabilityTools(server: McpServer): void {
         "Probe a host's HTTP base for /health and /v1/models, derive its chat LLMs and decision models, and record them in the registry (hosts). Then recommend_capability can turn a model into a usable capability.",
       inputSchema: {
         host: z.string().min(1).max(64).describe("host id, e.g. studio"),
-        address: z.string().min(1).max(200).describe("HTTP base, e.g. https://studio.jewell-labs.com (Cloudflare Tunnel)"),
+        address: z.string().min(1).max(200).describe("HTTP base, e.g. https://<host>.<your-zone> (Cloudflare Tunnel + Access)"),
         ssh: z.string().max(128).optional().describe("ssh target for config/launch-agent inspection, e.g. studio (from ~/.ssh/config)"),
       },
       annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
