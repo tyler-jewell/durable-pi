@@ -1,13 +1,7 @@
 {
   "extends": "../tsconfig.json",
   "compilerOptions": {
-    "types": [
-      "node"
-    ],
-    "allowImportingTsExtensions": true
+    "types": ["node"]
   },
-  "include": [
-    "*.ts",
-    "../src/cost/*.ts"
-  ]
+  "include": ["./*.test.ts", "../vitest.unit.config.ts"]
 }

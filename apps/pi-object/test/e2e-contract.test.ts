@@ -1,6 +1,6 @@
 // The e2e scenario both runs share (e2e/contract.ts): the turn order and the fixed values.
 
-import { test } from "node:test";
+import { test } from "vitest";
 import assert from "node:assert/strict";
 
 import * as E from "../e2e/contract.js";

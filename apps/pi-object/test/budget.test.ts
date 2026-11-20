@@ -1,6 +1,6 @@
 // The per-DO budget guard: pure decisions, so every rule is checked without a runtime.
 
-import { test } from "node:test";
+import { test } from "vitest";
 import assert from "node:assert/strict";
 
 import { budgetDecision, BudgetExceeded } from "../src/cost/budget.js";

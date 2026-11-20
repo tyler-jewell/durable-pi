@@ -1,7 +1,7 @@
 // Cost objects: DeepSeek spend from the balance and the configured top-ups, the free-tier toggle, the rate
 // window, and the balance reader. Pure functions, so these run under plain Node with no Cloudflare runtime.
 
-import { test } from "node:test";
+import { test } from "vitest";
 import assert from "node:assert/strict";
 
 import { deepseekView, type DeepseekBalance } from "../src/cost/objects.js";

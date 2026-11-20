@@ -1,7 +1,7 @@
 // The reconciliation's pricing: the window rule and the per-call cost, checked against DeepSeek's documented rates
 // and against a real call pi recorded.
 
-import { test } from "node:test";
+import { test } from "vitest";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 

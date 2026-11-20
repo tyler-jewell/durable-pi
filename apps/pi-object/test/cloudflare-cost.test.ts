@@ -1,7 +1,7 @@
 // The Cloudflare cost object. The rate card here is SYNTHETIC: its prices are arbitrary round numbers chosen to
 // make the arithmetic easy to check. They are not Cloudflare's prices, and nothing in the app reads them from here.
 
-import { test } from "node:test";
+import { test } from "vitest";
 import assert from "node:assert/strict";
 import { DatabaseSync } from "node:sqlite";
 

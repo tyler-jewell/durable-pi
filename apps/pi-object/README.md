@@ -11,7 +11,7 @@ npm run typecheck       # TypeScript 7
 npm run build           # cf build: typed Env in .cloudflare/types, from cloudflare.config.ts
 npm run dev             # cf dev (workerd, local Durable Object storage)
 npm run dev:verify      # end to end: the agent writes and reads a file, telemetry reaches /v1/cost, the file survives a restart
-npm run deploy          # cf deploy (the account in .env; the Wrangler bundler, wrangler 4.165.0)
+npm run deploy          # cf deploy (the account in .env; the Wrangler bundler, wrangler 4.166.0)
 npx cf observability tail --worker durable-pi-object   # live logs
 npm run e2e                  # end-to-end: Apple container pushes to Artifacts (e2e/README.md)
 npm run e2e:remote           # the same scenario on the deployed Durable Object
@@ -90,7 +90,8 @@ device token is `~/.dpi/pi-object.token`. Each route requires `Authorization: Be
 ## Known issues
 
 - **Same-Worker Durable Object access is via `ctx.exports` (resolved).** The Worker reaches `PiAgent` through the typed loopback binding `ctx.exports.PiAgent` (needs `enable_ctx_exports`). `cloudflare.config.ts` imports the entrypoint as a module object (`import * as entrypoint from "./src/index" with { type: "cf-worker" }`), so `cf`'s type inference resolves the namespace with its RPC methods. No cast. This replaced the earlier `env.PiAgent as unknown as ...` cast and the self-binding.
-- **`cf build` delegates to Wrangler.** The `wrangler` devDependency is required for `cf build`, so it stays pinned (4.165.0) even though the `wrangler` skill says not to add Wrangler to a `cf` project. The skill is not installed here.
+- **`cf build` delegates to Wrangler.** The `wrangler` devDependency is required for `cf build`, so it stays pinned (4.166.0) even though the `wrangler` skill says not to add Wrangler to a `cf` project. The skill is not installed here.
+- **Durable Object tests run in the Workers runtime.** `npm test` runs the logic tests under Vitest, then `test/do` through `@cloudflare/vitest-plugin` against `cloudflare.config.ts`. `dev:verify` remains the live check.
 - **cf 1.0 RC and accounts.** `cf` no longer remembers the account between runs. `.env` sets `CLOUDFLARE_ACCOUNT_ID`, which `cf` reads from this directory. With one account on a profile it is used without asking; with several it prompts, and a non-interactive run fails. Status messages go to stderr, so scripts read stdout (JSON) only.
 - **Artifacts permission names.** The account's permission groups are `Artifacts Read` and `Artifacts Write`. The Artifacts docs say "Edit"; the group is "Write". The deploy token needs both.
 - **One DeepSeek key, several projects.** Every pi project on this machine reads the same `~/.pi/agent/auth.json`, so their calls all draw on one balance. Attribute by session (`deepseek-reconcile.ts attribute`), not by balance alone.

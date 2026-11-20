@@ -409,7 +409,7 @@ Every node is proved the same way: **test in a container → review code (remove
 - [ ] A test asserting no configured secret value appears in any streamed/logged frame.
 
 ### Phase 0 — Baseline at latest versions
-- [x] Pin latest: `cf@1.0.0-rc.1` (the 1.0 release candidate, announced 17 Nov 2026), `wrangler@4.165.0`, `pi-*@1.6.0`, Node 26 LTS, TypeScript 7.0.2 where Vue tooling allows it (see Known issues). `pi-object` builds with the Wrangler bundler under `cf`, so the Vite plugin is not needed there; `@cloudflare/vite-plugin` 2.0 applies only to a future Vite-built app.
+- [x] Pin latest: `cf@1.0.0-rc.2`, `wrangler@4.166.0`, `@cloudflare/vitest-plugin@1.9.0`, `vitest@5.1.1`, `pi-*@1.6.0`, Node 26 LTS, TypeScript 7.0.2 where Vue tooling allows it (see Known issues). `pi-object` builds with the Wrangler bundler under `cf`, so the Vite plugin is not needed there; `@cloudflare/vite-plugin` 2.0 applies only to a future Vite-built app.
 - [x] Rebuild the test container on `node:26` (v26.13.1) and bump the YAML `node` default 24 → 26 (centralized `DEFAULT_CONTAINER_IMAGE`).
 - [x] Confirm the container has Git 2.32+ (git 2.39.5, installed by the new apple-container `provision` step).
 
@@ -488,7 +488,7 @@ To add a skill: `just skills add <owner/repo> <skill>`, then commit `skills-lock
 
 - **Some Workers AI text-generation models reject a conversation with tool history.** `llama-3.3-70b-instruct-fp8-fast`, `gpt-oss`, `mistral-small`, `granite` and `qwen3-30b-a3b-fp8` 400 on the second turn, when a tool result is replayed ("content array not in string"), so an agent dies on its first tool use. They are removed from the gateway's model list, and the default is now `@cf/deepseek-ai/deepseek-v4-flash-0731`, which works. Verified 19 Nov 2026.
 - **Artifacts needs the Workers Paid plan** (not Free); 1 GB/repo for repos created after 2026-09-29.
-- **`cf` is a 1.0 release candidate** (`1.0.0-rc.1`, announced 17 Nov 2026). The config format, Build Output, and the create/develop/deploy commands are declared stable. A few generated API commands may still be renamed (`cf workers secrets bulk` is now `bulk-edit`).
+- **`cf` is a 1.0 release candidate** (`1.0.0-rc.2`). The config format, Build Output, and the create/develop/deploy commands are declared stable. A few generated API commands may still be renamed (`cf workers secrets bulk` is now `bulk-edit`).
 - **Artifacts billing starts 19 Nov 2026** for operations and storage (per the pricing page). Repository-count billing comes later, with notice. Our 2026-10-01 changelog entry said 14 Oct; the pricing page supersedes it.
 - **Cloudflare spend limits are account-level, not per project.** Each product has one hard cap per account, and a cap is not an invoice guarantee. Details: [pi-object Known issues](apps/pi-object/README.md#known-issues).
 - **Jev via Workers AI and third-party models need AI Gateway prepaid credits or BYOK** (error 2021 on Free). **Decision (19 Nov 2026): stay on free `@cf/*` models.** No prepaid credits, no BYOK, until the public demo needs a non-free model. A second billing path is intentionally avoided.

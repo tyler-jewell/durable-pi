@@ -1,6 +1,6 @@
 // Telemetry: pi's counts are copied exactly, the app's own clock is measured, and nothing here carries a price.
 
-import { test } from "node:test";
+import { test } from "vitest";
 import assert from "node:assert/strict";
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
