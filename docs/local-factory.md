@@ -1,49 +1,40 @@
 # The local-only software factory (Studio on the mesh)
 
-The `.tsf` factory (`create-app` durable job) run **entirely on the Studio**, using the
-Studio's own local LLMs for the coding agents and its local Jev/Clef decision models for the
-`jev-quality` reviewer gate — no cloud model calls. This doc records what was validated, what
-is built, and what remains.
+The local factory pairs the `.tsf` `create-app` job with chat and decision models running on the
+mesh. The model setup below supports local-only validation. The durable job’s backend model
+bindings are listed under [Remaining work](#remaining-work-ordered).
 
 ## Validated resources (19 Nov 2026)
 
-`studio.jewell-labs.com` (Apple M1 Max, 32 GB, reached over a Cloudflare Tunnel + Access) runs **llama.cpp `llama-server` 1.0.0**.
-The canonical model root is `~/local/models/` (manifest.json is the SSoT; see
-the model lineup is discovered, not listed in the repo), and one router on `:8080` serves one GGUF at a time from
-`gguf/` (`--models-max 1`, autoload, sleep-idle 600 s):
-
-| Endpoint | What it is | Models (canonical `gguf/`) | Modality |
-|---|---|---|---|
-| `127.0.0.1:8080` | multi-model **router** | Clef-Flash, OpenJev, gpt-oss-20b (+ clairic-flash + the 7 text models as they land) | text + decisions |
+The Studio runs a loopback `llama-server` router behind Cloudflare Tunnel and Access. Its launch agent
+serves one model at a time. Live discovery reports a served context of **16,384 tokens** for both the
+Studio and MacBook Pro. Prompt tokens, tool schemas, history, and output all share that window. Use
+`discover_models` to refresh the served windows before generating an isolated Pi profile.
 
 Every model answers `/health` and `/v1/models`; decision models report
 `architecture.output_modalities: ["decisions"]` and expose `/v1/systemone`; chat models
-serve `/v1/chat/completions` (with `timings.predicted_per_second`). A real call to
-Clef-Flash answered a `choice` question in **~0.75 s** cold:
+serve `/v1/chat/completions` (with `timings.predicted_per_second`). A local decision tool returns
+bounded answers such as this `choice` verdict:
 
 ```json
 { "answers": { "verdict": { "type": "choice", "choice": "approve",
   "confidence": 0.862, "probabilities": { "approve": 0.908, "reject": 0.056, "revise": 0.034 } } } }
 ```
 
-Benchmarks so far (19 Nov): Clef-Flash 617 ms/decision, OpenJev 1254 ms/decision,
-gpt-oss-20b ~40 tok/s generation. The remaining text models land in this batch (below).
-
 ## Architecture
 
 ```
 Studio (127.0.0.1)
 ├── dpi-backend      create-app durable job: planner → builder → scout → test → review → document → deploy
-│     ├── coding agents ──► local LLM (OpenAI /v1)            ← the missing text model
-│     └── review phase ──► askJev ──► /v1/systemone (Clef)     ← already works, no code change
+│     ├── coding agents ──► backend model configuration
+│     └── review phase ──► askJev ──► decision endpoint
 ├── dpi-mcp          MCP tools (create_app/check/test/push, model discovery, ask_model)
 └── llama-server     8080 (router, one GGUF at a time from ~/local/models/gguf)
 ```
 
-- **Every model call** (coding agents, the review gate, the feedback loop) goes through an MCP tool:
-  `ask_model` picks an enabled model tool by its tags, or a caller names one. The backend has no
-  local-vs-cloud provider and no model IDs (AGENTS.md). Local hosts are reached over Cloudflare
-  Tunnel + Access (below).
+- **MCP model calls** go through `ask_model`, which picks an enabled model tool by its tags, or
+  through a named model tool. The MCP meter records these calls. Pi’s generated profiles connect
+  directly to the model endpoints, so their chat turns do not appear in that meter.
 - **The review gate's decision model** is an enabled decision tool. The backend still reads
   `JEV_BASE_URL` until the binding in "Remaining work" step 2 lands. The gate fails open to the model reviewer when Jev is
   unreachable, so a sleeping model server never blocks a run.

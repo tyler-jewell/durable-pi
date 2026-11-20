@@ -5,14 +5,14 @@ This repository is **public-ready**. Never commit anything that ties it to one m
 - No hardcoded local paths (`/Users/<name>`, `/home/<name>`, `~/dpi-work`, etc.) — use `~`, environment variables, or derive paths at runtime.
 - No secrets in code or docs (`dpi_*`, `cfat_*`/`cfut_*`, `sk-*`, `Bearer …`, API keys, passwords) — read them from the environment or a gitignored file, and reference them as `<NAME>` in committed examples.
 - No machine-specific hostnames, ports, or usernames — use the config files (`dpi-network.example.yaml`, `.env.example`) and placeholders.
-- No model names at all in the repo: no local model, no cloud model, no decision model, no catalog ID, no quantization tag. Names come from discovery (`discover_cloud`, the zero bootstrap), and `just names` ratchets the count down to zero. The only exemption is `apps/dpi-mcp/tests/naming-fixtures.ts`, which spells the naming convention once for the parser tests.
+- No model names at all in the repo: no local model, no cloud model, no decision model, no catalog ID, no quantization tag. Names come from discovery (`discover_models`, the zero bootstrap), and `just names` ratchets the count down to zero. The only exemption is `apps/dpi-mcp/tests/naming-fixtures.ts`, which spells the naming convention once for the parser tests.
 - No hardcoded model IDs, provider catalogs, or default models, and no local-vs-cloud model providers — every model is an MCP tool. Local and cloud models are served as tools of the same server, `ask_model` picks among the enabled tools by the tags a caller requires (A/B random by default), and the agent can always call one by name.
 - Comments describe what the code does now. Never write about a migration, a removed, renamed or merged thing, what something used to be, what it replaces, or what was "no longer" true. Migration notes belong in the commit message, not in the code.
 - Never add files to version control that significantly affect the artifact release pipeline (build/check/test), and never increase total pipeline time by more than 5% of the baseline.
 
 ## A result needs its calls
 
-A task is reported done only with the tool calls that produced it. The meter records every model call, so it is the source of truth for what ran. A review checks the calls, not the summary: a report that names a tool which was never called, or a verdict with no call behind it, is a failure, however it reads.
+A task is reported done only with evidence of the tool calls and artifacts that produced the result. Use the MCP meter for model calls made through dpi-mcp and the run trace for direct agent turns. A review checks that evidence, not the summary.
 
 ## Tool calls are never silently cut
 

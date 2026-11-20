@@ -114,6 +114,12 @@ tools appear as `mcp__dpi_mcp__create_app`, `mcp__dpi_mcp__check`, `mcp__dpi_mcp
 `mcp__dpi_mcp__disable_tool`, `mcp__dpi_mcp__ask_model`, `mcp__dpi_mcp__inspect_host`, and one
 `mcp__dpi_mcp__model_<host>_<model>` for each enabled model.
 
+These are Pi tool identifiers, not shell commands. Standalone programs connect to `/mcp`
+with an MCP client (the package uses `Client` and `StreamableHTTPClientTransport` from
+`@modelcontextprotocol/sdk`). Discover schemas with `listTools()` and call tools with
+`callTool()`. For decisions, pass `state` and `questions` and read `structuredContent.answers`;
+check `isError` before using the result.
+
 For a bare-bones container, run the server where the container can reach it (for an Apple
 container that is the host bridge, `192.168.64.1:4789`), set `DPI_MCP_TOKEN` in the
 container, and use that URL in the container's `.pi/mcp.json`.
