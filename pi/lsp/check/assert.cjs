@@ -44,17 +44,21 @@ check("bash: an unquoted variable (versioned publish)", /run\.sh:\d+:\d+ \w+: .*
 check("after an edit, the same file is re-checked and clean", /^No diagnostics/.test(text(5)), first(text(5)));
 check("external scratch file is rejected", /path must be inside the project/.test(text(6)), first(text(6)));
 check("symlink to an external file is rejected", /path must be inside the project/.test(text(7)), first(text(7)));
-check("Git-ignored script is rejected", /path is ignored by Git/.test(text(8)), first(text(8)));
+check("Git-ignored script is rejected", /path is not tracked by Git/.test(text(8)), first(text(8)));
 check("dependency directory script is rejected", /path is excluded from language-server checks/.test(text(9)), first(text(9)));
+check("untracked scratch script inside the project is rejected", /path is not tracked by Git/.test(text(10)), first(text(10)));
+check("tracked symlink to untracked scratch is rejected", /symbolic links are excluded/.test(text(11)), first(text(11)));
 
 // Navigation.
 const def = (results.lsp_definition || [])[0];
 check("lsp_definition points at the function declaration", !!def && /src\/app\.ts:1:17/.test(def.text), def ? def.text.trim() : "no result");
 const hov = (results.lsp_hover || [])[0];
 check("lsp_hover describes total", !!hov && /total/.test(hov.text) && /number/.test(hov.text), hov ? hov.text.trim().slice(0, 80) : "no result");
+const scratchHover = (results.lsp_hover || [])[1];
+check("lsp_hover refuses untracked scratch files", !!scratchHover && /path is not tracked by Git/.test(scratchHover.text), scratchHover?.text);
 
 // The installed code is the repo's: every result carries the build the installer printed.
-check("the tools ran the freshly installed build", diag.length === 10 && diag.slice(0, 6).every((d) => d.build === build), `${build} vs ${diag.map((d) => d.build).join(",")}`);
+check("the tools ran the freshly installed build", diag.length === 12 && diag.slice(0, 6).every((d) => d.build === build), `${build} vs ${diag.map((d) => d.build).join(",")}`);
 
 const bypass = (results.bash || [])[2];
 check("a commit that skips the gate is blocked before it runs", !!bypass && /bypass the git gate/.test(bypass.text), bypass ? bypass.text.slice(0, 80) : "no result");

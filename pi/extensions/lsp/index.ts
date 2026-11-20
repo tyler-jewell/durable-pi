@@ -73,13 +73,13 @@ export default function (pi: ExtensionAPI) {
     // A diffable section, not a full prompt replacement: Pi patches only this section when it changes.
     event.systemPromptOptions.sections["language-servers"] =
       lines.join("\n") +
-      "\nRun lsp_diagnostics only on supported files inside this project that are not ignored or excluded. " +
+      "\nRun lsp_diagnostics only on supported, Git-tracked files inside this project that are not excluded. " +
       "For scratch shell scripts outside the project (for example under /tmp), use bash -n and, if installed, shellcheck instead. " +
       "Use lsp_definition, lsp_hover and lsp_references on project files to read types and find symbols instead of guessing. " +
       "Commits run a gate that rejects any error or warning these servers report, so fix them first.";
   });
 
-  const inside = (path: string) => workspace().toolPath(path);
+  const trackedFile = (path: string) => workspace().toolPath(path);
 
   const rel = (abs: string) => relative(root, abs) || abs.split("/").pop()!;
   const position = (line: number, column: number) => ({ line: Math.max(0, line - 1), character: Math.max(0, column - 1) });
@@ -96,15 +96,15 @@ export default function (pi: ExtensionAPI) {
     name: "lsp_diagnostics",
     label: "LSP diagnostics",
     description:
-      "Errors and warnings for eligible files inside the project. Omit the path to check the project. For external shell scripts, use bash -n or shellcheck. Output is cut at 50KB / 2000 lines.",
+      "Errors and warnings for Git-tracked files inside the project. Omit the path to check tracked project files. For scratch shell scripts, use bash -n or shellcheck. Output is cut at 50KB / 2000 lines.",
     promptSnippet: "lsp_diagnostics: errors and warnings for a file, as the language server sees them",
-    promptGuidelines: ["lsp_diagnostics: check supported edited project files before reporting done. Do not pass scratch files outside the project, ignored files, or excluded files."],
+    promptGuidelines: ["lsp_diagnostics: check edited files only if they are Git-tracked, supported, and in scope. Do not pass untracked scratch files."],
     parameters: Type.Object({ path: Type.Optional(Type.String({ description: "Eligible file inside the project; omit to check the project" })) }),
     async execute(_id, params) {
       const w = workspace();
       let files: string[];
       if (params.path) {
-        files = [inside(params.path)];
+        files = [trackedFile(params.path)];
         if (!langOf(files[0])) return text(`No language server covers ${rel(files[0])}.`);
       } else {
         files = [];
@@ -136,7 +136,7 @@ export default function (pi: ExtensionAPI) {
     promptGuidelines: ["lsp_definition: use it to find where a function, type or variable is declared before you change it."],
     parameters: positionParams,
     async execute(_id, params) {
-      const result: Location | LocationLink | Array<Location | LocationLink> | null = await workspace().query(inside(params.path), "textDocument/definition", { position: position(params.line, params.column) });
+      const result: Location | LocationLink | Array<Location | LocationLink> | null = await workspace().query(params.path, "textDocument/definition", { position: position(params.line, params.column) });
       const locs = (Array.isArray(result) ? result : result ? [result] : []).map(asLocation);
       return text(locs.length ? locs.slice(0, 20).map(locationText).join("\n") : "No definition found.", { count: locs.length });
     },
@@ -150,7 +150,7 @@ export default function (pi: ExtensionAPI) {
     promptGuidelines: ["lsp_hover: use it to check a symbol's type before you call or change it."],
     parameters: positionParams,
     async execute(_id, params) {
-      const result: Hover = await workspace().query(inside(params.path), "textDocument/hover", { position: position(params.line, params.column) });
+      const result: Hover = await workspace().query(params.path, "textDocument/hover", { position: position(params.line, params.column) });
       const marked = (m: MarkedString) => (typeof m === "string" ? m : m.value);
       const contents = result?.contents;
       const body = !contents ? "" : Array.isArray(contents) ? contents.map(marked).join("\n\n") : marked(contents);
@@ -167,7 +167,7 @@ export default function (pi: ExtensionAPI) {
     parameters: positionParams,
     async execute(_id, params) {
       const result: Location[] =
-        (await workspace().query(inside(params.path), "textDocument/references", {
+        (await workspace().query(params.path, "textDocument/references", {
           position: position(params.line, params.column),
           context: { includeDeclaration: true },
         })) ?? [];

@@ -51,7 +51,16 @@ if (mode === "staged") {
   for (const name of names) staged.set(join(root, name), gitBytes(["show", `:${name}`]).toString("utf8"));
   candidates = [...staged.keys()];
 } else if (mode === "files") {
-  candidates = process.argv.slice(3).map((p) => resolve(root, p));
+  const paths = new Workspace(root, { exclude: EXCLUDE });
+  candidates = process.argv.slice(3).map((p) => resolve(root, p)).filter((p) => langOf(p) && !excluded(p));
+  for (const file of candidates) {
+    try {
+      paths.toolPath(file);
+    } catch (error) {
+      console.error(`gate: ${String(error)}`);
+      process.exit(1);
+    }
+  }
 } else if (mode === "all") {
   candidates = scanWorkspace(root, EXCLUDE).files;
 } else {

@@ -22,6 +22,9 @@ const script: Step[] = [
   { tool: "lsp_diagnostics", args: { path: "outside-link.sh" } },
   { tool: "lsp_diagnostics", args: { path: "ignored.sh" } },
   { tool: "lsp_diagnostics", args: { path: "node_modules/generated.sh" } },
+  { tool: "lsp_diagnostics", args: { path: "scratch.sh" } },
+  { tool: "lsp_diagnostics", args: { path: "scratch-link.sh" } },
+  { tool: "lsp_hover", args: { path: "scratch.sh", line: 1, column: 1 } },
 ];
 
 export default function (pi: ExtensionAPI) {

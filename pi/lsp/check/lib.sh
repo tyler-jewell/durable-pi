@@ -22,4 +22,5 @@ install_extension() {
 fixture() {
   rm -rf "$1" && cp -R "$SRC/pi/lsp/check/fixture" "$1"
   mkdir -p "$1/node_modules" && ln -sfn "$HOME/.dpi/lsp-tools/node_modules/vue" "$1/node_modules/vue"
+  (cd "$1" && git init -q && git add -- . ':!node_modules')
 }

@@ -15,8 +15,8 @@
 //
 // Every server started by this process is killed when the process exits, so none outlives its agent or hook.
 
-import { spawn, spawnSync, execFileSync } from "node:child_process";
-import { existsSync, readFileSync, readdirSync, realpathSync, statSync } from "node:fs";
+import { spawn, execFileSync } from "node:child_process";
+import { existsSync, readFileSync, realpathSync, statSync } from "node:fs";
 import { createRequire } from "node:module";
 import { homedir } from "node:os";
 import { basename, dirname, extname, isAbsolute, join, relative, resolve, sep } from "node:path";
@@ -108,42 +108,29 @@ function projectFile(root, file, exclude, realRoot = realpathSync(root)) {
   const abs = resolve(root, file);
   const rel = relativeInside(root, abs);
   const target = relativeInside(realRoot, realpathSync(abs));
-  for (const path of [rel, target]) {
-    if (path.split(sep).slice(0, -1).some((dir) => SKIP.has(dir)) || exclude.some((prefix) => path.startsWith(prefix))) {
-      throw new Error(`path is excluded from language-server checks: ${file}`);
-    }
+  if (rel !== target) throw new Error(`symbolic links are excluded from language-server checks: ${file}`);
+  if (rel.split(sep).slice(0, -1).some((dir) => SKIP.has(dir)) || exclude.some((prefix) => rel.startsWith(prefix))) {
+    throw new Error(`path is excluded from language-server checks: ${file}`);
   }
   if (!isFile(abs)) throw new Error(`path is not a file: ${file}`);
   return abs;
 }
 
-/** Every file of a checkout. Git knows best (tracked and untracked, minus .gitignore); a folder that is not a repo is walked. @param {string} root @returns {string[]} */
-export function listProjectFiles(root) {
+/** Paths recorded in the checkout's Git index. A directory without an index has no eligible files. @param {string} root @returns {Set<string>} */
+function trackedPaths(root) {
   try {
-    const out = execFileSync("git", ["-C", root, "ls-files", "-z", "--cached", "--others", "--exclude-standard"], { encoding: "utf8", maxBuffer: 256 << 20, stdio: ["ignore", "pipe", "ignore"] });
-    return out.split("\0").filter(Boolean).map((p) => join(root, p)).filter(isFile);
+    const out = execFileSync("git", ["-C", root, "ls-files", "-z", "--cached", "--"], { encoding: "utf8", maxBuffer: 256 << 20, stdio: ["ignore", "pipe", "ignore"] });
+    return new Set(out.split("\0").filter(Boolean).map((p) => resolve(root, p)));
   } catch {
-    /** @type {string[]} */
-    const files = [];
-    /** @param {string} dir @param {number} depth */
-    const walk = (dir, depth) => {
-      let entries;
-      try {
-        entries = readdirSync(dir, { withFileTypes: true });
-      } catch {
-        return;
-      }
-      for (const e of entries) {
-        if (SKIP.has(e.name)) continue;
-        if (e.isDirectory()) {
-          if (depth < 12) walk(join(dir, e.name), depth + 1);
-        } else if (e.isFile()) files.push(join(dir, e.name));
-      }
-    };
-    walk(root, 0);
-    return files;
+    return new Set();
   }
 }
+
+/** @param {Set<string>} tracked @param {string} abs */
+function requireTracked(tracked, abs) {
+  if (!tracked.has(abs)) throw new Error(`path is not tracked by Git: ${abs}`);
+}
+
 
 /**
  * Lists the checkout's files and counts them by extension. `byLang` holds the files a server covers (minus the repo's
@@ -152,7 +139,7 @@ export function listProjectFiles(root) {
  */
 export function scanWorkspace(root, exclude = excludedPaths(root)) {
   const realRoot = realpathSync(root);
-  const files = listProjectFiles(root).filter((f) => {
+  const files = [...trackedPaths(root)].filter((f) => {
     try {
       projectFile(root, f, exclude, realRoot);
       return true;
@@ -722,11 +709,10 @@ export class Workspace {
     return this.status();
   }
 
-  /** Resolve an explicit tool path, including Git's ignore rules for untracked files. @param {string} path */
+  /** Resolve an eligible file recorded in the Git index. @param {string} path */
   toolPath(path) {
     const abs = projectFile(this.root, path, this.exclude);
-    const result = spawnSync("git", ["-C", this.root, "check-ignore", "-q", "--", abs], { stdio: "ignore" });
-    if (result.status === 0) throw new Error(`path is ignored by Git: ${path}`);
+    requireTracked(trackedPaths(this.root), abs);
     return abs;
   }
 
@@ -828,9 +814,10 @@ export class Workspace {
     /** @type {Map<LangId, string[]>} */
     const byLang = new Map();
     const realRoot = realpathSync(this.root);
+    const tracked = trackedPaths(this.root);
     for (const f of files) {
       try {
-        projectFile(this.root, f, this.exclude, realRoot);
+        requireTracked(tracked, projectFile(this.root, f, this.exclude, realRoot));
       } catch (e) {
         out.set(f, /** @type {Error} */ (e));
         continue;
@@ -943,7 +930,7 @@ export class Workspace {
    * @param {string} file @param {string} method @param {object} extra @returns {Promise<any>}
    */
   async query(file, method, extra) {
-    file = projectFile(this.root, file, this.exclude);
+    file = this.toolPath(file);
     const lang = langOf(file);
     if (!lang) throw new Error(`no language server covers ${basename(file)}`);
     return this.#run(lang, async (s) => {

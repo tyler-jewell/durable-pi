@@ -7,8 +7,8 @@ Pi has no built-in language-server support. `pi/extensions/lsp` adds it: four to
 
 1. **A workspace is one repository checkout.** For a Durable Object app that is the app's repo. The servers run beside the
    checkout (a laptop, a container, a device), never inside the Durable Object: a Worker cannot spawn a process.
-2. **The files decide the servers.** `scanWorkspace()` lists the checkout (git-aware: tracked and untracked files minus
-   `.gitignore` and `gate-exclude.txt`) and counts file extensions. The table in `core.mjs` (`LANGUAGES`) maps each extension to
+2. **The files decide the servers.** `scanWorkspace()` lists eligible paths from the Git index, applying
+   `gate-exclude.txt` and counts file extensions. The table in `core.mjs` (`LANGUAGES`) maps each extension to
    a language. A server starts for each language that has files, and for no other. `just lsp plan` prints the table.
 3. **One server per language, never more.** The TypeScript server finds each file's own `tsconfig`, so a monorepo with twenty
    projects still has one. `Workspace` keeps a `Map` keyed by language and memoises starts. Vue adds one server, and uses the
@@ -26,10 +26,10 @@ Pi has no built-in language-server support. `pi/extensions/lsp` adds it: four to
 
 ## File scope
 
-The tools check supported regular files inside the project. Explicit requests reject Git-ignored
-untracked files and excluded paths. Paths that resolve outside the project, including through
-symlinks, are rejected before a server receives the file. Use `bash -n` and, if available,
-`shellcheck` for an external scratch shell script.
+The tools and the git gate check supported regular files recorded in the project’s Git index.
+New files qualify once staged. Untracked files, symlinks, excluded paths, and paths outside the
+checkout are never sent as files to check. A directory without a Git index has no eligible files.
+For scratch shell scripts, use `bash -n` and, if available, `shellcheck`.
 
 ## Memory
 

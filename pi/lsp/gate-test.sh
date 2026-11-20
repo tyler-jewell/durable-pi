@@ -188,8 +188,11 @@ printf 'export const n = 1;\n' > src/ok.ts
 printf '{}\n' > data.json
 printf 'plain\n' > notes.md
 git add -A >/dev/null 2>&1
+printf '#!/bin/bash\necho ok\n' > scratch.sh
 out=$(node "$GATE" plan 2>&1)
-if echo "$out" | grep -q "^servers: typescript (1 files), json (" && ! echo "$out" | grep -qi "css\|python\|vue\|html\|bash (" ; then pass "plan: only the languages with files"; else fail "plan" "$(echo "$out" | tail -2 | tr '\n' ' ')"; fi
+if echo "$out" | grep -q "^servers: typescript (1 files), json (" && ! echo "$out" | grep -qi "css\|python\|vue\|html\|bash (" ; then pass "plan: only the languages with tracked files"; else fail "plan" "$(echo "$out" | tail -2 | tr '\n' ' ')"; fi
+out=$(node "$GATE" files scratch.sh 2>&1); code=$?
+if [ "$code" = 1 ] && echo "$out" | grep -q 'not tracked by Git'; then pass "files: explicit untracked shell script is refused"; else fail "untracked shell script" "exit $code: $out"; fi
 cd "$SRC" || exit 1; rm -rf "$D"
 
 if [ "$FAILS" = 0 ]; then

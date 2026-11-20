@@ -12,12 +12,14 @@ prepare "$SRC" "$HOME/.dpi/lsp-check"
 BUILD="$(install_extension "$SRC")"
 fixture "$WORK/fixture"
 cd "$WORK/fixture"
-git init -q
 printf 'ignored.sh\nnode_modules/\n' > .gitignore
 printf '#!/bin/bash\necho ok\n' > "$WORK/outside.sh"
 cp "$WORK/outside.sh" ignored.sh
+cp "$WORK/outside.sh" scratch.sh
 cp "$WORK/outside.sh" node_modules/generated.sh
 ln -s "$WORK/outside.sh" outside-link.sh
+ln -s scratch.sh scratch-link.sh
+git add -- outside-link.sh scratch-link.sh
 set +e
 pi --provider lsp-faux --model scripted -e "$WORK/lsp-faux.ts" --session-dir "$WORK/session" \
   -p "Check the project types, then report." >"$WORK/pi.out" 2>&1
