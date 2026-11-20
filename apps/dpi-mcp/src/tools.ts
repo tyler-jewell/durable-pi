@@ -15,6 +15,8 @@ import { callDecision } from "./model-tools.js";
 import type { ModelTools } from "./model-tools.js";
 import { loadStore, select } from "./tool-store.js";
 import { scanFiles, selectFiles } from "./scan-files.js";
+import { liveClient, pushBaseline } from "./artifacts-git.js";
+import { sendBoard } from "./board.js";
 
 // ------------------------------------------------------------------ progress / events
 
@@ -232,6 +234,34 @@ async function runCadence(app: string, includePush: boolean, p: Progress) {
 
 export function registerTools(server: McpServer, models: ModelTools): void {
   registerDiscoveryTools(server, models);
+  server.registerTool(
+    "board_send",
+    {
+      title: "Send work to the agent board",
+      description: "Send a message to the durable agent board. This is how work is requested. Do not open an issue or a pull request.",
+      inputSchema: { message: z.string().min(1).max(4000) },
+      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
+    },
+    async (args) => {
+      const sent = await sendBoard(fetch, process.env, args.message);
+      return { content: [{ type: "text" as const, text: JSON.stringify(sent) }], structuredContent: sent };
+    },
+  );
+  server.registerTool(
+    "artifacts_push",
+    {
+      title: "Push the current commit to Artifacts",
+      description:
+        "Push HEAD to the Artifacts baseline, which is the git server. A short-lived write token is minted and never returned. After the push, the public main branch is updated. Do not push the project to any other git host yourself.",
+      inputSchema: { mirror: z.boolean().optional().describe("also update the public main branch (default true)") },
+      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true },
+    },
+    async (args) => {
+      const pushed = await pushBaseline(liveClient(ROOT), process.env, args.mirror !== false);
+      const body = { ...pushed };
+      return { content: [{ type: "text" as const, text: JSON.stringify(body) }], structuredContent: body };
+    },
+  );
   server.registerTool(
     "scan_files",
     {

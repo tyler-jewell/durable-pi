@@ -36,6 +36,9 @@ mod llama 'just/llama'
 # Agent skills: restore (default), add, search, remove, list. Pins live in skills-lock.json
 mod skills 'just/skills'
 
+# Artifacts git server: push the baseline, then update the public main branch
+mod artifacts 'just/artifacts'
+
 
 # List command groups
 default:
