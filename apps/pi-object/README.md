@@ -13,8 +13,9 @@ npm run dev             # cf dev (workerd, local Durable Object storage)
 npm run dev:verify      # end to end: the agent writes and reads a file, telemetry reaches /v1/cost, the file survives a restart
 npm run deploy          # cf deploy (the account in .env; the Wrangler bundler, wrangler 4.166.0)
 npx cf observability tail --worker durable-pi-object   # live logs
-npm run e2e                  # end-to-end: Apple container pushes to Artifacts (e2e/README.md)
-npm run e2e:remote           # the same scenario on the deployed Durable Object
+npm run e2e                  # offline end-to-end: local simulator, no Cloudflare call (e2e/README.md)
+npm run e2e:cloud            # the same scenario against Cloudflare Artifacts (opt-in)
+npm run e2e:remote           # the same scenario on the deployed Durable Object (opt-in)
 npm run spend-limits:check   # preview the account spend limits (no writes)
 npm run spend-limits         # apply them (needs Billing Edit)
 ```
@@ -83,7 +84,7 @@ device token is `~/.dpi/pi-object.token`. Each route requires `Authorization: Be
 - **Spend limits**: the update path was run live as a round trip ($10 → $11 → $10; the cap is back at $10, version 3).
   The create path has not run live, because it applies only when a product has no policy and both do.
 - **Live DeepSeek reconciliation: not yet passed.** `scripts/deepseek-reconcile.ts run` (100 calls, off-peak, $0.286 expected) gave a balance drop the batch alone did not explain. The cause is another project on this machine (`tailnet-policy`) using the same global DeepSeek key while the batch settled. `attribute` prices every local DeepSeek call in the window and reports the residual. A PASS is meaningful only in a quiet window (no other calls for several minutes, balance stable).
-- **End-to-end (same scenario, two runtimes)**: `POST /v1/e2e` runs the shared scenario in the Durable Object, with a scripted model and a git tool that pushes to Artifacts. `npm run e2e:remote` drives it; `npm run e2e` runs the same scenario in an Apple container; `npm run e2e:compare` prints the side-by-side table. See `e2e/README.md`.
+- **End-to-end (same scenario, two runtimes)**: `POST /v1/e2e` runs the shared scenario in the Durable Object, with a scripted model and a git tool that pushes to Artifacts. `npm run e2e:remote` drives it and is opt-in. `npm run e2e` runs the same scenario in an Apple container against the local simulator, with no Cloudflare call. `npm run e2e:compare` prints the side-by-side table. See `e2e/README.md`.
 - **Key-command caching (finding)**: pi resolves an `apiKey: "!command"` per model request, not once per process. A
   five-request task ran the command five times. This package does not use `!command` keys.
 

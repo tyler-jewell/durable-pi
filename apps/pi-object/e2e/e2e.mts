@@ -1,8 +1,8 @@
 // End-to-end run of one agent scenario (e2e/contract.ts) on three targets, with one set of checks:
 //
-//   npm run e2e                  local:   pi in an Apple container; Artifacts on Cloudflare
-//   npm run e2e:remote           remote:  the PiAgent Durable Object on Cloudflare; Artifacts on Cloudflare
-//   npm run e2e:offline          offline: pi in an Apple container; Artifacts is wrangler dev's local simulator
+//   npm run e2e                  offline: pi in an Apple container; Artifacts is the local simulator
+//   npm run e2e:cloud            local:   pi in an Apple container; Artifacts on Cloudflare (opt-in, E2E_CLOUD=1)
+//   npm run e2e:remote           remote:  the PiAgent Durable Object on Cloudflare; Artifacts on Cloudflare (opt-in)
 //
 // Every target pushes to a fresh Artifacts repo and the host verifies the remote itself. The host creates the repo, the
 // agent pushes to it, the host checks it, then tears everything down. Each run keeps a session log and result.json under
@@ -24,7 +24,6 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { BRANCH, DONE_MARKER, E2E_CONTENT, E2E_FILE, COMMIT_MESSAGE } from "./contract.ts";
-import { accountShape, api, JURISDICTION, NAMESPACE, repoCount } from "./artifacts-api.mts";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const SIM_DIR = join(here, "artifacts-sim");
@@ -33,7 +32,7 @@ const WORKER = "https://durable-pi-object.tyler-jewell.workers.dev";
 const BUDGET_MS = 30_000;
 const AGENT_TIMEOUT_MS = 120_000;
 
-const targetArg = process.argv.find((a) => a.startsWith("--target="))?.split("=")[1] ?? "local";
+const targetArg = process.argv.find((a) => a.startsWith("--target="))?.split("=")[1] ?? "offline";
 if (targetArg !== "local" && targetArg !== "remote" && targetArg !== "offline") {
   throw new Error("--target must be local, remote or offline");
 }
@@ -219,12 +218,29 @@ const freePort = () =>
     });
   });
 
-/** The container's bridge address on this Mac: the one the containers reach the host on. */
+/** The gateway containers use to reach the host, from the container network, not a fixed interface name. */
 function bridgeAddress(): string {
-  const out = spawnSync("ifconfig", ["bridge100"], { encoding: "utf8" }).stdout ?? "";
-  const ip = out.match(/inet (\d+\.\d+\.\d+\.\d+)/)?.[1];
-  if (!ip) throw new Error("no container bridge (bridge100): start the container system first (container system start)");
+  const out = spawnSync("container", ["network", "inspect", "default"], { encoding: "utf8" }).stdout ?? "";
+  const ip = out.match(/"ipv4Gateway"\s*:\s*"([^"]+)"/)?.[1];
+  if (!ip) throw new Error("no container network gateway: start the container system first (container system start)");
   return ip;
+}
+
+function bridgeReady(ip: string): boolean {
+  return (spawnSync("ifconfig", [], { encoding: "utf8" }).stdout ?? "").includes(`inet ${ip} `);
+}
+
+/** The bridge interface exists only while a container is running. Hold one until the agent container starts. */
+async function holdBridge(ip: string): Promise<() => Promise<void>> {
+  if (bridgeReady(ip)) return async () => {};
+  const name = `${runId}-bridge`;
+  const started = await proc("container", ["run", "-d", "--name", name, IMAGE, "sleep", "180"]);
+  if (started.code !== 0) throw new Error("could not bring the container bridge up");
+  for (let i = 0; i < 25 && !bridgeReady(ip); i++) await sleep(200);
+  if (!bridgeReady(ip)) throw new Error("container gateway is not on a host interface");
+  return async () => {
+    await proc("container", ["rm", "-f", name]);
+  };
 }
 
 interface Sim {
@@ -321,7 +337,8 @@ async function main(): Promise<number> {
   let shapeBefore = "";
   let sim: Sim | undefined;
   let bridge: { port: number; close(): Promise<void> } | undefined;
-  const result: Record<string, unknown> = { runId, target, namespace: target === "offline" ? null : NAMESPACE };
+  let cloud: typeof import("./artifacts-api.mts") | undefined;
+  const result: Record<string, unknown> = { runId, target, namespace: null };
 
   try {
     if (target === "offline") {
@@ -342,10 +359,20 @@ async function main(): Promise<number> {
 
       const gitPort = Number(remote.match(/^http:\/\/127\.0\.0\.1:(\d+)\//)?.[1]);
       const bridgeHost = bridgeAddress();
+      const releaseBridge = await holdBridge(bridgeHost);
       bridge = await startBridge(bridgeHost, gitPort);
+      const closeBridge = bridge.close;
+      bridge.close = async () => {
+        await closeBridge();
+        await releaseBridge();
+      };
       agentRemote = remote.replace(`http://127.0.0.1:${gitPort}`, `http://${bridgeHost}:${bridge.port}`);
       log(`agent remote ${agentRemote.replace(/\/git\/.*/, "/git/...")} (bridge to the simulator)`);
     } else {
+      if (process.env.E2E_CLOUD !== "1") throw new Error("cloud e2e is opt-in (E2E_CLOUD=1); the default run stays offline");
+      cloud = await import("./artifacts-api.mts");
+      const { accountShape, api, JURISDICTION, NAMESPACE, repoCount } = cloud;
+      result.namespace = NAMESPACE;
       // Account repo count before the run, to prove the run leaves none behind.
       reposBefore = await repoCount();
       result.reposBefore = reposBefore;
@@ -442,6 +469,7 @@ async function main(): Promise<number> {
       if (sim) await sim.stop();
       check("simulator stopped, state removed", !existsSync(join(SIM_DIR, ".cloudflare")) && !existsSync(join(SIM_DIR, ".wrangler")));
     } else {
+      const { api, NAMESPACE, repoCount, accountShape } = cloud!;
       if (repoCreated) {
         // Repo delete is accepted (202) and takes effect asynchronously, so the token check polls for rejection.
         const del = await api("DELETE", `/${NAMESPACE}/repos/${runId}`);

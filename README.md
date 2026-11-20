@@ -123,7 +123,7 @@ Each device owns its agents in SQLite. The hub only stores how to reach them, so
 
 The same agent is becoming one Cloudflare Durable Object per app. Code lives in Artifacts, and the object deploys from that repo. The shell is the same on every object: a generated view and an approval on the left, the object streaming itself on the right.
 
-What is already true: `apps/pi-object` is a Durable Object with a budget guard, and an isolated container can push to an ephemeral Artifacts repo and tear it down without changing the account. What is not: a persistent Artifacts repo, deploy on push, one object per app, and the two panels showing the same thing locally and deployed. Spend is capped in code at $5 per object per period. That cap is not an invoice guarantee.
+What is already true: `apps/pi-object` is a Durable Object with a budget guard, and `npm run e2e` proves the agent against a local Artifacts simulator. It does not call Cloudflare. An explicit cloud run can still push to an ephemeral Artifacts repo. What is not: a persistent Artifacts repo, deploy on push, one object per app, and the two panels showing the same thing locally and deployed. Spend is capped in code at $5 per object per period. That cap is not an invoice guarantee.
 
 Open work is in the issue tracker. Do not treat a `status:not-ready` issue as a build.
 

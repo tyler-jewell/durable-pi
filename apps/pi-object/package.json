@@ -10,13 +10,14 @@
     "typecheck": "tsc --noEmit",
     "dev:verify": "bash scripts/verify-do.sh",
     "test": "vitest run --config vitest.unit.config.ts && vitest run --config vitest.do.config.ts",
-    "e2e": "tsx e2e/e2e.mts",
-    "e2e:remote": "tsx e2e/e2e.mts --target=remote",
+    "e2e": "tsx e2e/e2e.mts --target=offline",
+    "e2e:offline": "tsx e2e/e2e.mts --target=offline",
+    "e2e:cloud": "E2E_CLOUD=1 tsx e2e/e2e.mts --target=local",
+    "e2e:remote": "E2E_CLOUD=1 tsx e2e/e2e.mts --target=remote",
     "e2e:compare": "tsx e2e/compare.mts",
     "spend-limits": "node scripts/ensure-spend-limits.mjs",
     "spend-limits:check": "node scripts/ensure-spend-limits.mjs --dry-run",
     "artifacts:inventory": "tsx e2e/inventory.mts",
-    "e2e:offline": "tsx e2e/e2e.mts --target=offline",
     "artifacts:billing": "tsx e2e/artifacts-billing-check.mts"
   },
   "dependencies": {

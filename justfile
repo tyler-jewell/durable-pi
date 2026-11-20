@@ -75,8 +75,9 @@ copies:
 names:
     npx tsx scripts/check-zero-names.mts
 
-# Type checks and unit tests, every app
+# Type checks and unit tests, every app. The default e2e stays offline, so this path never calls Cloudflare.
 check: copies names test::unit llama::test
+    @grep -q '"e2e": "tsx e2e/e2e.mts --target=offline"' apps/pi-object/package.json
 
 # Vue type check on another TypeScript, in a clean container (default 7.0.2; TS_VERSION=5.9.3 is the control)
 ts-probe *args:

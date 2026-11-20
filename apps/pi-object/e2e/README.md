@@ -5,20 +5,21 @@ written, committed and pushed to a fresh Artifacts repo, and the host verifies t
 
 | Target | Agent runs in | Artifacts backend | Command |
 |---|---|---|---|
-| `local` | Apple container: the real pi 1.6.0 CLI, scripted model, bash `git` | Cloudflare Artifacts (deployed, `us`) | `npm run e2e` |
+| `offline` | Apple container, scripted model, bash `git` | Artifacts local simulator (`cf dev`) | `npm run e2e` |
+| `local` | Apple container, as `offline` | Cloudflare Artifacts (deployed, `us`) | `npm run e2e:cloud` |
 | `remote` | Cloudflare Durable Object (workerd), scripted model, `git_commit_push` tool | Cloudflare Artifacts (deployed, `us`) | `npm run e2e:remote` |
-| `offline` | Apple container, as `local` | Artifacts local simulator (`wrangler dev`) | `npm run e2e:offline` |
 
-The `offline` target makes no call to Cloudflare. The simulator runs on loopback, and the container reaches it through a
-TCP bridge on the container's bridge address (`192.168.64.1` on this Mac). The remote URL is rewritten for the
-container only. The host verifies over loopback, against the simulator itself.
+`npm run e2e` is offline. It makes no call to Cloudflare. The simulator runs on loopback, and the container reaches it
+through a TCP bridge on the container network gateway. That interface exists only while a container is running, so the
+run holds one until the agent container starts. The host verifies over loopback. `e2e:cloud` and `e2e:remote` are
+opt-in (`E2E_CLOUD=1`) and are not part of `just check`.
 
 ## Commands (from apps/pi-object)
 
 ```sh
-npm run e2e                  # local
-npm run e2e:remote           # remote (deploy first: npm run deploy)
-npm run e2e:offline          # offline (first run installs the simulator's dependency cache, ~1 minute)
+npm run e2e                  # offline, the default
+npm run e2e:cloud            # Artifacts on Cloudflare (opt-in)
+npm run e2e:remote           # deployed Durable Object (opt-in; deploy first)
 npm run e2e:compare          # the table below, from the newest run of each target
 npm run artifacts:inventory  # read-only: namespaces, jurisdictions, repo counts on the account
 npm run artifacts:billing    # on demand: does the pricing page now date repository charges? (exit 3 if so)
