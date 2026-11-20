@@ -31,3 +31,11 @@ Follow it with `check_durable_job`. The loop and its review gate are described i
 ## Infrastructure, Cloudflare, and architecture
 
 Cloudflare, Terraform, credentials, and mesh hosts are described in the `durable-pi-infra` skill. The system's architecture (jobs, the review gate, model routing, the llama config, and the checks) is in the `durable-pi-architecture` skill. Read the relevant skill before changing either.
+
+## Pi tooling
+
+- `find` patterns are relative to `path`. From a monorepo root, pass `path: "apps/dpi-tui"` with `src/**/*.ts`, or use `**/src/**/*.ts` to match at any depth. A pattern with no `/` matches file names at any depth.
+- MCP tools on `codemode` servers are not in the tool list. Find them with `searchTools("…")` and read their signatures with `describeTool(name)` inside a `codemode` script. `direct` servers appear as tools.
+- Never change the hooks path, pass `--no-verify`, or set a `SKIP` variable to get a commit through. The LSP extension blocks those commands, and the git gate is the only way in (`pi/lsp/README.md`).
+- Before starting a subagent, read `.pi/skills/pi-subagents/SKILL.md`.
+- Packages are not updated at startup (pi 0.60.0). `pi update --extensions` updates packages, and `pi update --self` updates pi. `pi mcp list --json` reports `resources: true` for a server that offers resources; nothing in this repo parses that output.
