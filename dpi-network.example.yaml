@@ -43,7 +43,7 @@ defaults:
   #   deepseek:               env_keys: [DEEPSEEK_API_KEY]
   #   cloudflare-ai-gateway:  env_keys: [CLOUDFLARE_API_KEY, CLOUDFLARE_ACCOUNT_ID, CLOUDFLARE_GATEWAY_ID]
   # env:                           # plain settings, written as-is
-  #   DPI_PROVIDER: faux           # the free deterministic model, for tests (openrouter | deepseek | cloudflare-ai-gateway | local | faux)
+  #   DPI_PROVIDER: faux           # the free deterministic model, for tests (mesh | openrouter | deepseek | cloudflare-ai-gateway | faux)
 
 devices:
   local:

@@ -119,6 +119,10 @@ export interface LlmResult {
   finishReason: "stop" | "length" | "tool_calls" | "other";
   /** True when the answer was cut off by the output cap. A truncated answer is never presented as complete. */
   truncated: boolean;
+  /** Tool calls the model asked for. Empty when the answer was cut off: a truncated call is never offered as complete. */
+  toolCalls: ToolCall[];
+  /** Tool calls that were dropped because the answer was cut off. */
+  toolCallsWithheld: number;
   /** The output cap that was sent, after the context budget. */
   maxTokens: number;
   /** False when the served window was unknown, so the request went through without the budget. */
@@ -130,40 +134,86 @@ export function finishOf(reason: unknown): LlmResult["finishReason"] {
   return reason === "stop" || reason === "length" || reason === "tool_calls" ? reason : "other";
 }
 
-type ChatBody = { choices?: { message?: { content?: string | null }; finish_reason?: string }[]; usage?: { prompt_tokens?: number; completion_tokens?: number } };
+type ChatBody = {
+  choices?: { message?: { content?: string | null; tool_calls?: { id?: string; function?: { name?: string; arguments?: string } }[] }; finish_reason?: string }[];
+  usage?: { prompt_tokens?: number; completion_tokens?: number };
+};
 /** One reader for both transports, so a cut-off answer is reported the same way everywhere. */
 /** The output we ask for when the window allows it. The budget clamps it, and the result says what was sent. */
 const REQUESTED_OUTPUT_TOKENS = 2048;
 
-function llmResult(data: ChatBody, b: Budget): LlmResult {
+function llmResult(raw: unknown, b: Budget): LlmResult {
+  const data = (raw ?? {}) as ChatBody;
   const finishReason = finishOf(data.choices?.[0]?.finish_reason);
+  const truncated = finishReason === "length";
+  const calls: ToolCall[] = (data.choices?.[0]?.message?.tool_calls ?? [])
+    .map((c, i) => ({ id: c.id ?? `call_${i}`, name: c.function?.name ?? "", arguments: c.function?.arguments ?? "{}" }))
+    .filter((c) => c.name);
   return {
     text: data.choices?.[0]?.message?.content ?? "",
     inToks: data.usage?.prompt_tokens ?? 0,
     outToks: data.usage?.completion_tokens ?? 0,
     finishReason,
-    truncated: finishReason === "length",
+    truncated,
+    toolCalls: truncated ? [] : calls,
+    toolCallsWithheld: truncated ? calls.length : 0,
     maxTokens: b.maxTokens,
     guarded: b.guarded,
   };
 }
 
+/** One chat message in OpenAI wire form. A `tool` message answers the call whose id it carries. */
+export interface ChatMessage {
+  role: "system" | "user" | "assistant" | "tool";
+  content?: string;
+  tool_calls?: { id: string; type?: "function"; function: { name: string; arguments: string } }[];
+  tool_call_id?: string;
+  name?: string;
+}
+/** A function the model may call. `parameters` is a JSON schema. */
+export interface ToolSpec {
+  name: string;
+  description?: string;
+  parameters: Record<string, unknown>;
+}
+export type ToolChoice = "auto" | "required" | "none";
+/** A call the model asked for. `arguments` is the JSON text the model wrote. */
+export interface ToolCall {
+  id: string;
+  name: string;
+  arguments: string;
+}
+
+/** The OpenAI `tools` and `tool_choice` fields, or nothing when no tools are offered. */
+function wireTools(tools?: ToolSpec[], choice?: ToolChoice): Record<string, unknown> {
+  if (!tools?.length) return {};
+  return {
+    tools: tools.map((t) => ({ type: "function", function: { name: t.name, description: t.description ?? "", parameters: t.parameters } })),
+    tool_choice: choice ?? "auto",
+  };
+}
+
+/** The prompt size the budget checks: message text, tool calls, and the tool schemas. Errs on the high side. */
+function promptTokens(messages: ChatMessage[], tools?: ToolSpec[]): number {
+  return estimateTokens(messages.map((m) => ({ content: (m.content ?? "") + (m.tool_calls ? JSON.stringify(m.tool_calls) : "") }))) + Math.ceil(JSON.stringify(tools ?? []).length / 3);
+}
+
 export async function runLlm(
   address: string,
   model: string,
-  messages: { role: "system" | "user" | "assistant"; content: string }[],
-  opts: { transport?: Transport; apiKey?: string; timeoutMs?: number; contextWindow?: number } = {},
+  messages: ChatMessage[],
+  opts: { transport?: Transport; apiKey?: string; timeoutMs?: number; contextWindow?: number; tools?: ToolSpec[]; toolChoice?: ToolChoice } = {},
 ): Promise<LlmResult> {
   const timeoutMs = opts.timeoutMs ?? 120_000;
   const base = address.replace(/\/+$/, "");
   // The window is shared by the prompt and the output. Check the prompt first, and clamp the output to what is left.
-  const b: Budget = budget(opts.contextWindow, estimateTokens(messages), REQUESTED_OUTPUT_TOKENS);
+  const b: Budget = budget(opts.contextWindow, promptTokens(messages, opts.tools), REQUESTED_OUTPUT_TOKENS);
   if (opts.transport === "cloudflare-workers-ai") {
     // Chat models serve an OpenAI-compatible endpoint at /ai/v1/chat/completions.
     const res = await meshFetch(`${base}/ai/v1/chat/completions`, {
       method: "POST",
       headers: { "Content-Type": "application/json", ...(opts.apiKey ? { Authorization: `Bearer ${opts.apiKey}` } : {}) },
-      body: JSON.stringify({ model, messages, max_tokens: b.maxTokens }),
+      body: JSON.stringify({ model, messages, max_tokens: b.maxTokens, ...wireTools(opts.tools, opts.toolChoice) }),
       signal: AbortSignal.timeout(timeoutMs),
       redirect: "error",
     });
@@ -175,7 +225,7 @@ export async function runLlm(
   const res = await meshFetch(`${base}/v1/chat/completions`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ model, messages, temperature: 0, max_tokens: b.maxTokens }),
+    body: JSON.stringify({ model, messages, temperature: 0, max_tokens: b.maxTokens, ...wireTools(opts.tools, opts.toolChoice) }),
     signal: AbortSignal.timeout(timeoutMs),
     redirect: "error",
   });

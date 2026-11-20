@@ -26,7 +26,7 @@ bounded answers such as this `choice` verdict:
 ```
 Studio (127.0.0.1)
 ├── dpi-backend      create-app durable job: planner → builder → scout → test → review → document → deploy
-│     ├── coding agents ──► backend model configuration
+│     ├── coding agents ──► ask_model (enabled mesh chat tools, DPI_PROVIDER=mesh)
 │     └── review phase ──► ask_model (mesh + decision) ──► decision endpoint
 ├── dpi-mcp          MCP tools (create_app/check/test/push, model discovery, ask_model)
 └── llama-server     8080 (router, one GGUF at a time from ~/local/models/gguf)
@@ -38,7 +38,7 @@ Studio (127.0.0.1)
 - **The review gate** uses `DPI_MCP_URL` and `DPI_MCP_TOKEN` to ask an enabled decision tool.
   It requires both `mesh` and `decision` before selection, so it cannot fall back to a cloud
   decision tool. If MCP returns no valid decision, the gate uses the reviewer subagent’s verdict.
-  The reviewer subagent’s chat model is configured separately.
+  The reviewer subagent’s chat model is the device’s `DPI_PROVIDER`.
 
 ## What is built
 
@@ -70,6 +70,22 @@ Studio (127.0.0.1)
 5. **Feedback loop** (`dpi-backend/src/jobs.ts`, job `feedback`): an observation runs
    `triage → work → review → deploy`; the review phase is the same `runReview()` gate `create-app`
    uses. "See something, say something" in AGENTS.md is this job.
+
+## Coding agents on the mesh
+
+With `DPI_PROVIDER=mesh`, every agent turn in the backend is an `ask_model` call on the dpi-mcp server. The
+model id is the tag a tool must carry (`chat`), so the server picks among the enabled chat tools (A/B by
+default), applies its context budget, and meters the call. Tool calls go both ways in OpenAI form: the server
+passes `tools` to the chat endpoint and returns the `tool_calls` the model made. A cut-off answer is flagged
+`truncated`, and its tool calls are withheld.
+
+The chat server must parse tool calls. llama-server does this only with `--jinja`; without it, a model writes
+its call as text and the agent gets no tool call. Check it with `scripts/prove-mesh-agent.mts`.
+
+Proof (MacBook Pro, local llama-server with `--jinja`, a small Q4 chat model, 4,096-token window):
+a real agent turn called `get_weather` with `{"city":"Paris"}`, the tool result went back, and the answer used
+it. Two metered local calls, zero cloud cost. `scripts/prove-mesh-agent.mts` runs this against any dpi-mcp
+server with `DPI_MCP_URL` and `DPI_MCP_TOKEN`.
 
 ## Mesh over Cloudflare (step 1)
 
@@ -130,9 +146,13 @@ The tool store is **data derived from each host's own API**, not hand-written co
 
 ## Remaining work (ordered)
 
-1. **Bind the coding agents to enabled chat tools.** Prove model routing and metering for the
-   planner, builder, scout, reviewer and documenter.
-2. **Expose zero bootstrap in the browser.** Verify discovery, approval and enablement, then
+1. **Serve tool calls from the Studio and MacBook Pro chat servers.** Add `--jinja` to their
+   llama-server commands (a router restart), then run `scripts/prove-mesh-agent.mts` through the
+   Access route. Until then, factory agents on the mesh cannot call tools.
+2. **Run the durable factory on the mesh.** Run `create-app` with `DPI_PROVIDER=mesh` and check its
+   metered calls. The roster's `provider`/`model` fields are advisory: the device's `DPI_PROVIDER` decides
+   the route.
+3. **Expose zero bootstrap in the browser.** Verify discovery, approval and enablement, then
    prove the full local-only factory job from the hub and isolated browser box. Verify the
    installed iOS PWA over the Access-protected HTTPS route.
 

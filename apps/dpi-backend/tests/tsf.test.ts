@@ -9,8 +9,8 @@ import type { JevAnswer } from "../src/jev.js";
 
 const VALID = `
 defaults:
-  provider: cloudflare-ai-gateway
-  model: "@cf/deepseek-ai/deepseek-v4-flash-0731"
+  provider: mesh
+  model: chat
   tools: [read, bash, edit, write]
   protected: [".tsf/"]
 agents:

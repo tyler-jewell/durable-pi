@@ -6,8 +6,8 @@
 # is never editable by any agent.
 
 defaults:
-  provider: cloudflare-ai-gateway
-  model: "@cf/deepseek-ai/deepseek-v4-flash-0731"
+  provider: mesh
+  model: chat
   thinking: low
   tools: [read, bash, edit, write]
   writes: []

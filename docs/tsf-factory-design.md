@@ -51,8 +51,8 @@ in `dpi-backend`. `.tsf/` makes them a stampable dotfolder a repo carries.
 ```yaml
 defaults:
   coding_agent: pi-durable
-  provider: cloudflare-ai-gateway      # or openrouter / deepseek
-  model: "@cf/deepseek-ai/deepseek-v4-flash-0731"
+  provider: mesh                       # the device's provider; mesh = enabled dpi-mcp chat tools
+  model: chat                          # a tag an enabled chat tool must carry
   thinking: low
   writes: []                           # repo paths an agent may change
   protected: [".tsf/jobs/", ".tsf/tsf.config.yaml"]

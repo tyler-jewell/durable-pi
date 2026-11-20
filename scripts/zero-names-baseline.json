@@ -7,15 +7,12 @@
     "apps/dpi-backend/src/jev.ts": 1,
     "apps/dpi-backend/src/model-catalog.ts": 7,
     "apps/dpi-backend/src/providers.ts": 28,
-    "apps/dpi-backend/tests/tsf.test.ts": 2,
     "apps/dpi-mcp/tests/zero-agent.eval.ts": 1,
     "apps/dpi-mcp/tests/zero.test.ts": 1,
     "apps/dpi-playground/tests/jev-browser.mjs": 2,
     "docs/indydevdan-deep-dive.md": 2,
     "docs/local-factory.md": 1,
-    "docs/tsf-factory-design.md": 2,
     "docs/zero-to-app-e2e.md": 2,
-    "dpi-network.example.yaml": 1,
-    "templates/tsf/tsf.config.yaml": 2
+    "dpi-network.example.yaml": 1
   }
 }

@@ -8,10 +8,11 @@ import { openrouterProvider } from "@earendil-works/pi-ai/providers/openrouter";
 import { deepseekProvider } from "@earendil-works/pi-ai/providers/deepseek";
 import { cloudflareWorkersAIProvider } from "@earendil-works/pi-ai/providers/cloudflare-workers-ai";
 import { curatedModels, defaultModelId } from "./model-catalog.js";
+import { MESH_MODELS, meshProvider } from "./mesh-provider.js";
 
-export type ProviderId = "openrouter" | "deepseek" | "cloudflare-ai-gateway" | "faux";
+export type ProviderId = "openrouter" | "deepseek" | "cloudflare-ai-gateway" | "mesh" | "faux";
 
-export const PROVIDER_IDS = ["openrouter", "deepseek", "cloudflare-ai-gateway", "faux"] as const;
+export const PROVIDER_IDS = ["openrouter", "deepseek", "cloudflare-ai-gateway", "mesh", "faux"] as const;
 
 export interface ModelSpec {
   /** Provider-native model id (an OpenRouter slug for openrouter). */
@@ -33,6 +34,15 @@ export interface NetworkProviderSpec {
 }
 
 export const networkProviders: Record<Exclude<ProviderId, "faux">, NetworkProviderSpec> = {
+  // Every agent turn is an `ask_model` call on the dpi-mcp server, which picks among its enabled chat tools.
+  mesh: {
+    id: "mesh",
+    label: "Mesh (dpi-mcp)",
+    envKeys: ["DPI_MCP_URL", "DPI_MCP_TOKEN"],
+    factory: meshProvider,
+    models: MESH_MODELS.map((m) => ({ id: m.id, name: m.name, tier: "M", icon: "lab.png" })),
+    defaultModelId: MESH_MODELS[0].id,
+  },
   openrouter: {
     id: "openrouter",
     label: "OpenRouter",

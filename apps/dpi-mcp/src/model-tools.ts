@@ -8,11 +8,37 @@ import type { McpServer, RegisteredTool } from "@modelcontextprotocol/sdk/server
 import { z } from "zod";
 import { tokenCostUsd } from "./cloud-catalog.js";
 import { loadMeter, recordUsage } from "./meter.js";
-import { runDecision, runLlm, type DecisionQuestion, type LlmResult, type DecisionResult } from "./models.js";
+import { runDecision, runLlm, type ChatMessage, type ToolChoice, type ToolSpec, type DecisionQuestion, type LlmResult, type DecisionResult } from "./models.js";
 import { loadStore, saveStore, select, type ModelTool, type ToolStore } from "./tool-store.js";
 
-const ROLE = z.enum(["system", "user", "assistant"]);
-const MessagesShape = { messages: z.array(z.object({ role: ROLE, content: z.string() })).min(1).describe("the conversation, in order") };
+const ChatMessageShape = z
+  .object({
+    role: z.enum(["system", "user", "assistant", "tool"]),
+    content: z.string().optional().describe("the text; empty or absent when the message only carries tool calls"),
+    tool_calls: z
+      .array(
+        z
+          .object({
+            id: z.string(),
+            type: z.literal("function").optional(),
+            function: z.object({ name: z.string(), arguments: z.string().describe("the arguments as JSON text") }).strict(),
+          })
+          .strict(),
+      )
+      .optional()
+      .describe("on an assistant message: the calls it made"),
+    tool_call_id: z.string().optional().describe("on a tool message: the id of the call it answers"),
+    name: z.string().optional(),
+  })
+  .strict();
+const ToolsShape = {
+  tools: z
+    .array(z.object({ name: z.string(), description: z.string().optional(), parameters: z.record(z.string(), z.unknown()) }).strict())
+    .optional()
+    .describe("functions the model may call; parameters is a JSON schema"),
+  tool_choice: z.enum(["auto", "required", "none"]).optional(),
+};
+const MessagesShape = { messages: z.array(ChatMessageShape).min(1).describe("the conversation, in order"), ...ToolsShape };
 const DecisionShape = {
   state: z.record(z.string(), z.unknown()).describe("the JSON state to judge"),
   questions: z.record(z.string(), z.unknown()).describe("typed questions: { name: { type: 'noul' | 'choice', instructions, criteria? } }"),
@@ -33,9 +59,14 @@ function account(store: ToolStore, tool: ModelTool, kind: ModelTool["kind"], ms:
 }
 
 /** Call an enabled chat tool. Returns the answer with its budget facts, and never a silent cut. */
-export async function callChat(store: ToolStore, tool: ModelTool, messages: { role: "system" | "user" | "assistant"; content: string }[]): Promise<LlmResult> {
+export async function callChat(
+  store: ToolStore,
+  tool: ModelTool,
+  messages: ChatMessage[],
+  opts: { tools?: ToolSpec[]; toolChoice?: ToolChoice } = {},
+): Promise<LlmResult> {
   const t0 = Date.now();
-  const r = await runLlm(tool.address, tool.model, messages, { transport: tool.transport, apiKey: keyOf(tool), contextWindow: tool.servedContext });
+  const r = await runLlm(tool.address, tool.model, messages, { transport: tool.transport, apiKey: keyOf(tool), contextWindow: tool.servedContext, ...opts });
   account(store, tool, "llm", Date.now() - t0, r.inToks, r.outToks);
   return r;
 }
@@ -50,7 +81,9 @@ export async function callDecision(store: ToolStore, tool: ModelTool, state: unk
 
 /** The result a chat call returns to an MCP client. A cut-off answer says so in the text itself. */
 export function chatResult(tool: ModelTool, r: LlmResult) {
-  const notice = r.truncated ? "\n\n[truncated: the answer hit the output limit and is incomplete]" : "";
+  const notice = r.truncated
+    ? `\n\n[truncated: the answer hit the output limit and is incomplete${r.toolCallsWithheld ? `; ${r.toolCallsWithheld} tool call(s) withheld` : ""}]`
+    : "";
   return {
     content: [{ type: "text" as const, text: r.text + notice }],
     structuredContent: {
@@ -61,6 +94,8 @@ export function chatResult(tool: ModelTool, r: LlmResult) {
       outToks: r.outToks,
       finishReason: r.finishReason,
       truncated: r.truncated,
+      toolCalls: r.toolCalls,
+      toolCallsWithheld: r.toolCallsWithheld,
       maxTokens: r.maxTokens,
       guarded: r.guarded,
       servedContext: tool.servedContext ?? null,
@@ -139,7 +174,7 @@ export class ModelTools {
       const store = this.load();
       const current = store.tools.find((t) => t.name === tool.name);
       if (!current?.enabled) throw new Error(`${tool.name} is disabled`);
-      const r = await callChat(store, current, args.messages);
+      const r = await callChat(store, current, args.messages, { tools: args.tools, toolChoice: args.tool_choice });
       return chatResult(current, r);
     });
   }
@@ -157,6 +192,7 @@ export class ModelTools {
           requires: z.array(z.string()).optional().describe("tags every candidate must have"),
           prefer: z.enum(["mesh", "cloud"]).optional().describe("when the mode is auto, which side to try first"),
           messages: MessagesShape.messages.optional(),
+          ...ToolsShape,
           state: DecisionShape.state.optional(),
           questions: DecisionShape.questions.optional(),
         },
@@ -167,7 +203,7 @@ export class ModelTools {
         const tool = select(store, args.kind, { name: args.name, requires: args.requires, prefer: args.prefer });
         if (args.kind === "llm") {
           if (!args.messages) throw new Error("ask_model kind=llm needs messages");
-          return chatResult(tool, await callChat(store, tool, args.messages));
+          return chatResult(tool, await callChat(store, tool, args.messages, { tools: args.tools, toolChoice: args.tool_choice }));
         }
         if (!args.state || !args.questions) throw new Error("ask_model kind=decision needs state and questions");
         return decisionResult(tool, await callDecision(store, tool, args.state, args.questions as Record<string, DecisionQuestion>));

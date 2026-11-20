@@ -61,7 +61,7 @@ run without them.
 | `list_tools` | every model tool: enabled or not, kind, tags, served window, price (never a secret) | — | yes |
 | `enable_tool` | serve a model tool: it appears in the server's tool list at once | — | no |
 | `disable_tool` | remove a model tool from the list; its record and tags are kept | — | no |
-| `ask_model` | pick an enabled tool by required tags (A/B random); `mesh` and `cloud` in `requires` match the tool’s actual source | — | no |
+| `ask_model` | pick an enabled tool by required tags (A/B random); `mesh` and `cloud` in `requires` match the tool’s actual source. Chat calls take `tools` (function schemas) and `tool_choice`, accept `tool` messages with `tool_call_id`, and return `toolCalls`; a truncated answer returns none | — | no |
 | `set_selection_mode` | how `ask_model` picks: `ab` (random, the default) or `auto` (most recently used, cloud as fallback) | — | yes |
 | `inspect_host` | SSH a host: server processes and their served window, launchd auto-start, and a live test | — | yes |
 | `list_usage` | local kWh + cost at the configured electricity price | — | yes |

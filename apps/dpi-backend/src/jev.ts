@@ -3,8 +3,7 @@
 // same caller works against TypeSafe, OpenRouter, Cloudflare Workers AI, or any System One-compatible
 // endpoint (for example a local llama.cpp router) without code changes: whichever credentials are
 // present wins, and a `JEV_BASE_URL` override forces a specific endpoint.
-import { Client } from "@modelcontextprotocol/sdk/client/index.js";
-import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
+import { callMesh } from "./mesh.js";
 
 export type JevQuestion =
   | { type: "noul"; instructions: string; criteria?: { true?: string; false?: string } }
@@ -17,39 +16,23 @@ type ChoiceQuestion = Extract<JevQuestion, { type: "choice" }>;
 
 /** Ask an enabled mesh decision tool through the shared router. An unavailable router never triggers cloud inference. */
 export async function askMeshVerdict(state: Record<string, string>, question: ChoiceQuestion): Promise<{ tool: string; answer: Extract<JevAnswer, { type: "choice" }> }> {
-  const url = env("DPI_MCP_URL");
-  const token = env("DPI_MCP_TOKEN");
-  if (!url || !token) throw Error("Mesh decisions require DPI_MCP_URL and DPI_MCP_TOKEN");
-  const deadline = AbortSignal.timeout(30_000);
-  const transport = new StreamableHTTPClientTransport(new URL(url), {
-    requestInit: { headers: { Authorization: `Bearer ${token}` }, redirect: "error" },
-    fetch: (input, init) => {
-      const timeout = init?.method === "DELETE" ? AbortSignal.timeout(2_000) : deadline;
-      return fetch(input, { ...init, signal: init?.signal ? AbortSignal.any([init.signal, timeout]) : timeout });
-    },
-  });
-  const client = new Client({ name: "dpi-backend", version: "1" });
-  try {
-    await client.connect(transport, { signal: deadline });
-    const result = await client.callTool({ name: "ask_model", arguments: {
-      kind: "decision", requires: ["mesh", "decision"], state, questions: { verdict: question },
-    } }, undefined, { signal: deadline });
-    if (result.isError) throw Error("The mesh decision tool returned an error");
-    const data = result.structuredContent as { tool?: unknown; answers?: Record<string, Partial<Extract<JevAnswer, { type: "choice" }>>> } | undefined;
-    const answer = data?.answers?.verdict;
-    if (typeof data?.tool !== "string" || !data.tool || answer?.type !== "choice" || typeof answer.choice !== "string" ||
-        !Object.hasOwn(question.criteria, answer.choice) || typeof answer.confidence !== "number" ||
-        !Number.isFinite(answer.confidence) || answer.confidence < 0 || answer.confidence > 1 ||
-        !answer.probabilities || typeof answer.probabilities !== "object" ||
-        !Object.keys(question.criteria).every((key) => {
-          const p = answer.probabilities?.[key];
-          return typeof p === "number" && p >= 0 && p <= 1;
-        })) throw Error("The mesh decision tool returned an invalid verdict");
-    return { tool: data.tool, answer: { type: "choice", choice: answer.choice, confidence: answer.confidence, probabilities: answer.probabilities } };
-  } finally {
-    if (transport.sessionId) await transport.terminateSession().catch(() => {});
-    await client.close();
-  }
+  const result = await callMesh(
+    "ask_model",
+    { kind: "decision", requires: ["mesh", "decision"], state, questions: { verdict: question } },
+    { timeoutMs: 30_000 },
+  );
+  if (result.isError) throw Error("The mesh decision tool returned an error");
+  const data = result.structured as { tool?: unknown; answers?: Record<string, Partial<Extract<JevAnswer, { type: "choice" }>>> } | undefined;
+  const answer = data?.answers?.verdict;
+  if (typeof data?.tool !== "string" || !data.tool || answer?.type !== "choice" || typeof answer.choice !== "string" ||
+      !Object.hasOwn(question.criteria, answer.choice) || typeof answer.confidence !== "number" ||
+      !Number.isFinite(answer.confidence) || answer.confidence < 0 || answer.confidence > 1 ||
+      !answer.probabilities || typeof answer.probabilities !== "object" ||
+      !Object.keys(question.criteria).every((key) => {
+        const p = answer.probabilities?.[key];
+        return typeof p === "number" && p >= 0 && p <= 1;
+      })) throw Error("The mesh decision tool returned an invalid verdict");
+  return { tool: data.tool, answer: { type: "choice", choice: answer.choice, confidence: answer.confidence, probabilities: answer.probabilities } };
 }
 
 const RETRY = new Set([429, 502, 503, 529]);

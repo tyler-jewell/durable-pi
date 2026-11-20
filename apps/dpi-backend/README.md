@@ -30,7 +30,7 @@ With the repo's network config, `just net up local && just backend run` does the
 | `DPI_DATA_DIR` | `$DPI_HOME/backend` | catalog, app state, `sessions/`, `archive/` |
 | `DPI_HOME` | `~/.dpi` | where `backend.env` is read (set by the service unit) |
 | `DPI_ENV_FILE` | `$DPI_HOME/backend.env` | the env file to read |
-| `DPI_PROVIDER` | `openrouter` | the device's model provider: `openrouter`, `deepseek`, `cloudflare-ai-gateway`, or `faux` (free deterministic model for tests) |
+| `DPI_PROVIDER` | `openrouter` | the device's model provider: `mesh` (every agent turn is an `ask_model` call on dpi-mcp; needs `DPI_MCP_URL` and `DPI_MCP_TOKEN`), `openrouter`, `deepseek`, `cloudflare-ai-gateway`, or `faux` (free deterministic model for tests) |
 | `OPENROUTER_API_KEY` | | model access when `DPI_PROVIDER=openrouter`. Without a key the device lists no models. Never sent to clients |
 | `DEEPSEEK_API_KEY` | | model access when `DPI_PROVIDER=deepseek` |
 | `CLOUDFLARE_API_KEY` / `CLOUDFLARE_ACCOUNT_ID` / `CLOUDFLARE_GATEWAY_ID` | | model access when `DPI_PROVIDER=cloudflare-ai-gateway` |
