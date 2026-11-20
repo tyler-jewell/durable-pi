@@ -223,7 +223,7 @@ export async function runDecision(
     if (!res.ok) throw new Error(`Decision ${model}: HTTP ${res.status}`);
     const data = (await res.json()) as { result?: { answers?: Record<string, DecisionAnswer>; state?: string; result?: { answers?: Record<string, DecisionAnswer> }; usage?: { input_tokens?: number; output_tokens?: number } }; errors?: { message?: string }[] };
     if (data.errors?.length) throw new Error(`Decision ${model}: ${data.errors[0].message}`);
-    // Cloudflare-hosted models (clef) return answers under result; third-party System One wraps once more.
+    // Hosted decision models return answers under result; a third-party System One wrapper adds one more level.
     const answers = data.result?.answers ?? data.result?.result?.answers ?? {};
     return { answers, inToks: data.result?.usage?.input_tokens ?? 0, outToks: data.result?.usage?.output_tokens ?? 0, guarded: b.guarded };
   }
