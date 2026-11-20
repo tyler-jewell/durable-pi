@@ -53,8 +53,9 @@ test("compareCosts: cloud rate and local opportunity cost, credited when local i
   assert.equal(c.model, "gpt-oss-20b");
   assert.equal(c.cloud.costUsd, 0.6);
   assert.ok(Math.abs(c.cloud.rateUsdPerMin - 0.6) < 1e-9);
-  assert.ok(Math.abs(c.local.opportunityUsd - 0.6) < 1e-9); // 60s slower x $0.60/min = $0.60
-  assert.equal(c.verdict, "cloud"); // effective local (electricity + $0.60) > $0.60 cloud? electricity pushes it over
+  assert.ok(Math.abs(c.local.opportunityUsd - 0.6) < 1e-9); // 60s slower x $0.60/min = $0.60 (time-valued, NOT realized)
+  assert.ok(c.realizedSavingsUsd > 0 && c.realizedSavingsUsd < 0.6); // realized savings exclude opportunity
+  assert.equal(c.verdict, "local"); // realized: cloud $0.60 bill − tiny electricity > 0
 });
 
 test("compareCosts: local faster is credited", () => {
@@ -64,6 +65,6 @@ test("compareCosts: local faster is credited", () => {
   ]);
   const c = compareCosts(m)[0];
   assert.ok(c.local.opportunityUsd < 0); // 30s faster → negative (credit)
-  assert.ok(c.effectiveLocalUsd < 0.6); // credit + tiny electricity < cloud bill
+  assert.ok(c.realizedSavingsUsd > 0 && c.realizedSavingsUsd < 0.6); // realized savings exclude opportunity
   assert.equal(c.verdict, "local");
 });

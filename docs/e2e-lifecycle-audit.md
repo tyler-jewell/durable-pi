@@ -63,7 +63,7 @@ baked into the code rather than loaded):
 | Tool / surface | Why it sat out |
 |---|---|
 | `cloudflare` MCP (`docs`, `search`, `execute`, `whoami`) | Replaced by `cf` CLI + direct API `fetch`/`curl`. |
-| `mesh-health` MCP (`healthcheck`) | The lifecycle has no tailnet/mesh step. |
+| `mesh-health` MCP (`healthcheck`) | The lifecycle has no mesh-discovery step. |
 | `dpi-mcp` `check` / `test` / `push` (standalone) | They ran, but as pipeline steps inside `create_app`/`revive_app`. |
 | `dpi-mcp` `app_add_route` / `app_add_page` / `app_verify` | Not part of the create→delete→revive→delete lifecycle. |
 | Durable harness (`dpi-backend`, `pi-durable`, hub, `dpi-tui`, `dpi-sdk`) | The run drove the MCP server via its SDK client directly, not through a durable agent/session on a device. |

@@ -1,5 +1,7 @@
 # secrets and this machine's device list (template: dpi-network.example.yaml)
 dpi-network.yaml
+# this machine's Cloudflare host list (template: apps/dpi-mcp/mesh.example.json)
+mesh.json
 .env
 .env.*
 !.env.example

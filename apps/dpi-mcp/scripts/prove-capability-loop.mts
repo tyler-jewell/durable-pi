@@ -11,7 +11,7 @@ import { inspectHost } from "../src/host-inspect.js";
 import { notifyReady } from "../src/notify.js";
 
 const host = process.env.DPI_MCP_SSH_HOST ?? "studio";
-const address = process.env.LLAMA_BASE_URL ?? "http://studio.tail9d6cad.ts.net:8080";
+const address = process.env.LLAMA_BASE_URL ?? "https://studio.jewell-labs.com";
 
 // 1. discover
 const discovered = await probeHost(host, address);

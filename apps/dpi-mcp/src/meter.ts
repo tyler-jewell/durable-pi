@@ -111,7 +111,10 @@ export interface ModelCostComparison {
   kind: "llm" | "decision";
   cloud: { calls: number; costUsd: number; avgMs: number; rateUsdPerMin: number };
   local: { calls: number; electricityUsd: number; avgMs: number; opportunityUsd: number };
-  /** electricity + opportunity: what a local run really cost, to weigh against the cloud bill. */
+  /** Realized dollars saved by running local instead of cloud: cloud bill − local electricity.
+   *  The wait-time `opportunityUsd` is NOT included — it is time-valued, not realized spend. */
+  realizedSavingsUsd: number;
+  /** electricity + opportunity (the time-valued wait-time at the cloud rate), for completeness. */
   effectiveLocalUsd: number;
   verdict: "local" | "cloud" | "tie";
 }
@@ -137,13 +140,15 @@ export function compareCosts(meter: UsageMeter): ModelCostComparison[] {
     const electricityUsd = local.reduce((a, c) => a + (marginalW * (c.endedAt - c.startedAt)) / 3_600_000_000, 0) * meter.settings.electricityUsdPerKwh;
     const opportunityUsd = (rateUsdPerMin * (localMs - cloudMs)) / 60_000; // negative when local is faster (credit)
     const effectiveLocalUsd = electricityUsd + opportunityUsd;
+    const realizedSavingsUsd = cloudCost - electricityUsd; // realized spend saved, opportunity excluded
     out.push({
       model,
       kind: calls[0].kind,
       cloud: { calls: cloud.length, costUsd: cloudCost, avgMs: cloudMs, rateUsdPerMin },
       local: { calls: local.length, electricityUsd, avgMs: localMs, opportunityUsd },
+      realizedSavingsUsd,
       effectiveLocalUsd,
-      verdict: effectiveLocalUsd < cloudCost ? "local" : effectiveLocalUsd > cloudCost ? "cloud" : "tie",
+      verdict: realizedSavingsUsd > 0 ? "local" : realizedSavingsUsd < 0 ? "cloud" : "tie",
     });
   }
   return out.sort((a, b) => a.model.localeCompare(b.model));

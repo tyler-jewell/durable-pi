@@ -27,7 +27,7 @@ export interface ModelInfo {
 
 export interface HostCapability {
   host: string;
-  /** Canonical endpoint on the mesh, e.g. `http://studio.tail9d6cad.ts.net:8080`. */
+  /** Canonical endpoint on the mesh, e.g. `https://studio.jewell-labs.com` (Cloudflare Tunnel). */
   address: string;
   /** SSH target for config/launch-agent inspection, e.g. `studio` (from ~/.ssh/config). */
   ssh?: string;
@@ -88,24 +88,29 @@ export interface Capability {
   updatedAt: number;
 }
 
+export type SelectionMode = "auto" | "ab";
+
 export interface CapabilityRegistry {
   hosts: HostCapability[];
   capabilities: Capability[];
+  /** Default model selection: `ab` picks randomly from the filtered candidates (A/B), `auto`
+   *  picks the most-recently-used local first with cloud fallback. `ab` is the default. */
+  selectionMode?: SelectionMode;
 }
 
 const REGISTRY = process.env.DPI_MCP_CAPABILITIES ?? join(homedir(), ".dpi-mcp", "capabilities.json");
 
 function migrate(raw: unknown): CapabilityRegistry {
-  if (Array.isArray(raw)) return { hosts: raw as HostCapability[], capabilities: [] }; // pre-lifecycle shape
+  if (Array.isArray(raw)) return { hosts: raw as HostCapability[], capabilities: [], selectionMode: "ab" }; // pre-lifecycle shape
   const r = (raw ?? {}) as Partial<CapabilityRegistry>;
-  return { hosts: Array.isArray(r.hosts) ? r.hosts : [], capabilities: Array.isArray(r.capabilities) ? r.capabilities : [] };
+  return { hosts: Array.isArray(r.hosts) ? r.hosts : [], capabilities: Array.isArray(r.capabilities) ? r.capabilities : [], selectionMode: r.selectionMode ?? "ab" };
 }
 
 export function loadRegistry(): CapabilityRegistry {
   try {
     return migrate(JSON.parse(readFileSync(REGISTRY, "utf8")));
   } catch {
-    return { hosts: [], capabilities: [] };
+    return { hosts: [], capabilities: [], selectionMode: "ab" };
   }
 }
 
@@ -123,6 +128,39 @@ export function findCapability(reg: CapabilityRegistry, id: string): Capability 
 /** An enabled capability that can fill `purpose`; undefined when none is enabled. */
 export function resolveCapability(reg: CapabilityRegistry, purpose: string): Capability | undefined {
   return reg.capabilities.find((c) => c.state === "enabled" && c.purpose.includes(purpose));
+}
+
+/** Select the model to call, the zero system's default surface.
+ *
+ *  - an explicit `capability` is deterministic (the agent decides),
+ *  - otherwise the enabled candidates of `kind` are filtered by `required` purposes (all must
+ *    match), and `mode` picks: `ab` (the default) selects randomly from what remains — the A/B
+ *    default — while `auto` reuses the most-recently-used local model with cloud fallback.
+ */
+export function selectCapability(
+  reg: CapabilityRegistry,
+  kind: CapabilityKind,
+  opts: { capability?: string; prefer?: "local" | "cloud"; required?: string[]; mode?: SelectionMode } = {},
+): Capability {
+  if (opts.capability) {
+    const cap = findCapability(reg, opts.capability);
+    if (!cap) throw new Error(`capability "${opts.capability}" is not in the registry; list_capabilities shows what is available`);
+    if (cap.state !== "enabled") throw new Error(`capability "${opts.capability}" is ${cap.state}; enable it first (enable_capability)`);
+    if (cap.kind !== kind) throw new Error(`capability "${opts.capability}" is ${cap.kind}, not ${kind}`);
+    return cap;
+  }
+  let enabled = reg.capabilities.filter((c) => c.state === "enabled" && c.kind === kind);
+  if (opts.required?.length) {
+    enabled = enabled.filter((c) => opts.required!.every((p) => c.purpose.includes(p)));
+    if (!enabled.length) throw new Error(`no enabled ${kind} capability has every required purpose [${opts.required.join(", ")}]`);
+  }
+  if (!enabled.length) throw new Error(`no enabled ${kind} capability; list_capabilities + enable_capability first`);
+  if ((opts.mode ?? reg.selectionMode ?? "ab") === "ab") return enabled[Math.floor(Math.random() * enabled.length)];
+  const local = enabled.filter((c) => c.host !== "cloudflare").sort((a, b) => (b.updatedAt ?? 0) - (a.updatedAt ?? 0));
+  const cloud = enabled.filter((c) => c.host === "cloudflare");
+  const first = opts.prefer === "cloud" ? cloud : local;
+  const second = opts.prefer === "cloud" ? local : cloud;
+  return first[0] ?? second[0] ?? enabled[0];
 }
 
 export interface RecommendArgs {
@@ -215,20 +253,20 @@ async function fetchJson(url: string, init: RequestInit, timeoutMs: number): Pro
  * and `/v1/models` (each model lists `architecture.output_modalities`: `text` or `decisions`);
  * a host that exposes `/v1/systemone` answers System One decision questions.
  */
-export async function probeHost(host: string, address: string, timeoutMs = 5000): Promise<HostCapability> {
+export async function probeHost(host: string, address: string, timeoutMs = 5000, headers?: Record<string, string>): Promise<HostCapability> {
   const base = address.replace(/\/+$/, "");
   const cap: HostCapability = { host, address: base, health: "offline", reachable: false, models: [], discoveredAt: Date.now() };
-  const health = await fetchJson(`${base}/health`, { method: "GET" }, timeoutMs);
+  const health = await fetchJson(`${base}/health`, { method: "GET", headers }, timeoutMs);
   if (health?.ok) {
     const body = (await health.json().catch(() => undefined)) as { status?: string } | undefined;
     cap.health = body?.status === "ok" ? "online" : "offline";
   }
   cap.reachable = cap.health === "online";
   if (!cap.reachable) {
-    cap.error = `${address} did not answer /health (the model server may bind 127.0.0.1 only; widen it or use tailscale serve)`;
+    cap.error = `${address} did not answer /health (the model server may bind 127.0.0.1 only; widen it or expose it through a Cloudflare Tunnel)`;
     return cap;
   }
-  const list = await fetchJson(`${base}/v1/models`, { method: "GET" }, timeoutMs);
+  const list = await fetchJson(`${base}/v1/models`, { method: "GET", headers }, timeoutMs);
   if (list?.ok) {
     const data = (await list.json()) as { data?: { id?: string; aliases?: string[]; architecture?: { output_modalities?: string[] } }[] };
     for (const m of data.data ?? []) {

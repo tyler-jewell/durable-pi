@@ -2,7 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { once } from "node:events";
-import { findCapability, probeHost, resolveCapability, runDecision, runLlm, slug, type Capability, type CapabilityRegistry } from "../src/capabilities.js";
+import { findCapability, probeHost, resolveCapability, runDecision, runLlm, selectCapability, slug, type Capability, type CapabilityRegistry } from "../src/capabilities.js";
 
 /** A llama.cpp-style model server: /health, /v1/models (with output_modalities), chat + systemone. */
 async function listen(handler: (req: IncomingMessage, res: ServerResponse, body: unknown) => void) {
@@ -114,4 +114,39 @@ test("runLlm and runDecision call a host's OpenAI and System One endpoints", asy
   } finally {
     server.close();
   }
+});
+
+test("selectCapability: A/B random from the filtered set, deterministic by id, required filter", () => {
+  const mk = (id: string, kind: "llm" | "decision", purpose: string[], updatedAt = 0, host = "studio"): Capability => ({
+    id, name: id, kind, host, address: "http://x", model: id, transport: "openai-compat", family: id, description: "", purpose, state: "enabled", autoEnable: true, source: "agent", inputs: [], options: [], createdAt: 0, updatedAt,
+  });
+  const reg: CapabilityRegistry = {
+    hosts: [],
+    selectionMode: "ab",
+    capabilities: [
+      mk("a", "llm", ["tool-use"], 10),
+      mk("b", "llm", ["tool-use"], 20),
+      mk("c", "llm", ["other"], 30),
+    ],
+  };
+
+  // required filter: only a and b remain, and a random pick always lands on one of them.
+  for (let i = 0; i < 20; i++) {
+    const cap = selectCapability(reg, "llm", { required: ["tool-use"] });
+    assert.ok(cap.id === "a" || cap.id === "b");
+  }
+  // without required, the random pick can be any enabled llm.
+  const ids = new Set<string>();
+  for (let i = 0; i < 50; i++) ids.add(selectCapability(reg, "llm").id);
+  assert.ok(ids.has("a") && ids.has("b") && ids.has("c"));
+
+  // deterministic by id, regardless of mode.
+  assert.equal(selectCapability(reg, "llm", { capability: "c" }).id, "c");
+
+  // auto mode: most-recently-used first.
+  const auto = selectCapability(reg, "llm", { mode: "auto" });
+  assert.equal(auto.id, "c");
+
+  // a required purpose nobody has → a clear error.
+  assert.throws(() => selectCapability(reg, "llm", { required: ["vision"] }), /required purpose/);
 });

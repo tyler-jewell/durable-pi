@@ -15,17 +15,18 @@ import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import { inspectHost } from "./host-inspect.js";
 import { cloudCostUsd, compareCosts, computeUsage, loadMeter, recordUsage, saveMeter, type UsageRecord } from "./meter.js";
+import { listMeshHosts } from "./mesh.js";
 import { loadTeamFeed, notifyReady } from "./notify.js";
 import {
   disableCapability,
   enableCapability,
-  findCapability,
   loadRegistry,
   probeHost,
   recommendCapability,
   runDecision,
   runLlm,
   saveRegistry,
+  selectCapability,
   type Capability,
   type CapabilityKind,
   type CapabilityRegistry,
@@ -33,9 +34,7 @@ import {
 } from "./capabilities.js";
 
 /** Hosts to probe when the registry has no entry for them. Extend as hosts join the mesh. */
-const DEFAULT_HOSTS: { host: string; address: string; ssh?: string }[] = [
-  { host: "studio", address: "http://studio.tail9d6cad.ts.net:8080", ssh: "studio" },
-];
+const DEFAULT_HOSTS: { host: string; address: string; ssh?: string }[] = listMeshHosts().map((h) => ({ host: h.name, address: `https://${h.hostname}`, ssh: h.name }));
 
 function load(): CapabilityRegistry {
   return loadRegistry();
@@ -57,22 +56,11 @@ function publicCapability(c: Capability): Capability {
  * enabled capability of the requested kind, local hosts first with cloud as fallback (or the
  * reverse when `prefer` is "cloud"). In automatic mode local models sort by most-recently-used,
  * so the next call reuses the already-loaded model and avoids a swap (next-best-cheapest). */
-function resolveForKind(reg: CapabilityRegistry, kind: CapabilityKind, opts: { capability?: string; prefer?: "local" | "cloud" } = {}): Capability {
-  if (opts.capability) {
-    const cap = findCapability(reg, opts.capability);
-    if (!cap) throw new Error(`capability "${opts.capability}" is not in the registry; list_capabilities shows what is available`);
-    if (cap.state !== "enabled") throw new Error(`capability "${opts.capability}" is ${cap.state}; enable it first (enable_capability)`);
-    if (cap.kind !== kind) throw new Error(`capability "${opts.capability}" is ${cap.kind}, not ${kind}`);
-    return cap;
-  }
-  const enabled = reg.capabilities.filter((c) => c.state === "enabled" && c.kind === kind);
-  const local = enabled.filter((c) => c.host !== "cloudflare").sort((a, b) => (b.updatedAt ?? 0) - (a.updatedAt ?? 0));
-  const cloud = enabled.filter((c) => c.host === "cloudflare");
-  const first = opts.prefer === "cloud" ? cloud : local;
-  const second = opts.prefer === "cloud" ? local : cloud;
-  const cap = first[0] ?? second[0] ?? enabled[0];
-  if (!cap) throw new Error(`no enabled ${kind} capability; list_capabilities + enable_capability first`);
-  return cap;
+/** Resolve the capability to call. Explicit id → deterministic; otherwise filter enabled candidates
+ *  of the kind by `required` purposes and pick by the registry's selection mode (default `ab`,
+ *  a random A/B choice; `auto` reuses the most-recently-used local with cloud fallback). */
+function resolveForKind(reg: CapabilityRegistry, kind: CapabilityKind, opts: { capability?: string; prefer?: "local" | "cloud"; required?: string[] } = {}): Capability {
+  return selectCapability(reg, kind, { capability: opts.capability, prefer: opts.prefer, required: opts.required, mode: reg.selectionMode ?? "ab" });
 }
 
 /** The secret (api key) input of a capability, if any. */
@@ -128,10 +116,11 @@ export function registerCapabilityTools(server: McpServer): void {
       annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     },
     async (args) => {
-      const caps = load().capabilities.filter((c) => !args.kind || c.kind === args.kind).map(publicCapability);
+      const reg = load();
+      const caps = reg.capabilities.filter((c) => !args.kind || c.kind === args.kind).map(publicCapability);
       return {
-        content: [{ type: "text", text: JSON.stringify({ capabilities: caps }, null, 2) }],
-        structuredContent: { capabilities: caps },
+        content: [{ type: "text", text: JSON.stringify({ selectionMode: reg.selectionMode ?? "ab", capabilities: caps }, null, 2) }],
+        structuredContent: { selectionMode: reg.selectionMode ?? "ab", capabilities: caps },
       };
     },
   );
@@ -144,7 +133,7 @@ export function registerCapabilityTools(server: McpServer): void {
         "Probe a host's HTTP base for /health and /v1/models, derive its chat LLMs and decision models, and record them in the registry (hosts). Then recommend_capability can turn a model into a usable capability.",
       inputSchema: {
         host: z.string().min(1).max(64).describe("host id, e.g. studio"),
-        address: z.string().min(1).max(200).describe("HTTP base, e.g. http://studio.tail9d6cad.ts.net:8080"),
+        address: z.string().min(1).max(200).describe("HTTP base, e.g. https://studio.jewell-labs.com (Cloudflare Tunnel)"),
         ssh: z.string().max(128).optional().describe("ssh target for config/launch-agent inspection, e.g. studio (from ~/.ssh/config)"),
       },
       annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
@@ -299,17 +288,18 @@ export function registerCapabilityTools(server: McpServer): void {
     "run_llm",
     {
       title: "Run a chat completion on an enabled LLM capability",
-      description: "Send messages to an enabled chat LLM capability (see list_capabilities) and return the assistant's reply.",
+      description: "Send messages to an enabled chat LLM capability (see list_capabilities) and return the assistant's reply. By default the model is A/B-selected: enabled LLMs matching the required purposes are filtered and one is chosen at random.",
       inputSchema: {
-        capability: z.string().min(1).max(120).optional().describe("capability id from list_capabilities (omit for automatic: local first, most-recently-used, cloud fallback)"),
+        capability: z.string().min(1).max(120).optional().describe("capability id from list_capabilities (omit for the default A/B random selection)"),
         prefer: z.enum(["local", "cloud"]).optional().describe("when no capability id is given, prefer a local or cloud capability (default local)"),
+        required: z.array(z.string()).optional().describe("capabilities the model must have (purpose tags, all must match) before the A/B random pick, e.g. ['tool-use']"),
         messages: z.array(z.object({ role: z.enum(["system", "user", "assistant"]), content: z.string() })).min(1).describe("conversation messages"),
       },
       annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: false, openWorldHint: false },
     },
     async (args) => {
       const reg = load();
-      const cap = resolveForKind(reg, "llm", { capability: args.capability, prefer: args.prefer ?? "local" });
+      const cap = resolveForKind(reg, "llm", { capability: args.capability, prefer: args.prefer ?? "local", required: args.required });
       const t0 = Date.now();
       const r = await runLlm(cap.address, cap.model, args.messages, { transport: cap.transport, apiKey: apiKeyOf(cap) });
       account(reg, cap, "llm", Date.now() - t0, r.inToks, r.outToks);
@@ -327,8 +317,9 @@ export function registerCapabilityTools(server: McpServer): void {
       description:
         "Judge a JSON state with bounded questions on an enabled decision capability (see list_capabilities), returning noul/choice answers. This is the same envelope the factory's jev-quality reviewer gate uses.",
       inputSchema: {
-        capability: z.string().min(1).max(120).optional().describe("capability id from list_capabilities (omit for automatic: local first, most-recently-used, cloud fallback)"),
+        capability: z.string().min(1).max(120).optional().describe("capability id from list_capabilities (omit for the default A/B random selection)"),
         prefer: z.enum(["local", "cloud"]).optional().describe("when no capability id is given, prefer a local or cloud capability (default local)"),
+        required: z.array(z.string()).optional().describe("capabilities the model must have (purpose tags, all must match) before the A/B random pick, e.g. ['jev-quality']"),
         state: z.record(z.string(), z.unknown()).describe("JSON state to judge"),
         questions: z.record(z.string(), z.unknown()).describe("System One questions: { name: { type: 'noul'|'choice', instructions, criteria? } }"),
       },
@@ -336,7 +327,7 @@ export function registerCapabilityTools(server: McpServer): void {
     },
     async (args) => {
       const reg = load();
-      const cap = resolveForKind(reg, "decision", { capability: args.capability, prefer: args.prefer ?? "local" });
+      const cap = resolveForKind(reg, "decision", { capability: args.capability, prefer: args.prefer ?? "local", required: args.required });
       const t0 = Date.now();
       const r = await runDecision(cap.address, cap.model, args.state, args.questions as Record<string, DecisionQuestion>, { transport: cap.transport, apiKey: apiKeyOf(cap) });
       account(reg, cap, "decision", Date.now() - t0, r.inToks, r.outToks);
@@ -424,6 +415,26 @@ export function registerCapabilityTools(server: McpServer): void {
       return {
         content: [{ type: "text", text: JSON.stringify({ entries: feed }, null, 2) }],
         structuredContent: { entries: feed },
+      };
+    },
+  );
+
+  server.registerTool(
+    "set_selection_mode",
+    {
+      title: "Set the default model selection mode (A/B random vs auto)",
+      description:
+        "Choose how run_llm/run_decision pick a model when no capability id is given. `ab` (the default) filters enabled candidates by the required purposes and picks one at random; `auto` reuses the most-recently-used local model with cloud fallback.",
+      inputSchema: { mode: z.enum(["ab", "auto"]).describe("selection mode to set") },
+      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+    },
+    async (args) => {
+      const reg = load();
+      reg.selectionMode = args.mode;
+      save(reg);
+      return {
+        content: [{ type: "text", text: `selection mode is now ${args.mode}` }],
+        structuredContent: { selectionMode: args.mode },
       };
     },
   );

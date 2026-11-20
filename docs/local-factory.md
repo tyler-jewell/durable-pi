@@ -7,7 +7,7 @@ is built, and what remains.
 
 ## Validated resources (19 Nov 2026)
 
-`studio.tail9d6cad.ts.net` (Apple M1 Max, 32 GB) runs **llama.cpp `llama-server` 1.0.0**.
+`studio.jewell-labs.com` (Apple M1 Max, 32 GB, reached over a Cloudflare Tunnel + Access) runs **llama.cpp `llama-server` 1.0.0**.
 The canonical model root is `~/local/models/` (manifest.json is the SSoT; see
 docs/model-lineup.md), and one router on `:8080` serves one GGUF at a time from
 `gguf/` (`--models-max 1`, autoload, sleep-idle 600 s):
@@ -98,11 +98,12 @@ The registry is **data derived from the host's own API**, not hand-written confi
 3. **Mesh reachability.** `llama-server` binds `127.0.0.1` today, so other hosts (MacBook,
    iPhone) cannot reach the Studio's models. For the factory itself this is fine (it runs on
    the Studio); to let *all* agents use the MCP `run_llm`/`run_decision` tools from anywhere,
-   run `tailscale serve --bg --https 8443 8080` on the Studio (HTTPS + tailnet ACL) or restart
-   the server with `--host 0.0.0.0`. Then re-run `discover_host` with the mesh URL. Note the
-   Studio's existing serve already proxies `/` → 127.0.0.1:8464, so use a separate https port.
+   expose the model server through a Cloudflare Tunnel hostname protected by Cloudflare Access
+   (a service token, sent as `CF-Access-Client-Id` / `CF-Access-Client-Secret`), or restart
+   the server with `--host 0.0.0.0` and route the Tunnel ingress to `:8080`. Then re-run
+   `discover_host` with the mesh URL.
 4. **PWA on iOS.** Serve the hub UI (`apps/dpi-playground`) from the Studio over HTTPS
-   (Tailscale Serve gives that), and add a web app manifest + service worker + Apple touch
+   (the Cloudflare Tunnel gives that), and add a web app manifest + service worker + Apple touch
    icon so "Add to Home Screen" installs it as a standalone app. The hub already serves the
    Vue frontend; the manifest/worker/icons are the new bits, plus iOS Safari specifics
    (`apple-mobile-web-app-capable`, full-screen `display: standalone`, no service-worker
