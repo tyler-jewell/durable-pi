@@ -60,7 +60,7 @@ test("an unknown served window goes through unguarded, and the result says so", 
   try {
     const r = await runLlm(base, "m", [{ role: "user", content: "hi" }]);
     assert.equal(r.guarded, false);
-    assert.equal(seen[0].max_tokens, 2048);
+    assert.equal(seen[0].max_tokens, 4096);
   } finally {
     srv.close();
   }

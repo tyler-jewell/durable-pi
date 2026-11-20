@@ -140,7 +140,7 @@ type ChatBody = {
 };
 /** One reader for both transports, so a cut-off answer is reported the same way everywhere. */
 /** The output we ask for when the window allows it. The budget clamps it, and the result says what was sent. */
-const REQUESTED_OUTPUT_TOKENS = 2048;
+const REQUESTED_OUTPUT_TOKENS = 4096;
 
 function llmResult(raw: unknown, b: Budget): LlmResult {
   const data = (raw ?? {}) as ChatBody;
