@@ -1,0 +1,4 @@
+{
+  "compilerOptions": { "checkJs": false, "module": "nodenext" },
+  "include": ["container-main.mjs"]
+}
