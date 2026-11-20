@@ -3,6 +3,7 @@
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
+import { loadPolicy } from "./policy.js";
 
 export interface TeamFeedEntry {
   at: number;
@@ -27,7 +28,8 @@ export function loadTeamFeed(): TeamFeedEntry[] {
 }
 
 export function notifyReady(entry: TeamFeedEntry): TeamFeedEntry[] {
-  const feed = loadTeamFeed();
+  const keepAfter = entry.at - loadPolicy().retentionDays.teamFeed * 24 * 60 * 60 * 1000;
+  const feed = loadTeamFeed().filter((item) => item.at >= keepAfter);
   feed.push(entry);
   mkdirSync(join(homedir(), ".dpi-mcp"), { recursive: true });
   writeFileSync(FEED(), JSON.stringify(feed, null, 2) + "\n");

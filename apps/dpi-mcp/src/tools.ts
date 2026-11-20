@@ -1,6 +1,7 @@
 // Tool definitions and handlers for dpi-mcp. The check → test → push cadence is deduped
 // by a per-app fingerprint: each check runs at most once per code state.
-import { existsSync, rmSync, writeFileSync } from "node:fs";
+import { execFileSync } from "node:child_process";
+import { existsSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { ServerNotification, ServerRequest } from "@modelcontextprotocol/sdk/types.js";
@@ -10,7 +11,10 @@ import { appDir, clip, fingerprint, loadState, saveState, run, ROOT, STATE_DIR }
 import type { PipelineState } from "./util.js";
 import { archiveApp, restoreApp } from "./archive.js";
 import { registerDiscoveryTools } from "./discovery-tools.js";
+import { callDecision } from "./model-tools.js";
 import type { ModelTools } from "./model-tools.js";
+import { loadStore, select } from "./tool-store.js";
+import { scanFiles, selectFiles } from "./scan-files.js";
 
 // ------------------------------------------------------------------ progress / events
 
@@ -228,6 +232,43 @@ async function runCadence(app: string, includePush: boolean, p: Progress) {
 
 export function registerTools(server: McpServer, models: ModelTools): void {
   registerDiscoveryTools(server, models);
+  server.registerTool(
+    "scan_files",
+    {
+      title: "Categorize tracked files with a decision tool",
+      description:
+        "Scan Git-tracked files and categorize each one with an enabled mesh decision tool. Untracked and ignored files are skipped. A file that cannot be judged is an error, not an answer. Does not run on commit.",
+      inputSchema: {
+        question: z.string().min(1),
+        outputs: z.array(z.string().min(1)).min(2),
+        include: z.array(z.string()).optional(),
+        exclude: z.array(z.string()).optional(),
+        limit: z.number().int().positive().optional(),
+        requires: z.array(z.string()).optional(),
+        concurrency: z.number().int().positive().max(8).optional(),
+      },
+      annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: false, openWorldHint: true },
+    },
+    async (args) => {
+      const listed = execFileSync("git", ["ls-files"], { cwd: ROOT, encoding: "utf8" }).split("\n").filter(Boolean);
+      const files = selectFiles(listed, args.include ?? [], args.exclude ?? [], args.limit);
+      const store = loadStore();
+      const scanned = await scanFiles(files, async (path) => {
+        const tool = select(store, "decision", { requires: ["decision", "mesh", ...(args.requires ?? [])] });
+        const text = readFileSync(join(ROOT, path), "utf8").slice(0, 4000);
+        const judged = await callDecision(store, tool, { path, text }, {
+          category: { type: "choice", instructions: args.question, criteria: Object.fromEntries(args.outputs.map((label) => [label, label])) },
+        });
+        const answer = judged.answers.category;
+        if (!answer || answer.type !== "choice") throw new Error("the file was not judged");
+        return { answer: answer.choice, confidence: answer.confidence, probabilities: answer.probabilities, tool: tool.name };
+      }, args.concurrency ?? 2);
+      return {
+        content: [{ type: "text" as const, text: JSON.stringify(scanned, null, 2) }],
+        structuredContent: scanned,
+      };
+    },
+  );
   server.registerTool(
     "create_app",
     {

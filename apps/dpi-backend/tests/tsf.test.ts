@@ -4,7 +4,7 @@ import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { loadTsfConfig, parseTsfConfig } from "../src/tsf.js";
-import { reviewVerdict } from "../src/jobs.js";
+import { acceptanceGate, reviewVerdict } from "../src/jobs.js";
 import type { JevAnswer } from "../src/jev.js";
 
 const VALID = `
@@ -67,6 +67,19 @@ test("loadTsfConfig reads a stamped project and returns undefined when absent", 
 // stands in when Jev is unreachable (fail-open).
 const choice = (choice: string, confidence = 0.9): Record<string, JevAnswer> => ({
   verdict: { type: "choice", choice, confidence, probabilities: { approve: 0, revise: 0, reject: 0 } },
+});
+
+test("acceptance gate sends a failing change back and passes on the retry", async () => {
+  let built = 0;
+  const result = await acceptanceGate({
+    maxAttempts: 2,
+    build: async () => {
+      built += 1;
+    },
+    check: async () => (built < 2 ? { ok: false, detail: "typecheck failed" } : { ok: true, detail: "typecheck passed" }),
+  });
+  assert.equal(built, 2);
+  assert.deepEqual(result, { ok: true, attempts: 2, detail: "typecheck passed" });
 });
 
 test("reviewVerdict: Jev approve passes, revise/reject fail", () => {

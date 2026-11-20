@@ -10,6 +10,8 @@ Orient yourself in the Durable Pi repo. Durable pi agents live on a device that 
 
 See [the agent capability convention](../../docs/agent-capability-convention.md) for the four layers: skill, subagent, command, and justfile.
 
+After orientation, run `just verify-setup`. Three `PASS` lines and exit 0 means this clone's gate is installed. A non-zero exit means it is not ready.
+
 ## Workflow
 
 1. Run `git ls-files`, skipping `images/`, icons and lockfiles. The apps are `apps/dpi-sdk`, `apps/dpi-backend`, `apps/dpi-playground` (hub and Vue client), `apps/dpi-tui`, `apps/base-app` (shared Vue shell), and `apps/pi-object` (Durable Object agent).

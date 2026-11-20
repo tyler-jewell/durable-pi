@@ -6,6 +6,9 @@ set shell := ["zsh", "-cu"]
 # Devices: up, deploy, status, logs, restart
 mod net 'just/net'
 
+# Local runtime state: missing files and loose permissions, never file contents
+mod doctor 'just/doctor'
+
 # Web apps: scaffold from templates, add routes and pages, verify in a browser
 mod app 'just/app'
 

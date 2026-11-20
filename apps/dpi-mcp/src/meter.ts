@@ -9,6 +9,7 @@
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
+import { loadPolicy } from "./policy.js";
 
 export type Transport = "openai-compat" | "cloudflare-workers-ai";
 
@@ -55,6 +56,8 @@ export function saveMeter(meter: UsageMeter): void {
 
 export function recordUsage(meter: UsageMeter, call: UsageRecord): UsageMeter {
   meter.calls.push(call);
+  const keepAfter = call.endedAt - loadPolicy().retentionDays.meter * 24 * 60 * 60 * 1000;
+  meter.calls = meter.calls.filter((entry) => entry.endedAt >= keepAfter);
   saveMeter(meter);
   return meter;
 }

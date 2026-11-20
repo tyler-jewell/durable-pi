@@ -1,0 +1,11 @@
+{
+  "selectionMode": "ab",
+  "enable": {
+    "mesh": ["llm", "decision"],
+    "cloud": []
+  },
+  "retentionDays": {
+    "meter": 30,
+    "teamFeed": 30
+  }
+}

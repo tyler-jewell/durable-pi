@@ -1,6 +1,7 @@
 // The discovery and control tools: find models on the mesh and in the cloud catalog, choose which ones are enabled,
 // inspect a host, and read the cost meter and the team feed. Every enabled model is served as its own tool by
 // model-tools.ts; this file only changes what is enabled.
+import { existsSync } from "node:fs";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import { inspectHost } from "./host-inspect.js";
@@ -8,7 +9,8 @@ import { compareCosts, computeUsage, loadMeter, saveMeter } from "./meter.js";
 import { notifyReady, loadTeamFeed } from "./notify.js";
 import { discoverMeshModels } from "./mesh.js";
 import { fetchCatalog, syncCloudTools } from "./cloud-catalog.js";
-import { loadStore, saveStore, setEnabled, setToolUse, upsertMeshTool, type HostRecord, type ToolStore } from "./tool-store.js";
+import { applyPolicy, loadPolicy } from "./policy.js";
+import { loadStore, saveStore, setEnabled, setToolUse, storePath, upsertMeshTool, type HostRecord, type ToolStore } from "./tool-store.js";
 import { probeToolUse, type ModelTools } from "./model-tools.js";
 import { probeHost, type ModelInfo } from "./models.js";
 
@@ -27,7 +29,7 @@ export function registerDiscoveryTools(server: McpServer, models: ModelTools): v
     {
       title: "Discover models: the mesh hosts and the cloud catalog",
       description:
-        "Find models and record them. `mesh` probes every host in mesh.json (or one explicit host and address) and adds its local chat and decision models. `cloud` reads the Cloudflare Workers AI catalog with each text model's kind and price. Discovered models are added DISABLED: nothing is served until enable_tool turns it on. Re-running refreshes what is known and keeps each model's enabled state.",
+        "Find models and record them. `mesh` probes every host in mesh.json (or one explicit host and address) and adds its local chat and decision models. `cloud` reads the Cloudflare Workers AI catalog with each text model's kind and price. A missing store is rebuilt from discovery plus the policy file: enablement comes from that policy, not from a hand edit. Re-running against an existing store refreshes what is known and keeps each model's enabled state.",
       inputSchema: {
         scope: z.enum(["mesh", "cloud", "all"]).optional().describe("what to discover (default all)"),
         host: z.string().min(1).max(64).optional().describe("probe only this host (needs address)"),
@@ -38,6 +40,7 @@ export function registerDiscoveryTools(server: McpServer, models: ModelTools): v
     },
     async (args) => {
       const scope = args.scope ?? "all";
+      const fresh = !existsSync(storePath());
       const store = loadStore();
       const summary: Record<string, unknown> = {};
       if (scope === "mesh" || scope === "all") {
@@ -61,6 +64,7 @@ export function registerDiscoveryTools(server: McpServer, models: ModelTools): v
           summary.cloud = { ...r, total: catalog.length, decision: catalog.filter((m) => m.kind === "decision").length, priced: catalog.filter((m) => m.price).length };
         }
       }
+      if (fresh) applyPolicy(store, loadPolicy());
       saveStore(store);
       models.sync();
       return {

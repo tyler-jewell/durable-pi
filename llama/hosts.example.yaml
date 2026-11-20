@@ -9,9 +9,11 @@ studio:
   hostname: <hostname -s on the Studio>
   home: /Users/<user on the Studio>
   binary: /opt/homebrew/bin/llama-server
+  llama_version: <llama-server --version>
   models_dir: ~/local/models/gguf
   replaces: [com.dpi.llama-router]
 macbook-pro:
   hostname: <hostname -s on the MacBook Pro>
   binary: /opt/homebrew/bin/llama-server
+  llama_version: <llama-server --version>
   models_dir: ~/local/models/gguf

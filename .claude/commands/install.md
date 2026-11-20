@@ -100,4 +100,17 @@ just net up <id>              # after uncommenting an ssh, exe-dev, apple-contai
 
 ### Self-verify
 
-After setup, run `just verify-setup`. Treat any non-zero exit code as a failed install.
+After each step, the pass line is the proof. Do not continue past a failed required step.
+
+| Step | Pass |
+|---|---|
+| prerequisites | each `command -v` prints a path, and `node -v` is 26 or newer |
+| `.env` | the chosen key check prints `set`, and the value is not printed |
+| `just install` | the command exits 0 |
+| `just net ids` | `local` is in the list |
+| `just net up local` | `~/.dpi/backend.env` exists and its mode is `600` |
+| `just hub build` | the command exits 0 |
+| `just verify-setup` | three `PASS` lines and exit 0 |
+| `just check` | exit 0 |
+
+`just lsp test` is the proof that the language servers installed. `just net status` is the proof after a device is up. Neither starts a server by itself. A non-zero exit is a failed install.

@@ -291,6 +291,22 @@ export function verdictOf(text: string): "approve" | "revise" | "reject" | undef
   return word.startsWith("approve") ? "approve" : word.startsWith("revise") ? "revise" : "reject";
 }
 
+/** Run a check, and when it fails run the builder again, up to maxAttempts. The first passing check stops the loop. */
+export async function acceptanceGate(input: {
+  maxAttempts: number;
+  build: (attempt: number) => Promise<void>;
+  check: () => Promise<{ ok: boolean; detail: string }>;
+}): Promise<{ ok: boolean; attempts: number; detail: string }> {
+  let detail = "the gate did not run";
+  for (let attempt = 1; attempt <= input.maxAttempts; attempt++) {
+    await input.build(attempt);
+    const result = await input.check();
+    detail = result.detail;
+    if (result.ok) return { ok: true, attempts: attempt, detail };
+  }
+  return { ok: false, attempts: input.maxAttempts, detail };
+}
+
 export function reviewVerdict(answers: Record<string, JevAnswer> | undefined, modelVerdict: string): { ok: boolean; reason: string } {
   const answer = answers?.verdict;
   if (!answer || answer.type !== "choice") {
@@ -543,9 +559,20 @@ const HANDLERS: Record<string, Record<string, Handler>> = {
     },
     review: async (p) => {
       const plan = String(p.data.plan ?? "");
-      const verdict = await runReview(p, plan, String(p.input.observation));
-      if (verdict.ok) return { done: verdict.reason };
-      throw Error(verdict.reason);
+      const verdict = await acceptanceGate({
+        maxAttempts: 2,
+        build: async (attempt) => {
+          if (attempt === 1) return;
+          const pr = await tsfPrompt(p, "builder", { name: "feedback", plan });
+          await p.agent(pr.user, { extension: CodingTools, instructions: pr.system });
+        },
+        check: async () => {
+          const result = await runReview(p, plan, String(p.input.observation));
+          return { ok: result.ok, detail: result.reason };
+        },
+      });
+      if (verdict.ok) return { done: verdict.detail };
+      throw Error(verdict.detail);
     },
     deploy: async (p) => {
       const token = process.env.CLOUDFLARE_API_TOKEN ?? "";

@@ -71,7 +71,8 @@ export interface ToolStore {
   tools: ModelTool[];
 }
 
-const STORE = () => process.env.DPI_MCP_TOOLS ?? join(homedir(), ".dpi-mcp", "tools.json");
+export const storePath = () => process.env.DPI_MCP_TOOLS ?? join(homedir(), ".dpi-mcp", "tools.json");
+const STORE = storePath;
 
 export function emptyStore(): ToolStore {
   return { version: 2, selectionMode: "ab", hosts: [], tools: [] };
