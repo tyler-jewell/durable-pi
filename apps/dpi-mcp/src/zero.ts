@@ -10,7 +10,7 @@
 // Validation runs on local models only. A cloud twin is priced from its catalog rate and the tokens the
 // local run used. It is never called, so zero cloud spend is possible here. Opportunity cost (wait time)
 // is deliberately NOT counted: the report shows realized spend only.
-import { disableCapability, familyOf, loadRegistry, recommendCapability, enableCapability, runDecision, runLlm, saveRegistry, selectCapability, type Capability, type CapabilityKind, type CapabilityRegistry, type DecisionQuestion } from "./capabilities.js";
+import { disableCapability, loadRegistry, recommendCapability, enableCapability, runDecision, runLlm, saveRegistry, selectCapability, type Capability, type CapabilityKind, type CapabilityRegistry, type DecisionQuestion } from "./capabilities.js";
 import type { MeshModelDiscovery } from "./mesh.js";
 import { DEFAULT_SETTINGS, loadMeter, marginalElectricityUsd, recordUsage, type CostSettings } from "./meter.js";
 import { syncCloudCapabilities, tokenCostUsd, type CatalogModel } from "./cloud-catalog.js";
