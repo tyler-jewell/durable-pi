@@ -30,6 +30,9 @@ mod tsf 'just/tsf'
 # llama.cpp on this host and the mesh: render, check, compare and apply llama/config.yaml
 mod llama 'just/llama'
 
+# Agent skills: restore (default), add, search, remove, list. Pins live in skills-lock.json
+mod skills 'just/skills'
+
 
 # List command groups
 default:
@@ -43,10 +46,6 @@ setup:
     cd pi/extensions/lsp && npm install --no-audit --no-fund
     cd pi/lsp/eval && npm install --no-audit --no-fund
     @echo "setup: pre-commit gate installed (core.hooksPath=.githooks); servers and type packages installed"
-
-# Restore the skills this repo uses, exactly as skills-lock.json pins them (official sources; see README "Skills")
-skills:
-    npx -y skills@1.9.0 experimental_install -a pi -a claude-code --frozen-lockfile
 
 # Install dependencies for every network app
 install:

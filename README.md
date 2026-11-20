@@ -457,7 +457,14 @@ Every node is proved the same way: **test in a container → review code (remove
 ## Skills
 
 The skills this repo uses are pinned in [`skills-lock.json`](skills-lock.json) and restored with `just skills`
-(`npx skills experimental_install --frozen-lockfile`, CLI pinned to 1.9.0). Forks get exactly this set and nothing else.
+(`npx skills experimental_install --frozen-lockfile`, CLI pinned to 1.9.0). Manage them with:
+
+- `just skills list`: every installed skill with its source and pinned version
+- `just skills search <query>`: find skills in public repos
+- `just skills add <owner/repo> <skill>`: install for pi and claude-code, pin it in `skills-lock.json`, and stage it
+- `just skills remove <skill>`: remove it from every agent, drop the pin, and stage the removal
+
+After `add` or `remove`, review with `git status` and commit the staged paths. Forks get exactly this set and nothing else.
 Pi reads `.agents/skills/`; Claude Code reads `.claude/skills/`, which holds symlinks into it.
 
 | Skill | Source (official) | Why this repo needs it |
@@ -476,7 +483,7 @@ Pi reads `.agents/skills/`; Claude Code reads `.claude/skills/`, which holds sym
 
 Not installed, on purpose: `wrangler` (its rule is "do not add Wrangler" to a `cf` project; `cf build` still delegates to a pinned Wrangler, see pi-object known issues), `agents-sdk`, `basin`, `k2`, `cloudflare-email-service`, `cloudflare-one-migrations`, `frameworks-on-cloudflare`, `gateway-workers`, `nextjs-on-cloudflare`, the three `sandbox-*` skills, `tailscale`, `turnstile-spin`, `web-perf`, `workers-profiling`, `untangle-codebase`, `prune-tests` (a third-party skill that deletes tests; add it back if you want that), and the community `vuejs-ai/skills` (it describes itself as unofficial).
 
-To add a skill: `npx skills add <owner/repo> -s <skill> -a pi -a claude-code`, commit `skills-lock.json` and `.agents/skills/<skill>`. To remove one: `npx skills remove <skill>`, then commit.
+To add a skill: `just skills add <owner/repo> <skill>`, then commit `skills-lock.json` and `.agents/skills/<skill>`. To remove one: `just skills remove <skill>`, then commit.
 
 ## Known issues
 
