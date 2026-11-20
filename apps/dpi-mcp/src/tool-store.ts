@@ -12,6 +12,16 @@ import { familyOf, slug } from "./models.js";
 
 export type SelectionMode = "ab" | "auto";
 
+/** The last probe_tool_use result: whether the model answered a tool request with a structured call. */
+export interface ToolUseCheck {
+  ok: boolean;
+  checkedAt: number;
+  detail: string;
+}
+
+/** The tag a chat tool carries once it has passed probe_tool_use. Agent turns that offer tools require it. */
+export const TOOL_USE_TAG = "tool-use";
+
 export interface ModelTool {
   /** The MCP tool name. Stable for a host and model: `model_<host>_<model>`. */
   name: string;
@@ -30,6 +40,8 @@ export interface ModelTool {
   enabled: boolean;
   /** The window the server runs with. The context budget uses this. Undefined means unknown, and calls are unguarded. */
   servedContext?: number;
+  /** The last tool-use probe. Undefined until probe_tool_use has run for this tool. */
+  toolUse?: ToolUseCheck;
   /** The window the model was trained for. Informational only. */
   trainedContext?: number;
   /** Cloud tools: the catalog price, per million tokens. */
@@ -103,6 +115,7 @@ export function upsertMeshTool(store: ToolStore, host: string, address: string, 
     description: `${m.kind === "decision" ? "Decision" : "Chat"} model served by ${host}`,
     tags: [...new Set([...kindTags(m.kind), ...(existing?.tags ?? []).filter((t) => t !== "chat" && t !== "decision")])],
     enabled: existing?.enabled ?? false,
+    toolUse: existing?.toolUse,
     servedContext: m.servedContext,
     trainedContext: m.trainedContext,
     discoveredAt: existing?.discoveredAt ?? now,
@@ -110,6 +123,16 @@ export function upsertMeshTool(store: ToolStore, host: string, address: string, 
     lastUsedAt: existing?.lastUsedAt,
   };
   store.tools = [...store.tools.filter((t) => t.name !== name), tool];
+  return tool;
+}
+
+/** Record a tool-use probe. A pass adds the tool-use tag; a failure removes it, so agents never pick a model that failed. */
+export function setToolUse(store: ToolStore, name: string, check: ToolUseCheck): ModelTool {
+  const tool = store.tools.find((t) => t.name === name);
+  if (!tool) throw new Error(`tool "${name}" is not known; discover_models lists what can be enabled`);
+  tool.toolUse = check;
+  tool.tags = check.ok ? [...new Set([...tool.tags, TOOL_USE_TAG])] : tool.tags.filter((t) => t !== TOOL_USE_TAG);
+  tool.updatedAt = check.checkedAt;
   return tool;
 }
 

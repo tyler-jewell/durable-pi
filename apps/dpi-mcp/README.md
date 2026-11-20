@@ -59,6 +59,7 @@ run without them.
 | `revive_app` | restore an archived app (≤30 days) and redeploy it to Cloudflare | — | no |
 | `discover_models` | probe the mesh hosts and/or read the cloud catalog; each model is recorded as a disabled tool | — | yes |
 | `list_tools` | every model tool: enabled or not, kind, tags, served window, price (never a secret) | — | yes |
+| `probe_tool_use` | ask chat tools to call a fixed test tool, with the agents' `tool_choice`; a structured call with the value adds the `tool-use` tag, anything else removes it | — | no |
 | `enable_tool` | serve a model tool: it appears in the server's tool list at once | — | no |
 | `disable_tool` | remove a model tool from the list; its record and tags are kept | — | no |
 | `ask_model` | pick an enabled tool by required tags (A/B random); `mesh` and `cloud` in `requires` match the tool’s actual source. Chat calls take `tools` (function schemas) and `tool_choice`, accept `tool` messages with `tool_call_id`, and return `toolCalls`; a truncated answer returns none | — | no |

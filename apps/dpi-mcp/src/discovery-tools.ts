@@ -8,8 +8,8 @@ import { compareCosts, computeUsage, loadMeter, saveMeter } from "./meter.js";
 import { notifyReady, loadTeamFeed } from "./notify.js";
 import { discoverMeshModels } from "./mesh.js";
 import { fetchCatalog, syncCloudTools } from "./cloud-catalog.js";
-import { loadStore, saveStore, setEnabled, upsertMeshTool, type HostRecord, type ToolStore } from "./tool-store.js";
-import type { ModelTools } from "./model-tools.js";
+import { loadStore, saveStore, setEnabled, setToolUse, upsertMeshTool, type HostRecord, type ToolStore } from "./tool-store.js";
+import { probeToolUse, type ModelTools } from "./model-tools.js";
 import { probeHost, type ModelInfo } from "./models.js";
 
 /** The one change every discovery path makes: record the host, add its models as disabled tools, keep the rest. */
@@ -89,6 +89,39 @@ export function registerDiscoveryTools(server: McpServer, models: ModelTools): v
       return {
         content: [{ type: "text", text: JSON.stringify({ selectionMode: store.selectionMode, tools }, null, 2) }],
         structuredContent: { selectionMode: store.selectionMode, tools: tools as unknown as Record<string, unknown>[] },
+      };
+    },
+  );
+
+  server.registerTool(
+    "probe_tool_use",
+    {
+      title: "Probe tool use: does a chat model answer with a structured tool call?",
+      description:
+        "Ask each enabled chat tool (or one tool, by name) to call a fixed test tool with a fixed value, and check that the server returned a structured call with that value. A model that passes gets the tool-use tag, which agent turns that offer tools require; one that fails loses it. Run it after discovery and before a model is used for agents.",
+      inputSchema: { name: z.string().min(1).max(64).optional().describe("one chat tool to probe; default every enabled chat tool") },
+      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: true },
+    },
+    async (args) => {
+      const store = loadStore();
+      const targets = store.tools.filter((t) => t.kind === "llm" && (args.name ? t.name === args.name : t.enabled));
+      if (args.name && targets.length === 0) throw new Error(`tool "${args.name}" is not a known chat tool`);
+      const results: { name: string; ok: boolean; detail: string }[] = [];
+      for (const tool of targets) {
+        let verdict: { ok: boolean; detail: string };
+        try {
+          verdict = await probeToolUse(store, tool);
+        } catch (error) {
+          verdict = { ok: false, detail: `the probe call failed: ${error instanceof Error ? error.message : String(error)}` };
+        }
+        setToolUse(store, tool.name, { ...verdict, checkedAt: Date.now() });
+        saveStore(store);
+        results.push({ name: tool.name, ...verdict });
+      }
+      models.sync();
+      return {
+        content: [{ type: "text", text: JSON.stringify({ probed: results }, null, 2) }],
+        structuredContent: { probed: results },
       };
     },
   );

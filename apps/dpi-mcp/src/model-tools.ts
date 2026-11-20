@@ -10,6 +10,7 @@ import { tokenCostUsd } from "./cloud-catalog.js";
 import { loadMeter, recordUsage } from "./meter.js";
 import { runDecision, runLlm, type ChatMessage, type ToolChoice, type ToolSpec, type DecisionQuestion, type LlmResult, type DecisionResult } from "./models.js";
 import { loadStore, saveStore, select, type ModelTool, type ToolStore } from "./tool-store.js";
+import { clip } from "./util.js";
 
 const ChatMessageShape = z
   .object({
@@ -56,6 +57,40 @@ function account(store: ToolStore, tool: ModelTool, kind: ModelTool["kind"], ms:
   recordUsage(loadMeter(), { startedAt: now - ms, endedAt: now, model: tool.family, kind, transport: tool.transport, inToks, outToks, costUsd });
   tool.lastUsedAt = now;
   saveStore(store);
+}
+
+/** The tool a tool-use probe asks for, and the value it must be called with. */
+export const PROBE_TOOL: ToolSpec = {
+  name: "record_value",
+  description: "Record the value you were given",
+  parameters: { type: "object", properties: { value: { type: "string" } }, required: ["value"] },
+};
+export const PROBE_VALUE = "dpi-probe-7319";
+
+/** Judge a probe answer. Only a structured call to the probe tool with the exact value passes. */
+export function toolUseVerdict(r: LlmResult): { ok: boolean; detail: string } {
+  const call = r.toolCalls.find((c) => c.name === PROBE_TOOL.name);
+  if (call) {
+    let value: unknown;
+    try {
+      value = (JSON.parse(call.arguments) as { value?: unknown }).value;
+    } catch {
+      return { ok: false, detail: "a structured call whose arguments are not JSON" };
+    }
+    return value === PROBE_VALUE ? { ok: true, detail: "a structured call with the requested value" } : { ok: false, detail: "a structured call with the wrong value" };
+  }
+  if (r.toolCalls.length) return { ok: false, detail: `called ${r.toolCalls[0].name} instead of ${PROBE_TOOL.name}` };
+  if (r.truncated) return { ok: false, detail: "the answer was cut off before any call" };
+  return { ok: false, detail: `no structured call; the answer was text: ${clip(r.text, 160)}` };
+}
+
+/** Ask a chat tool to call the probe tool, with the same tool_choice agent turns send. Metered like any other chat call. */
+export async function probeToolUse(store: ToolStore, tool: ModelTool): Promise<{ ok: boolean; detail: string }> {
+  const r = await callChat(store, tool, [
+    { role: "system", content: "Answer only by calling the record_value tool." },
+    { role: "user", content: `Call record_value with the value "${PROBE_VALUE}".` },
+  ], { tools: [PROBE_TOOL], toolChoice: "auto" });
+  return toolUseVerdict(r);
 }
 
 /** Call an enabled chat tool. Returns the answer with its budget facts, and never a silent cut. */

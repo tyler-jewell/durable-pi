@@ -114,7 +114,8 @@ function streamTurn(model: Model<string>, context: TranscriptContext, options?: 
         "ask_model",
         {
           kind: "llm",
-          requires: [model.id],
+          // A turn that offers tools needs a chat tool that passed probe_tool_use; a plain turn needs only a chat tool.
+          requires: tools.length ? [model.id, "tool-use"] : [model.id],
           messages,
           ...(tools.length ? { tools, tool_choice: "auto" } : {}),
         },
