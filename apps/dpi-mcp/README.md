@@ -205,3 +205,20 @@ The **core eval** `tests/zero-agent.eval.ts` proves the discovery loop offline: 
 a host address and an ssh target, identifies the decision models, the server, its configuration and launchd
 auto-start, tests it live, records the model as a disabled tool, and, only if the configuration is right,
 enables it and sees `ask_model` select it.
+
+## Roles
+
+dpi-mcp has two bearer roles, each with its own token:
+
+- **agent** (`DPI_MCP_TOKEN`): every model, discovery and app tool. Agent sessions never see the admin tools in their tool list, and cannot call them.
+- **admin** (`DPI_MCP_ADMIN_TOKEN`, at least 16 characters, different from the agent token): the agent tools plus the admin tools. A session keeps the role it started with, and a request under another role is refused with 403.
+
+The admin token is the only credential that can reach the Cloudflare account. It is read from the server's environment (`CLOUDFLARE_ADMIN_TOKEN`, with `CLOUDFLARE_ACCOUNT_ID`), and never sent to an agent.
+
+### Admin tools
+
+| Tool | What it does | Destructive | Confirmation |
+|---|---|---|---|
+| `cloudflare_snapshot` | One view of the account: Workers, Durable Objects, R2, KV, D1, Queues, tunnels, Access applications and service tokens, and the DNS records of one zone (`zone` argument, or `DPI_PRIMARY_ZONE`). Also the billing subscription, the Durable Objects rate card, and the last hour's measured requests priced at list price. Each part that cannot be read says why. | no | none (read only) |
+
+The last hour is a measurement priced by the account's own rate card, before included allowances. It is not an invoice line. The hour is `complete` only when every product in it was measured and priced; Workers requests have no verified rate-card component yet, so any Workers traffic makes the hour incomplete rather than free.
