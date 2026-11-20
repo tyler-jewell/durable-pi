@@ -29,14 +29,14 @@ The command lives in [`.claude/commands/install.md`](.claude/commands/install.md
 
 ### Manual Install
 
-**Prereqs:** [Node.js 26](https://nodejs.org) (via [nvm](https://github.com/nvm-sh/nvm)), [`just`](https://github.com/casey/just), `zsh` (macOS ships it), `tmux` (for the smoke and e2e test suites), an [OpenRouter](https://openrouter.ai) API key. Remote devices need passwordless `ssh`, and exe.dev VMs need an [exe.dev](https://exe.dev) account.
+**Prereqs:** [Node.js 26](https://nodejs.org) (via [nvm](https://github.com/nvm-sh/nvm)), [`just`](https://github.com/casey/just), `zsh` (macOS ships it), `tmux` (for the smoke and e2e test suites). No provider key is required to install or run the checks. Set one in `.env` only for the provider you run: mesh, a cloud provider, or none for the faux provider. Remote devices need passwordless `ssh`, and exe.dev VMs need an [exe.dev](https://exe.dev) account.
 
 ```bash
 brew install just tmux                         # macOS; Linux: sudo apt install just tmux (or see just's install page)
 ```
 
 ```bash
-cp .env.example .env                           # set the key for your provider (OPENROUTER_API_KEY / DEEPSEEK_API_KEY / Cloudflare gateway keys); copied into each device's backend.env, never sent to clients
+cp .env.example .env                           # optional: the key for the provider you run; copied into each device's backend.env, never sent to clients
 cp dpi-network.example.yaml dpi-network.yaml   # your devices; starts with only `local`
 just install                                   # npm install for dpi-sdk, dpi-backend, dpi-playground and dpi-tui
 ```
@@ -158,7 +158,7 @@ Each use case is a section: what the feature does, how it works, and a real run 
 
 ### 1. Jev bash gate — a decision on every bash command
 
-The most basic Jev feature. With `jev-damage-control` on, every `bash` command is sent to a Jev decision model **before it runs** — Clef-Flash or OpenJev on the Studio, or any System One endpoint via `JEV_BASE_URL` — and classified three ways:
+The most basic Jev feature. With `jev-damage-control` on, every `bash` command is sent to an enabled decision tool **before it runs**, or to the endpoint in `JEV_BASE_URL`, and classified three ways:
 
 - **allow** — read-only (lists, reads, tests): runs automatically.
 - **needs human approval** — reversible (edits, installs, deploys): held until a human approves.
@@ -168,7 +168,7 @@ The verdict is a durable memo (a restart never re-asks) and fails open (if Jev i
 
 <p align="center">
   <img src="docs/images/jev/jev-1-switch.png" width="760" alt="Extend tab with the Jev damage control switch on">
-  <img src="docs/images/jev/jev-2-block.png" width="760" alt="rm -rf blocked: irreversible, Clef-Flash confidence 0.78">
+  <img src="docs/images/jev/jev-2-block.png" width="760" alt="rm -rf blocked: irreversible, confidence 0.78">
   <img src="docs/images/jev/jev-3-approve.png" width="760" alt="touch held for human approval: reversible, confidence 0.81">
   <img src="docs/images/jev/jev-4-allow.png" width="760" alt="ls allowed: read-only">
 </p>
@@ -303,7 +303,7 @@ Each device owns its agents and their data in SQLite. The hub only stores how to
 ```text
 durable-pi/
 ├── dpi-network.example.yaml           # template for dpi-network.yaml (gitignored): devices, kinds, start_dirs
-├── .env.example                       # provider keys (OpenRouter, DeepSeek or Cloudflare AI Gateway) + optional Jev keys
+├── .env.example                       # optional provider keys (mesh, a cloud provider, or none for faux) + optional Jev keys
 ├── justfile                           # install, setup, check, copies, and one module per work area
 ├── just/                              # net, app, lsp, backend, hub, tui, test (one mod.just each)
 ├── apps/
@@ -429,7 +429,8 @@ Every node is proved the same way: **test in a container → review code (remove
 - [x] `dpi-backend` (store/harness/jobs/extensions/streams/shared-state/addons/providers/jev/history/idempotency/auth/errors + REST/SSE) — 18/18 tests green in the container (including the lock reuse regression).
 - [x] `dpi-playground` hub (guard/proxy/monitor/mux/seed) — 1/1 hub test green in the container.
 - [x] `dpi-playground` FE (generative UI) — `npm run build` green in the container (Playwright e2e still to run).
-- [x] `apps/pi-object` (Durable Object agent, cost objects, budget guard, Cloudflare rate card, e2e) — 46/46 tests in `just test unit`; deployed with `cf deploy`; local, remote and offline e2e pass.
+- [x] `apps/pi-object` (Durable Object agent, cost objects, budget guard, Cloudflare rate card) — unit and Durable Object tests run under `just test unit`. A Worker was deployed with `cf deploy`; the current `cf` login cannot deploy.
+- [ ] `apps/pi-object` e2e — local, remote, and offline all pass. The isolated container Artifacts leg passed (12.3 s; worker list, token names, and namespaces unchanged). The remote Durable Object leg was not re-run. The offline leg still looks up `bridge100`.
 - [x] `dpi-tui` — 8/8 render tests (host, `just check`).
 - [ ] Base-app shell — render tests green in a container (Phase 1). Today it has a type check and a build, and no tests.
 - [x] AI Gateway inference — live smoke test in the container on free `@cf/*` models (`GATEWAY_OK`).
