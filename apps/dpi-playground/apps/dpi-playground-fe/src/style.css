@@ -2371,6 +2371,7 @@ button:disabled {
   }
 }
 .session-heading .cwd-button {
+  min-block-size: 24px;
   display: flex;
   width: 100%;
   min-width: 0;
