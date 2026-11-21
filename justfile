@@ -39,6 +39,10 @@ mod skills 'just/skills'
 # Artifacts git server: push the baseline, then update the public main branch
 mod artifacts 'just/artifacts'
 
+# Phone admin route: public HTTPS in front of the hub, checked by scripts/admin-phone.mts
+admin-check:
+    node --experimental-strip-types scripts/admin-phone.mts
+
 
 # List command groups
 default:
