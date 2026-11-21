@@ -1,5 +1,7 @@
 @import url("https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;450;500;550;600;650;700&family=Manrope:wght@400;500;600;650;700;750;800&family=IBM+Plex+Mono:wght@400;500&display=swap");
 :root {
+  /* The app is dark only: native scrollbars, form controls and the canvas follow it (dark-mode, MANDATORY). */
+  color-scheme: dark;
   font-family: "DM Sans", sans-serif;
   color: #f2eeee;
   background: #151010;
