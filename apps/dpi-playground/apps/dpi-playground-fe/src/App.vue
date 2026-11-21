@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref } from "vue";
 import {
+  Bell,
   Check,
   CircleHelp,
   Info,
@@ -155,7 +156,8 @@ onBeforeUnmount(() => {
         >
       </div>
       <div class="top-actions">
-        <button v-if="pushAvailable()" class="secondary small notify-button" type="button" @click="turnOnPush">
+        <button v-if="pushAvailable()" class="secondary small notify-button" type="button" title="Enable phone notifications" @click="turnOnPush">
+          <Bell class="notify-icon" :size="18" aria-hidden="true" />
           <span class="notify-full">Enable phone notifications</span>
           <span class="notify-short">Notify</span>
         </button>
@@ -178,8 +180,8 @@ onBeforeUnmount(() => {
         >
           <Plus :size="18" />New agent
         </button>
-        <button class="primary small" @click="openNewSession">
-          <Plus :size="18" />New session
+        <button class="primary small" title="New session" @click="openNewSession">
+          <Plus :size="18" aria-hidden="true" /><span class="label">New session</span>
         </button>
         <button
           class="icon-button inspector-toggle"

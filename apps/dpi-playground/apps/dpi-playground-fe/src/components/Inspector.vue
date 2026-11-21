@@ -191,8 +191,8 @@ const offeredTools = computed(() => detail.value?.tools.filter((t) => t.offered)
           :class="{ active: ui.tab === t.id }"
           @click="ui.tab = t.id"
         >
-          <component :is="t.icon" :size="18" />{{ t.label
-          }}<span v-if="t.id === 'tasks' && tasks.length" class="count">{{ tasks.length }}</span>
+          <component :is="t.icon" :size="18" aria-hidden="true" /><span class="tab-label">{{ t.label }}</span
+          ><span v-if="t.id === 'tasks' && tasks.length" class="count">{{ tasks.length }}</span>
         </button>
       </div>
         <button

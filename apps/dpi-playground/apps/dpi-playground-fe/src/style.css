@@ -2432,7 +2432,7 @@ button:disabled {
 }
 .inspector > .inspector-head > .inspector-tabs button {
   flex: 1 0 auto;
-  min-inline-size: max-content;
+  min-inline-size: var(--target-control);
   position: relative;
   flex-direction: column;
   gap: 5px;

@@ -170,7 +170,7 @@ function withdraw(id: number) {
             title="Stop foreground work and owned subagents (Escape). Background jobs continue."
             @click="interrupt"
           >
-            <Octagon :size="24" class="stop-sign" fill="currentColor" />Interrupt</button
+            <Octagon :size="24" class="stop-sign" fill="currentColor" aria-hidden="true" /><span class="label">Interrupt</span></button
           ><button
             class="send"
             aria-label="Send message"

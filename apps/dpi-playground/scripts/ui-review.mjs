@@ -32,7 +32,7 @@ const VIEWPORTS = [
   { id: "mobile-large", width: 430, height: 932, touch: true },
   { id: "mobile-small", width: 320, height: 568, touch: true },
 ];
-const STATES = ["home", "network", "inspector", "new-session", "composer-focus", "extend"];
+const STATES = ["home", "network", "inspector", "new-session", "composer-focus", "extend", "keyboard"];
 
 const axeSource = readFileSync(join(dirname(require.resolve("axe-core")), "axe.min.js"), "utf8");
 
@@ -48,6 +48,7 @@ const GUIDE = {
   "color-scheme": "dark-mode",
   dialog: "dialog",
   squeezed: "typography",
+  obscured: "accessibility",
   truncated: "typography",
   "axe": "accessibility",
 };
@@ -61,6 +62,7 @@ const FIX = {
   "focus-ring": "Give :focus-visible an explicit outline with at least 3:1 contrast.",
   "color-scheme": "Declare color-scheme on :root so native controls and scrollbars follow the theme.",
   dialog: "Use the native <dialog> with showModal(), not a div overlay with role=dialog.",
+  obscured: "Give fixed bars room: scroll-padding on the scroll container, equal to the bar height plus its safe area, so a focused control scrolls clear of it.",
   squeezed: "Give the text room: let its container take the space (min-inline-size: 0 on flex items, or let the row wrap) before a word is cut to a letter.",
   truncated: "Do not hide most of a label behind an ellipsis: wrap it onto two lines, or move the detail into a title or the inspector.",
 };
@@ -106,7 +108,9 @@ function measure() {
   const coarse = matchMedia("(pointer: coarse)").matches;
   const min = coarse ? 44 : 24;
   for (const el of document.querySelectorAll("body *")) {
-    if (!vis(el) || el.closest(".sr-only")) continue; // screen-reader text is clipped on purpose
+    // Screen-reader text is clipped on purpose: a 1px box or a zero clip rect is not a visible label.
+    if (!vis(el) || el.closest(".sr-only")) continue;
+    if (el.getBoundingClientRect().width <= 1.5 || getComputedStyle(el).clip === "rect(0px, 0px, 0px, 0px)") continue;
     const r = el.getBoundingClientRect();
     if (r.right > vw + 1 && r.width < vw * 3 && !el.closest("[data-scroll-x]")) {
       const scrolled = [...(function* () { let p = el.parentElement; while (p) { yield p; p = p.parentElement; } })()].some((p) => /(auto|scroll|hidden)/.test(getComputedStyle(p).overflowX) && p.clientWidth < vw);
@@ -184,6 +188,11 @@ async function setState(page, viewport, state) {
       await page.keyboard.press("Shift+Tab");
       await page.keyboard.press("Tab");
     }
+  } else if (state === "keyboard") {
+    // Tab through the page from the top, the way a keyboard user does, and stop on the eighth stop.
+    await page.evaluate(() => document.activeElement?.blur());
+    for (let i = 0; i < 8; i++) await page.keyboard.press("Tab");
+    await page.waitForTimeout(250);
   } else if (state === "extend") {
     if (mobile) await click("Toggle inspector");
     await page.getByRole("tab", { name: "Extend" }).click({ timeout: 2000 }).catch(() => {});
@@ -210,6 +219,20 @@ for (const viewport of VIEWPORTS.filter((v) => !only.length || only.includes(v.i
     const file = join(outDir, `${viewport.id}-${state}.png`);
     await page.screenshot({ path: file });
     await measureAndAxe(page, viewport, state);
+    if (state === "keyboard") {
+      // WCAG 2.4.11 Focus Not Obscured (Minimum): the focused control must not be covered by a fixed bar or another element.
+      const hidden = await page.evaluate(() => {
+        const el = document.activeElement;
+        if (!el || el === document.body) return { none: true };
+        const r = el.getBoundingClientRect();
+        const cx = r.left + r.width / 2, cy = r.top + r.height / 2;
+        const top = document.elementFromPoint(cx, cy);
+        const covered = !!top && !el.contains(top) && !top.contains(el);
+        const sel = top ? (top.className && typeof top.className === "string" ? top.tagName.toLowerCase() + "." + top.className.trim().split(/\s+/)[0] : top.tagName.toLowerCase()) : "none";
+        return { covered, by: sel, label: (el.getAttribute("aria-label") || el.textContent || el.tagName).trim().slice(0, 40) };
+      });
+      if (hidden.covered) add({ viewport: viewport.id, state, check: "obscured", where: hidden.label, detail: `focused control is covered by ${hidden.by}`, fix: FIX.obscured, guide: "accessibility" });
+    }
     summary.push({ viewport: viewport.id, state, screenshot: relative(outDir, file) });
     await context.close();
     console.log(`reviewed ${viewport.id} / ${state}`);

@@ -41,3 +41,132 @@
   white-space: nowrap;
   border: 0;
 }
+
+/* Compact chrome: on a narrow app (phones at 320 to 380px) the top bar, breadcrumb, inspector tabs and composer
+   keep their controls and their names, and drop the words that repeat what an icon already says. The labels stay in the
+   accessibility tree (visually hidden), so each control keeps its name (WCAG 2.5.3, 4.1.2). */
+.shell {
+  container: shell / inline-size;
+}
+.label,
+.tab-label {
+  display: inline;
+}
+@container shell (width < 384px) {
+  .topbar {
+    flex-wrap: nowrap;
+    height: 56px;
+    min-height: 56px;
+    gap: 6px;
+    padding-left: max(10px, env(safe-area-inset-left));
+    padding-right: max(10px, env(safe-area-inset-right));
+  }
+  .topbar .brand strong {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+  }
+  .top-actions {
+    flex-wrap: nowrap;
+    gap: 4px;
+    margin-left: auto;
+  }
+  .top-actions .label,
+  .notify-full,
+  .notify-short,
+  .composer-footnote {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+  }
+  .notify-button .notify-icon {
+    display: inline-block;
+  }
+  .top-actions .primary.small,
+  .notify-button {
+    min-inline-size: 44px;
+    min-block-size: 44px;
+    justify-content: center;
+    padding: 0;
+  }
+  .crumbs > .crumb:first-child,
+  .crumbs > .crumb-sep:nth-child(2),
+  .crumb-kind {
+    display: none;
+  }
+  /* The workspace and agent share the row. At large text the row wraps, and the workspace keeps a readable width. */
+  .crumbs {
+    flex-wrap: wrap;
+    row-gap: 2px;
+  }
+  .crumbs .crumb {
+    flex: 0 1 auto;
+    min-inline-size: 0;
+    max-inline-size: 100%;
+  }
+  .crumbs .crumb:not(.current) {
+    flex: 1 1 4em;
+    min-inline-size: 4em;
+  }
+  .crumbs .crumb-main {
+    min-inline-size: 0;
+    overflow: hidden;
+  }
+  /* The current agent keeps its whole name: the workspace before it is what gives up the room. */
+  .crumbs .crumb.current {
+    flex: 0 0 auto;
+  }
+  .crumbs .crumb-name {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .tab-label {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+  }
+  .inspector-tabs button.active .tab-label {
+    position: static;
+    width: auto;
+    height: auto;
+    overflow: visible;
+    clip: auto;
+  }
+  .inspector-tabs button {
+    gap: 0;
+    padding-left: 2px;
+    padding-right: 2px;
+  }
+  .composer-toolbar {
+    flex-wrap: nowrap;
+  }
+  .composer-left .queue-mode select {
+    font-size: 0.875rem;
+  }
+  .composer textarea {
+    min-block-size: 3.25rem;
+  }
+  .composer-right .interrupt .label {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+  }
+  .composer-right .interrupt {
+    min-inline-size: 44px;
+    justify-content: center;
+    padding: 0;
+  }
+}

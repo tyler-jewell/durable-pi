@@ -23,3 +23,15 @@ The batch was structural: one shared `system.css` (targets, the touch size as a 
 ## Known trade-off
 
 At 100% on desktop, a device row's status (`3 sessions`, `no token`) wraps to a second line. The text is readable and nothing is cut, but the row is taller than before. The alternative is a shorter status, or a smaller badge.
+
+## Mobile-small round (320 px)
+
+The 320 px phone had the most cost per pixel: the header took two rows, the breadcrumb three words that the screen could not hold, and the composer a quarter of the height. The review does not measure how pleasant a screen is, so this round read the screenshots as well.
+
+- The top bar is one row of icon buttons with their labels kept for screen readers. The brand name is visually hidden on that row. Compact mode is a container query on the app shell (under 384 px), not a viewport query.
+- The breadcrumb keeps the agent's full name and gives the workspace the room. It wraps only at large text.
+- The composer's toolbar sits on one line, and its footnote is hidden in compact mode.
+- Inactive inspector tabs show their icon only, and the active tab keeps its label.
+- A keyboard state tabs to the eighth stop and checks that nothing covers the focused control (WCAG 2.4.11).
+
+Result for mobile-small: 0 findings at 100%, 150% and 200% text, and 0 across the full review at 100%.
