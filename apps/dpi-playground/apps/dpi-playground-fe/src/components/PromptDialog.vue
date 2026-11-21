@@ -2,6 +2,7 @@
 import { nextTick, onMounted, ref } from "vue";
 import { X } from "lucide-vue-next";
 import { message } from "../client/hub";
+import AppDialog from "./AppDialog.vue";
 import type { Dialog } from "../client/store";
 
 // One dialog for every name/note/confirm prompt: rename, fork, reset, archive, remove.
@@ -31,14 +32,8 @@ onMounted(() => void nextTick(() => (input.value?.focus(), input.value?.select()
 </script>
 
 <template>
-  <div class="modal-backdrop" @click.self="!busy && emit('close')">
-    <form
-      class="modal"
-      role="dialog"
-      aria-modal="true"
-      aria-labelledby="prompt-title"
-      @submit.prevent="submit"
-    >
+  <AppDialog labelledby="prompt-title" :dismissable="!busy" @close="emit('close')">
+    <form class="modal" @submit.prevent="submit">
       <header>
         <h2 id="prompt-title">{{ dialog.title }}</h2>
         <button
@@ -85,5 +80,5 @@ onMounted(() => void nextTick(() => (input.value?.focus(), input.value?.select()
         </button>
       </footer>
     </form>
-  </div>
+  </AppDialog>
 </template>

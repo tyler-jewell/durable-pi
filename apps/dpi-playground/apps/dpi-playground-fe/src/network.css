@@ -757,3 +757,24 @@ body {
   font-size: 14px;
   text-align: right;
 }
+
+/* ---------------------------------------------------------------- native modal dialogs */
+.app-dialog {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  margin: auto;
+  max-width: calc(100vw - 48px);
+  max-height: 90dvh;
+  overflow: visible;
+}
+.app-dialog:modal {
+  overscroll-behavior: contain;
+}
+.app-dialog::backdrop {
+  background: #0d0808bd;
+  backdrop-filter: blur(7px);
+  overflow: hidden;
+  overscroll-behavior: contain;
+}

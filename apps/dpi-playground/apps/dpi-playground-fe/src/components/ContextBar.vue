@@ -6,6 +6,7 @@ import { computed, onUnmounted, ref, watch } from "vue";
 import { Info, X } from "lucide-vue-next";
 import { compactionThresholds, defaultCompaction, type CompactionSettings, type WireAssistantMessage } from "@sdk/api";
 import { agentState, attempt, currentModel, sessionHandle, sessionSummary, ui } from "../client/store";
+import AppDialog from "./AppDialog.vue";
 
 const STEP = 512;
 const MIN_AUTO = 4096;
@@ -177,8 +178,8 @@ function key(which: "auto" | "wait", e: KeyboardEvent) {
     </template>
   </section>
   <Teleport to="body">
-    <div v-if="detailsOpen" class="modal-backdrop" @click.self="closeDetails">
-      <section class="modal compaction-modal" role="dialog" aria-modal="true" aria-labelledby="compaction-title">
+    <AppDialog v-if="detailsOpen" labelledby="compaction-title" @close="closeDetails">
+      <section class="modal compaction-modal">
         <header>
           <h2 id="compaction-title">Context compaction</h2>
           <button class="icon-button" aria-label="Close context compaction" @click="closeDetails">
@@ -202,6 +203,6 @@ function key(which: "auto" | "wait", e: KeyboardEvent) {
         <p class="hint">Applies to every agent in this session. <code>/compact</code> works either way.</p>
         <footer><button class="secondary" @click="closeDetails">Close</button></footer>
       </section>
-    </div>
+    </AppDialog>
   </Teleport>
 </template>

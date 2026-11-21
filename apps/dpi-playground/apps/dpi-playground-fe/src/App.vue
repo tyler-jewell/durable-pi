@@ -17,6 +17,7 @@ import NetworkSidebar from "./components/NetworkSidebar.vue";
 import AgentView from "./components/AgentView.vue";
 import Inspector from "./components/Inspector.vue";
 import OfflinePanel from "./components/OfflinePanel.vue";
+import AppDialog from "./components/AppDialog.vue";
 import NewSessionDialog from "./components/NewSessionDialog.vue";
 import PromptDialog from "./components/PromptDialog.vue";
 import ModelPicker from "./components/ModelPicker.vue";
@@ -227,17 +228,12 @@ onBeforeUnmount(() => {
       @close="ui.dialog = undefined"
     />
     <ModelPicker v-else-if="ui.dialog?.kind === 'models'" @close="ui.dialog = undefined" />
-    <div
+    <AppDialog
       v-else-if="ui.dialog?.kind === 'path'"
-      class="modal-backdrop"
-      @click.self="ui.dialog = undefined"
+      labelledby="path-title"
+      @close="ui.dialog = undefined"
     >
-      <section
-        class="modal path-modal"
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="path-title"
-      >
+      <section class="modal path-modal">
         <header>
           <h2 id="path-title">Working directory</h2>
           <button
@@ -251,17 +247,17 @@ onBeforeUnmount(() => {
         <code class="full-directory">{{ ui.dialog.path }}</code>
         <footer><button class="secondary" @click="ui.dialog = undefined">Close</button></footer>
       </section>
-    </div>
-    <div
+    </AppDialog>
+    <AppDialog
       v-else-if="ui.dialog?.kind === 'help'"
-      class="modal-backdrop"
-      @click.self="ui.dialog = undefined"
+      labelledby="help-title"
+      @close="ui.dialog = undefined"
     >
       <section class="modal help-modal">
         <header>
           <div>
             <span class="eyebrow">LEARN BY DOING</span>
-            <h2>What makes this durable?</h2>
+            <h2 id="help-title">What makes this durable?</h2>
           </div>
           <button class="icon-button" aria-label="Close help" @click="ui.dialog = undefined">
             <X :size="18" />
@@ -336,7 +332,7 @@ onBeforeUnmount(() => {
           >
         </div>
       </section>
-    </div>
+    </AppDialog>
     <Transition name="toast"
       ><div v-if="ui.toast" class="toast" role="status">
         <Check :size="18" />{{ ui.toast }}

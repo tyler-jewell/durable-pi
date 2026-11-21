@@ -2,6 +2,7 @@
 import { computed, ref, watch } from "vue";
 import { Plus, X } from "lucide-vue-next";
 import DirBrowser from "./DirBrowser.vue";
+import AppDialog from "./AppDialog.vue";
 import { deviceClient, message } from "../client/hub";
 import { network, notify, select } from "../client/store";
 
@@ -55,12 +56,12 @@ async function create() {
 </script>
 
 <template>
-  <div class="modal-backdrop" @click.self="emit('close')">
+  <AppDialog labelledby="new-session-title" @close="emit('close')">
     <form class="modal session-modal" @submit.prevent="create">
       <header>
         <div>
           <span class="eyebrow">A PERSISTENT WORKSPACE</span>
-          <h2>New session</h2>
+          <h2 id="new-session-title">New session</h2>
         </div>
         <button
           type="button"
@@ -109,5 +110,5 @@ async function create() {
         </button>
       </footer>
     </form>
-  </div>
+  </AppDialog>
 </template>

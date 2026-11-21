@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, ref } from "vue";
+import AppDialog from "./AppDialog.vue";
 import { Check, X } from "lucide-vue-next";
 import type { ModelInfo } from "@sdk/api";
 import {
@@ -38,12 +39,12 @@ async function choose(m: ModelInfo) {
 </script>
 
 <template>
-  <div class="modal-backdrop" @click.self="emit('close')">
+  <AppDialog labelledby="model-title" @close="emit('close')">
     <section class="modal model-modal">
       <header>
         <div>
           <span class="eyebrow">PER AGENT · {{ device?.id }}</span>
-          <h2>Choose a model</h2>
+          <h2 id="model-title">Choose a model</h2>
         </div>
         <button class="icon-button" aria-label="Close model picker" @click="emit('close')">
           <X :size="18" />
@@ -67,5 +68,5 @@ async function choose(m: ModelInfo) {
       </div>
       <p class="hint">Models available on {{ device?.id }}. Provider keys stay on the device.</p>
     </section>
-  </div>
+  </AppDialog>
 </template>
