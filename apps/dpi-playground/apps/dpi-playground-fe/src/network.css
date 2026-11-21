@@ -108,8 +108,8 @@
 .inspector .panel-rail {
   background: #1c1516;
 }
-.inspector-tabs .panel-toggle {
-  margin-left: auto;
+.inspector-head > .panel-toggle {
+  margin: auto 8px;
   align-self: center;
 }
 .device-icon {

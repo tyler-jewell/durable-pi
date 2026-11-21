@@ -179,6 +179,7 @@ const offeredTools = computed(() => detail.value?.tools.filter((t) => t.offered)
       </button>
     </div>
     <template v-else>
+      <div class="inspector-head">
       <div class="inspector-tabs" role="tablist" aria-label="Session details">
         <button
           v-for="t in tabs"
@@ -193,6 +194,7 @@ const offeredTools = computed(() => detail.value?.tools.filter((t) => t.offered)
           <component :is="t.icon" :size="18" />{{ t.label
           }}<span v-if="t.id === 'tasks' && tasks.length" class="count">{{ tasks.length }}</span>
         </button>
+      </div>
         <button
           class="icon-button panel-toggle"
           aria-label="Collapse inspector"
