@@ -139,8 +139,9 @@ onBeforeUnmount(() => {
         >
       </div>
       <div class="top-actions">
-        <button v-if="pushAvailable()" class="secondary small" type="button" @click="turnOnPush">
-          Enable phone notifications
+        <button v-if="pushAvailable()" class="secondary small notify-button" type="button" aria-label="Enable phone notifications" @click="turnOnPush">
+          <span class="notify-full">Enable phone notifications</span>
+          <span class="notify-short">Notify</span>
         </button>
         <span class="connection"
           ><i :class="{ online: streamState === 'live' }" />{{
