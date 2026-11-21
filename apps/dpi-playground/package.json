@@ -26,6 +26,7 @@
     "@types/express": "^5.0.0",
     "@types/node": "^24.0.0",
     "@vitejs/plugin-vue": "latest",
+    "axe-core": "^4.14.1",
     "oxfmt": "0.72.0",
     "oxlint": "1.87.0",
     "tsx": "latest",

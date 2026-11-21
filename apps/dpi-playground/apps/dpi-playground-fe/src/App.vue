@@ -136,6 +136,7 @@ onBeforeUnmount(() => {
 <template>
   <div class="shell">
     <header class="topbar">
+      <h1 class="sr-only">Durable Pi</h1>
       <div class="brand">
         <button
           class="icon-button tree-toggle"
@@ -154,7 +155,7 @@ onBeforeUnmount(() => {
         >
       </div>
       <div class="top-actions">
-        <button v-if="pushAvailable()" class="secondary small notify-button" type="button" aria-label="Enable phone notifications" @click="turnOnPush">
+        <button v-if="pushAvailable()" class="secondary small notify-button" type="button" @click="turnOnPush">
           <span class="notify-full">Enable phone notifications</span>
           <span class="notify-short">Notify</span>
         </button>

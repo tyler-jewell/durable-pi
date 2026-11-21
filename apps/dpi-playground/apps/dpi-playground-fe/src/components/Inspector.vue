@@ -227,7 +227,6 @@ const offeredTools = computed(() => detail.value?.tools.filter((t) => t.offered)
             <button
               class="path cwd-button"
               :title="sessionSummary?.cwd"
-              aria-label="Show full working directory"
               @click="ui.dialog = { kind: 'path', path: sessionSummary?.cwd ?? '' }"
             >
               <FolderOpen :size="18" /><span class="cwd-trail" dir="rtl"

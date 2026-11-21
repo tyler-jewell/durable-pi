@@ -61,7 +61,7 @@ watch(
         Go
       </button>
     </div>
-    <div class="dir-list" role="listbox" aria-label="Directories" :aria-busy="loading">
+    <div class="dir-list" role="group" aria-label="Directories" :aria-busy="loading">
       <button type="button" class="dir-item" title="Start directories" @click="open('')">
         <Home :size="16" /><span>Start dirs</span>
       </button>

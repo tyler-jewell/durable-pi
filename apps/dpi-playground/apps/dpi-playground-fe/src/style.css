@@ -1,12 +1,13 @@
 @import url("https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;450;500;550;600;650;700&family=Manrope:wght@400;500;600;650;700;750;800&family=IBM+Plex+Mono:wght@400;500&display=swap");
 :root {
+  /* The root takes the browser's text size, so every rem size follows the OS text scale (respect-os-text-scale). */
+  font-size: 100%;
   /* The app is dark only: native scrollbars, form controls and the canvas follow it (dark-mode, MANDATORY). */
   color-scheme: dark;
   font-family: "DM Sans", sans-serif;
   color: #f2eeee;
   background: #151010;
   font-synthesis: none;
-  font-size: 16px;
   --secondary: #c9a87c;
   --muted: var(--secondary);
   --faint: var(--secondary);
@@ -99,7 +100,7 @@ h3 {
   font-family: var(--font-title);
 }
 h2 {
-  font-size: 16px;
+  font-size: 1rem;
   font-weight: 650;
 }
 pre,
@@ -107,13 +108,13 @@ code {
   font-family: "IBM Plex Mono", monospace;
 }
 pre {
-  font-size: 16px;
+  font-size: 1rem;
   line-height: 1.7;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
 small {
-  font-size: 16px;
+  font-size: 1rem;
 }
 svg {
   flex-shrink: 0;
@@ -142,7 +143,7 @@ svg {
   gap: 14px;
 }
 .brand strong {
-  font-size: 16px;
+  font-size: 1rem;
   letter-spacing: -0.5px;
   font-family: var(--font-title);
   font-weight: 750;
@@ -185,14 +186,14 @@ svg {
 }
 .primary.small {
   padding: 8px 12px;
-  font-size: 16px;
+  font-size: 1rem;
 }
 .secondary {
   border: 1px solid #443738;
   background: #2b2021;
   padding: 8px 12px;
   border-radius: 6px;
-  font-size: 16px;
+  font-size: 1rem;
   font-weight: 500;
 }
 .connection {
@@ -200,7 +201,7 @@ svg {
   align-items: center;
   gap: 7px;
   color: var(--muted);
-  font-size: 16px;
+  font-size: 1rem;
 }
 .connection i,
 .live-dot {
@@ -219,7 +220,7 @@ svg {
 .version {
   font-family: "IBM Plex Mono", monospace;
   color: #f2eeee;
-  font-size: 16px;
+  font-size: 1rem;
   border: 1px solid #3b3031;
   border-radius: 4px;
   padding: 4px 6px;
@@ -241,13 +242,13 @@ svg {
   padding: 25px 26px 21px;
 }
 .eyebrow {
-  font-size: 16px;
+  font-size: 1rem;
   letter-spacing: 1.8px;
   font-weight: 600;
   color: #f2eeee;
 }
 .session-heading h1 {
-  font-size: 16px;
+  font-size: 1rem;
   color: #f2eeee;
   font-weight: 650;
   letter-spacing: -0.7px;
@@ -261,7 +262,7 @@ svg {
 .path {
   font-family: "IBM Plex Mono", monospace;
   color: #f2eeee;
-  font-size: 16px;
+  font-size: 1rem;
   display: flex;
   align-items: center;
   gap: 7px;
@@ -281,7 +282,7 @@ svg {
   gap: 6px;
   border-radius: 4px;
   padding: 4px 8px;
-  font-size: 16px;
+  font-size: 1rem;
   line-height: 1.3;
 }
 .status-pill i {
@@ -302,11 +303,11 @@ svg {
   display: flex;
   gap: 5px;
   align-items: center;
-  font-size: 16px;
+  font-size: 1rem;
   color: #f2eeee;
 }
 .background-pill {
-  font-size: 16px;
+  font-size: 1rem;
   color: #f2eeee;
 }
 .model-section {
@@ -316,7 +317,7 @@ svg {
 .section-label {
   display: flex;
   justify-content: space-between;
-  font-size: 16px;
+  font-size: 1rem;
   letter-spacing: 1.3px;
   color: #f2eeee;
   margin-bottom: 13px;
@@ -350,28 +351,28 @@ svg {
   min-width: 0;
 }
 .model-button strong {
-  font-size: 16px;
+  font-size: 1rem;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 .model-button small {
   color: var(--muted);
-  font-size: 16px;
+  font-size: 1rem;
 }
 .thinking-row {
   display: flex;
   align-items: center;
   justify-content: space-between;
   margin-top: 10px;
-  font-size: 16px;
+  font-size: 1rem;
   color: #f2eeee;
 }
 .thinking-row select {
   border: 0;
   background: none;
   padding: 4px 2px;
-  font-size: 16px;
+  font-size: 1rem;
   color: #f2eeee;
 }
 .metrics {
@@ -386,13 +387,13 @@ svg {
 }
 .metrics span {
   font-family: var(--font-title);
-  font-size: 19px;
+  font-size: 1.1875rem;
   letter-spacing: -0.5px;
   font-weight: 500;
 }
 .metrics small {
   color: #f2eeee;
-  font-size: 16px;
+  font-size: 1rem;
 }
 .stats-section {
   margin-top: 24px;
@@ -404,7 +405,7 @@ svg {
   width: 100%;
   border-collapse: collapse;
   margin-top: 22px;
-  font-size: 16px;
+  font-size: 1rem;
   font-variant-numeric: tabular-nums;
 }
 .usage-breakdown th,
@@ -432,7 +433,7 @@ svg {
 }
 .inspector-tabs button {
   color: #f2eeee;
-  font-size: 16px;
+  font-size: 1rem;
   flex: 1;
   padding: 15px 3px 13px;
   gap: 6px;
@@ -443,7 +444,7 @@ svg {
   border-bottom-color: var(--accent);
 }
 .count {
-  font-size: 16px;
+  font-size: 1rem;
   padding: 1px 4px;
   background: #462f31;
   border-radius: 4px;
@@ -465,7 +466,7 @@ svg {
   color: #f2eeee;
 }
 .tag {
-  font-size: 16px;
+  font-size: 1rem;
   background: #302526;
   color: #f2eeee;
   border: 1px solid #403536;
@@ -484,14 +485,14 @@ svg {
   color: #f2eeee;
 }
 .hint {
-  font-size: 16px;
+  font-size: 1rem;
   line-height: 1.65;
   color: #f2eeee;
   margin: 8px 0 18px;
 }
 .field-label {
   display: block;
-  font-size: 16px;
+  font-size: 1rem;
   letter-spacing: 1px;
   color: #f2eeee;
   margin-bottom: 8px;
@@ -510,7 +511,7 @@ svg {
   width: 100%;
   box-shadow: none;
   padding: 10px;
-  font-size: 16px;
+  font-size: 1rem;
 }
 .inline-input .icon-button {
   margin-right: 4px;
@@ -535,7 +536,7 @@ svg {
   border: 1px solid var(--line);
   border-radius: 8px;
   background: #140e10;
-  font-size: 16px;
+  font-size: 1rem;
   line-height: 1.6;
 }
 .state-field {
@@ -560,7 +561,7 @@ svg {
   flex: 1;
   min-width: 0;
   overflow-wrap: anywhere;
-  font-size: 16px;
+  font-size: 1rem;
 }
 .state-field-heading select {
   width: auto;
@@ -575,7 +576,7 @@ svg {
 .state-field input {
   width: 100%;
   min-width: 0;
-  font-size: 16px;
+  font-size: 1rem;
 }
 .state-number {
   display: flex;
@@ -619,14 +620,14 @@ svg {
   margin-top: 8px;
 }
 .counter-card .field-label {
-  font-size: 16px;
+  font-size: 1rem;
   margin: 0;
 }
 .counter-card strong {
   display: block;
   font-family: var(--font-title);
   color: var(--accent);
-  font-size: 32px;
+  font-size: 2rem;
   font-weight: 500;
   margin-top: 4px;
   line-height: 1.1;
@@ -635,14 +636,14 @@ svg {
   background: #392a2b;
   color: #f2eeee;
   border-color: #5a3c3f;
-  font-size: 16px;
+  font-size: 1rem;
   padding: 7px 9px;
 }
 .note {
   display: flex;
   align-items: flex-start;
   gap: 8px;
-  font-size: 16px;
+  font-size: 1rem;
   line-height: 1.6;
   margin: 0 0 10px;
   color: #f2eeee;
@@ -672,7 +673,7 @@ svg {
   cursor: pointer;
   color: #f2eeee;
   font-family: "IBM Plex Mono", monospace;
-  font-size: 16px;
+  font-size: 1rem;
 }
 .raw summary:after {
   content: "+";
@@ -683,7 +684,7 @@ svg {
   content: "−";
 }
 .raw summary span {
-  font-size: 16px;
+  font-size: 1rem;
   color: #f2eeee;
   margin-left: auto;
 }
@@ -698,7 +699,7 @@ svg {
 }
 .raw textarea {
   width: 100%;
-  font-size: 16px;
+  font-size: 1rem;
 }
 .raw button {
   margin-top: 8px;
@@ -723,11 +724,11 @@ svg {
   gap: 4px;
 }
 .demo-action strong {
-  font-size: 16px;
+  font-size: 1rem;
   font-weight: 500;
 }
 .demo-action small {
-  font-size: 16px;
+  font-size: 1rem;
   color: #f2eeee;
 }
 .demo-action > svg {
@@ -761,7 +762,7 @@ svg {
   gap: 5px;
 }
 .job-title strong {
-  font-size: 16px;
+  font-size: 1rem;
   font-weight: 500;
 }
 .progress {
@@ -780,7 +781,7 @@ svg {
   display: flex;
   justify-content: space-between;
   font-family: "IBM Plex Mono", monospace;
-  font-size: 16px;
+  font-size: 1rem;
   color: #f2eeee;
   gap: 6px;
 }
@@ -792,17 +793,17 @@ svg {
 }
 .approval > span {
   width: 100%;
-  font-size: 16px;
+  font-size: 1rem;
   color: #f2eeee;
   margin-bottom: 3px;
 }
 .approval button {
-  font-size: 16px;
+  font-size: 1rem;
   padding: 6px 10px;
 }
 .text-button {
   color: var(--accent);
-  font-size: 16px;
+  font-size: 1rem;
   margin-top: 12px;
   padding: 0;
 }
@@ -817,7 +818,7 @@ svg {
   align-items: center;
   gap: 8px;
   padding: 0 22px;
-  font-size: 16px;
+  font-size: 1rem;
   color: #f2eeee;
 }
 .inspector-footer .icon-button {
@@ -851,7 +852,7 @@ svg {
   border: 0;
   box-shadow: none;
   color: #f2eeee;
-  font-size: 16px;
+  font-size: 1rem;
   padding: 8px 3px;
   max-width: 230px;
 }
@@ -859,7 +860,7 @@ svg {
   display: flex;
   align-items: center;
   gap: 3px;
-  font-size: 16px;
+  font-size: 1rem;
   white-space: nowrap;
   color: #f2eeee;
 }
@@ -890,7 +891,7 @@ svg {
   padding: 10px 9px;
   border-radius: 5px;
   color: #f2eeee;
-  font-size: 16px;
+  font-size: 1rem;
 }
 .dropdown button:hover {
   background: #3c2d2e;
@@ -940,17 +941,17 @@ svg {
   border-radius: 50%;
 }
 .chat-empty .eyebrow {
-  font-size: 16px;
+  font-size: 1rem;
   letter-spacing: 2.1px;
 }
 .chat-empty h2 {
-  font-size: 27px;
+  font-size: 1.6875rem;
   font-weight: 500;
   letter-spacing: -0.8px;
   margin: 11px 0;
 }
 .chat-empty p {
-  font-size: 16px;
+  font-size: 1rem;
   line-height: 1.7;
   color: #f2eeee;
 }
@@ -979,11 +980,11 @@ svg {
   margin-bottom: 13px;
 }
 .starter-grid strong {
-  font-size: 16px;
+  font-size: 1rem;
   font-weight: 500;
 }
 .starter-grid span {
-  font-size: 16px;
+  font-size: 1rem;
   color: #f2eeee;
 }
 .starter-grid button > svg:last-child {
@@ -1012,7 +1013,7 @@ svg {
   box-shadow: none;
   background: none;
   padding: 18px 20px 9px;
-  font-size: 16px;
+  font-size: 1rem;
 }
 .composer-toolbar {
   display: flex;
@@ -1031,11 +1032,11 @@ svg {
   display: flex;
   align-items: center;
   gap: 5px;
-  font-size: 16px;
+  font-size: 1rem;
   color: #f2eeee;
 }
 .composer-left select {
-  font-size: 16px;
+  font-size: 1rem;
   border: 0;
   background: none;
   color: #f2eeee;
@@ -1043,7 +1044,7 @@ svg {
 }
 .interrupt {
   color: #f2eeee;
-  font-size: 16px;
+  font-size: 1rem;
   padding: 6px 8px;
   border-radius: 5px;
   border: 1px solid #66414460;
@@ -1062,7 +1063,7 @@ svg {
   justify-content: space-between;
   margin-top: 11px;
   gap: 12px;
-  font-size: 16px;
+  font-size: 1rem;
   color: #f2eeee;
 }
 .composer-footnote > span:first-child {
@@ -1083,7 +1084,7 @@ svg {
   gap: 8px;
   align-items: center;
   color: #f2eeee;
-  font-size: 16px;
+  font-size: 1rem;
   letter-spacing: 1.3px;
   margin-bottom: 10px;
 }
@@ -1091,10 +1092,10 @@ svg {
   font-family: "IBM Plex Mono", monospace;
   letter-spacing: 0;
   color: #f2eeee;
-  font-size: 16px;
+  font-size: 1rem;
 }
 .user-message {
-  font-size: 16px;
+  font-size: 1rem;
   line-height: 1.8;
   white-space: pre-wrap;
   color: #f2eeee;
@@ -1109,7 +1110,7 @@ svg {
   flex-shrink: 0;
 }
 .markdown {
-  font-size: 16px;
+  font-size: 1rem;
   line-height: 1.85;
   color: #f2eeee;
   overflow-wrap: anywhere;
@@ -1124,7 +1125,7 @@ svg {
 .markdown h2,
 .markdown h3 {
   color: #f2eeee;
-  font-size: 16px;
+  font-size: 1rem;
   margin: 22px 0 12px;
 }
 .markdown ul,
@@ -1140,7 +1141,7 @@ svg {
   font-weight: 600;
 }
 .markdown code {
-  font-size: 16px;
+  font-size: 1rem;
   background: #3a2628;
   padding: 2px 5px;
   border-radius: 4px;
@@ -1175,7 +1176,7 @@ svg {
 .fork-button {
   display: inline-flex;
   color: #f2eeee;
-  font-size: 16px;
+  font-size: 1rem;
   letter-spacing: 0;
   margin-left: auto;
   opacity: 1;
@@ -1190,7 +1191,7 @@ svg {
   display: flex;
   align-items: center;
   gap: 7px;
-  font-size: 16px;
+  font-size: 1rem;
   color: #f2eeee;
   padding: 8px 0;
 }
@@ -1208,13 +1209,14 @@ svg {
   background: #251819;
   margin: 10px 0;
   color: #f2eeee;
-  font-size: 16px;
+  font-size: 1rem;
   overflow: hidden;
 }
 .tool-call summary,
 .tool-result summary {
   display: flex;
-  gap: 9px;
+  flex-wrap: wrap;
+  gap: 4px 9px;
   align-items: center;
   list-style: none;
   padding: 10px 12px;
@@ -1227,11 +1229,11 @@ svg {
   color: #f2eeee;
 }
 .tool-call summary code {
-  overflow: hidden;
-  white-space: nowrap;
-  text-overflow: ellipsis;
+  overflow: visible;
+  white-space: normal;
+  overflow-wrap: anywhere;
   color: #f2eeee;
-  font-size: 16px;
+  font-size: 1rem;
 }
 .tool-call pre,
 .tool-result pre {
@@ -1247,7 +1249,7 @@ svg {
   background: #201415;
 }
 .tool-result summary > span {
-  font-size: 16px;
+  font-size: 1rem;
   color: #f2eeee;
 }
 .tool-result.failed {
@@ -1273,7 +1275,7 @@ svg {
   margin-left: auto;
 }
 .thinking {
-  font-size: 16px;
+  font-size: 1rem;
   color: #f2eeee;
   margin: 8px 0 16px;
 }
@@ -1282,7 +1284,7 @@ svg {
 }
 .thinking div {
   white-space: pre-wrap;
-  font-size: 16px;
+  font-size: 1rem;
   line-height: 1.8;
   margin-top: 12px;
   padding-left: 12px;
@@ -1290,7 +1292,7 @@ svg {
   color: #f2eeee;
 }
 .message-error {
-  font-size: 16px;
+  font-size: 1rem;
   line-height: 1.7;
   color: #f2eeee;
   border: 1px solid #6b4245;
@@ -1302,7 +1304,7 @@ svg {
 }
 .streaming {
   letter-spacing: 0;
-  font-size: 16px;
+  font-size: 1rem;
   color: var(--accent);
   margin-left: auto;
 }
@@ -1335,13 +1337,13 @@ svg {
   display: flex;
   align-items: center;
   gap: 8px;
-  font-size: 16px;
+  font-size: 1rem;
   color: #f2eeee;
 }
 .live-tool > div > span {
   margin-left: auto;
   color: #f2eeee;
-  font-size: 16px;
+  font-size: 1rem;
 }
 .live-tool pre {
   max-height: 150px;
@@ -1359,7 +1361,7 @@ svg {
   display: flex;
   align-items: center;
   gap: 7px;
-  font-size: 16px;
+  font-size: 1rem;
   color: #f2eeee;
 }
 .queue span {
@@ -1375,7 +1377,7 @@ svg {
   padding: 8px 26px;
   background: #33292a33;
   color: #f2eeee;
-  font-size: 16px;
+  font-size: 1rem;
 }
 .empty-panel {
   padding: 30px 0;
@@ -1384,7 +1386,7 @@ svg {
   flex-direction: column;
   gap: 12px;
   color: #f2eeee;
-  font-size: 16px;
+  font-size: 1rem;
 }
 .empty-panel strong {
   color: #f2eeee;
@@ -1409,12 +1411,12 @@ svg {
 }
 .task-card strong {
   font-family: "IBM Plex Mono", monospace;
-  font-size: 16px;
+  font-size: 1rem;
   font-weight: 400;
   overflow-wrap: anywhere;
 }
 .task-card p {
-  font-size: 16px;
+  font-size: 1rem;
   color: #f2eeee;
   margin: 8px 0 11px;
 }
@@ -1432,11 +1434,11 @@ svg {
   color: #f2eeee;
 }
 .hook-card strong {
-  font-size: 16px;
+  font-size: 1rem;
   font-weight: 500;
 }
 .hook-card p {
-  font-size: 16px;
+  font-size: 1rem;
   line-height: 1.6;
   color: #f2eeee;
   margin-top: 10px;
@@ -1474,15 +1476,15 @@ svg {
 }
 .tool-row strong {
   font-family: "IBM Plex Mono", monospace;
-  font-size: 16px;
+  font-size: 1rem;
   font-weight: 500;
 }
 .tool-row .tag {
   margin-left: auto;
-  font-size: 16px;
+  font-size: 1rem;
 }
 .tool-row p {
-  font-size: 16px;
+  font-size: 1rem;
   color: #f2eeee;
   line-height: 1.75;
   margin: 12px 0;
@@ -1499,7 +1501,7 @@ svg {
   border: 1px solid var(--line);
   border-radius: 8px;
   font-family: "IBM Plex Mono", monospace;
-  font-size: 14px;
+  font-size: 0.875rem;
   line-height: 1.6;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
@@ -1535,7 +1537,7 @@ svg {
   width: 100%;
   justify-content: space-between;
   color: #f2eeee;
-  font-size: 16px;
+  font-size: 1rem;
   text-align: left;
   border-bottom: 1px solid var(--line);
   padding: 14px 0;
@@ -1566,11 +1568,11 @@ svg {
   padding: 0 7px;
 }
 .sessions-drawer h2 {
-  font-size: 17px;
+  font-size: 1.0625rem;
   font-weight: 550;
 }
 .sessions-drawer h2 span {
-  font-size: 16px;
+  font-size: 1rem;
   color: #f2eeee;
   margin-left: 6px;
 }
@@ -1601,21 +1603,21 @@ svg {
   background: #312324;
 }
 .session-item strong {
-  font-size: 16px;
+  font-size: 1rem;
   font-weight: 550;
   display: flex;
   align-items: center;
   justify-content: space-between;
 }
 .session-item .path {
-  font-size: 16px;
+  font-size: 1rem;
 }
 .session-model {
   display: flex;
   align-items: center;
   gap: 6px;
   color: #f2eeee;
-  font-size: 16px;
+  font-size: 1rem;
   overflow-wrap: anywhere;
 }
 .session-model img {
@@ -1636,7 +1638,7 @@ svg {
   gap: 8px;
   align-items: center;
   padding: 18px 8px 0;
-  font-size: 16px;
+  font-size: 1rem;
   color: #f2eeee;
 }
 .modal-backdrop {
@@ -1669,7 +1671,7 @@ svg {
   gap: 12px;
 }
 .modal header h2 {
-  font-size: 22px;
+  font-size: 1.375rem;
   letter-spacing: -0.5px;
   margin-top: 7px;
   font-weight: 550;
@@ -1679,17 +1681,17 @@ svg {
   flex-direction: column;
   gap: 9px;
   margin-top: 20px;
-  font-size: 16px;
+  font-size: 1rem;
   color: #f2eeee;
 }
 .modal input,
 .modal select {
   width: 100%;
-  font-size: 16px;
+  font-size: 1rem;
   padding: 12px;
 }
 .modal small.path {
-  font-size: 16px;
+  font-size: 1rem;
   line-height: 1.6;
   color: #f2eeee;
   margin-top: -1px;
@@ -1731,11 +1733,11 @@ svg {
   flex: 1;
 }
 .model-list strong {
-  font-size: 16px;
+  font-size: 1rem;
   font-weight: 500;
 }
 .model-list small {
-  font-size: 16px;
+  font-size: 1rem;
   color: #f2eeee;
 }
 .model-modal .hint {
@@ -1754,7 +1756,7 @@ svg {
 }
 .learning-list li > span {
   font-family: "IBM Plex Mono", monospace;
-  font-size: 16px;
+  font-size: 1rem;
   color: #f2eeee;
   border: 1px solid #5a383b;
   border-radius: 5px;
@@ -1766,12 +1768,12 @@ svg {
   flex-shrink: 0;
 }
 .learning-list strong {
-  font-size: 16px;
+  font-size: 1rem;
   color: #f2eeee;
   font-weight: 500;
 }
 .learning-list p {
-  font-size: 16px;
+  font-size: 1rem;
   color: #f2eeee;
   line-height: 1.8;
   margin-top: 5px;
@@ -1795,7 +1797,7 @@ svg {
   gap: 10px;
   padding: 13px 19px;
   max-width: 90%;
-  font-size: 16px;
+  font-size: 1rem;
   font-weight: 600;
   line-height: 1.5;
 }
@@ -1844,7 +1846,7 @@ textarea.app-state-json {
   background: #462b2d;
   color: #f2eeee;
   padding: 10px 25px;
-  font-size: 16px;
+  font-size: 1rem;
   z-index: 90;
 }
 .error-banner span {
@@ -1867,7 +1869,7 @@ textarea.app-state-json {
   position: relative;
 }
 .welcome .eyebrow {
-  font-size: 16px;
+  font-size: 1rem;
   color: #f2eeee;
   letter-spacing: 2.6px;
 }
@@ -1880,7 +1882,7 @@ textarea.app-state-json {
   color: #f2eeee;
 }
 .welcome p {
-  font-size: 16px;
+  font-size: 1rem;
   color: #f2eeee;
   margin: 4px 0 30px;
 }
@@ -1889,7 +1891,7 @@ textarea.app-state-json {
   gap: 33px;
   margin-top: 70px;
   color: #f2eeee;
-  font-size: 16px;
+  font-size: 1rem;
 }
 .welcome-features > span {
   display: flex;
@@ -1935,7 +1937,7 @@ textarea.app-state-json {
     padding-right: 20px;
   }
   .chat-empty h2 {
-    font-size: 23px;
+    font-size: 1.4375rem;
   }
   .composer-footnote > span:last-child {
     display: none;
@@ -1971,7 +1973,7 @@ textarea.app-state-json {
     gap: 8px;
   }
   .brand strong {
-    font-size: 16px;
+    font-size: 1rem;
   }
   .brand-separator,
   .brand > .muted,
@@ -1996,7 +1998,7 @@ textarea.app-state-json {
     padding: 17px 20px 10px;
   }
   .session-heading h1 {
-    font-size: 19px;
+    font-size: 1.1875rem;
     margin: 5px 0;
   }
   .session-heading > .eyebrow,
@@ -2027,7 +2029,7 @@ textarea.app-state-json {
     padding: 24px 22px;
   }
   .chat-empty h2 {
-    font-size: 22px;
+    font-size: 1.375rem;
   }
   .composer-region {
     padding: 12px;
@@ -2060,7 +2062,7 @@ textarea.app-state-json {
     bottom: 15px;
     width: max-content;
     max-width: 90%;
-    font-size: 16px;
+    font-size: 1rem;
   }
   .fork-label {
     display: none;
@@ -2300,7 +2302,7 @@ button:disabled {
     display: none;
   }
   .brand strong {
-    font-size: 16px;
+    font-size: 1rem;
   }
   .model-button img {
     width: 40px;
@@ -2394,7 +2396,7 @@ button:disabled {
 }
 .full-directory {
   display: block;
-  font-size: 16px;
+  font-size: 1rem;
   line-height: 1.6;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
@@ -2405,7 +2407,7 @@ button:disabled {
   min-width: min(960px, 100%);
 }
 .markdown :is(h4, h5, h6, small, sub, sup) {
-  font-size: 16px;
+  font-size: 1rem;
 }
 
 /* Keep navigation fixed above the currently selected inspector panel. */
@@ -2421,12 +2423,16 @@ button:disabled {
 .inspector > .inspector-head > .inspector-tabs {
   flex: 1;
   min-width: 0;
+  overflow-x: auto;
+  scrollbar-width: none;
   border-top: 0;
   border-bottom: 0;
   background: transparent;
   padding: 0 8px;
 }
 .inspector > .inspector-head > .inspector-tabs button {
+  flex: 1 0 auto;
+  min-inline-size: max-content;
   position: relative;
   flex-direction: column;
   gap: 5px;
@@ -2547,7 +2553,7 @@ textarea::placeholder {
   border-radius: 6px;
   color: var(--secondary);
   white-space: nowrap;
-  font-size: 16px;
+  font-size: 1rem;
 }
 .lineage-crumb:hover {
   background: #342328;
@@ -2565,7 +2571,7 @@ textarea::placeholder {
 .lineage-source {
   margin: 4px 9px 0;
   color: var(--secondary);
-  font-size: 16px;
+  font-size: 1rem;
   line-height: 1.5;
 }
 .conversation-menu-dismiss {
@@ -2590,7 +2596,7 @@ textarea::placeholder {
 }
 .conversation-picker-heading {
   color: var(--secondary);
-  font-size: 16px;
+  font-size: 1rem;
   padding: 10px 12px 14px;
 }
 .conversation-choice {
@@ -2619,7 +2625,7 @@ textarea::placeholder {
   align-items: center;
   gap: 5px;
   color: #f2eeee;
-  font-size: 16px;
+  font-size: 1rem;
   line-height: 1.5;
 }
 .choice-lineage > span {
@@ -2631,7 +2637,7 @@ textarea::placeholder {
   color: var(--secondary);
 }
 .choice-source {
-  font-size: 16px;
+  font-size: 1rem;
   line-height: 1.5;
 }
 .conversation-choice.selected .choice-lineage > span:last-child {
@@ -2666,13 +2672,13 @@ textarea::placeholder {
   appearance: none;
   width: 100%;
   max-width: none;
-  min-height: 40px;
+  min-height: var(--target-control);
   padding: 7px 36px 7px 12px;
   border: 1px solid #77515a;
   border-radius: 8px;
   background: #342329;
   color: #f8eeee;
-  font-size: 16px;
+  font-size: 1rem;
   font-weight: 600;
   cursor: pointer;
 }
@@ -2714,7 +2720,7 @@ textarea::placeholder {
   align-items: center;
   gap: 8px;
   margin: 0 0 10px;
-  font-size: 16px;
+  font-size: 1rem;
   font-weight: 650;
 }
 .task-example {
@@ -2728,7 +2734,7 @@ textarea::placeholder {
 .task-explanation p,
 .task-empty {
   color: var(--secondary);
-  font-size: 16px;
+  font-size: 1rem;
   line-height: 1.6;
   margin: 8px 0 14px;
 }

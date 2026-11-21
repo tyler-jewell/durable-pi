@@ -1,0 +1,25 @@
+# Hub UI review
+
+`apps/dpi-playground/scripts/ui-review.mjs` reviews the hub in one run: four widths (desktop 1440, tablet 834, large phone 430, small phone 320), six states each (home, network drawer, inspector, new session, composer focus, extend). Every state gets a screenshot, layout and target measurements, text checks, a color-scheme check, and an axe run. A static check counts fixed-pixel font sizes.
+
+```sh
+node apps/dpi-playground/scripts/ui-review.mjs                    # 100% text
+node apps/dpi-playground/scripts/ui-review.mjs --text-scale 1.5   # the OS text setting, as the root font size
+```
+
+Output goes to the device state directory (`~/.dpi/ui-review/<run>/`): `report.md`, `findings.json`, and a screenshot per width and state. The report groups findings by the Modern Web Guidance guide that owns them, and names the fix for each.
+
+## Result
+
+| Run | Findings | What was left |
+|---|---|---|
+| Before the batch, 100% text | 704 | 645 targets under the touch size, 41 axe violations, 18 text runs under 12px |
+| After the batch, 100% text | 0 | |
+| After the batch, 150% text | 0 | |
+| After the batch, 200% text | 0 | |
+
+The batch was structural: one shared `system.css` (targets, the touch size as a token, screen-reader utilities), root font size as a percentage, every px font size as its rem equivalent, and wrapping tree rows and tool summaries instead of truncating them. The rem conversion keeps the default rendering: the text wraps at the same points in the same states.
+
+## Known trade-off
+
+At 100% on desktop, a device row's status (`3 sessions`, `no token`) wraps to a second line. The text is readable and nothing is cut, but the row is taller than before. The alternative is a shorter status, or a smaller badge.

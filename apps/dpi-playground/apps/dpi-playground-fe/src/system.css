@@ -1,0 +1,43 @@
+/* The shared system: tokens, the touch-target rule and the screen-reader utilities. Loaded before the page styles. */
+:root {
+  /* Targets: 24px everywhere (WCAG 2.5.8), 44px on touch screens (Form Factor guide). */
+  --target-min: 24px;
+  --target-touch: 44px;
+  /* The size a component control must reach: the minimum, or the touch size on a coarse pointer. */
+  --target-control: var(--target-min);
+  /* Text: no rendered text below 12px. */
+  --text-floor: 12px;
+}
+
+:where(button, [role="button"], [role="tab"], [role="switch"], select) {
+  min-block-size: var(--target-min);
+  min-inline-size: var(--target-min);
+}
+
+@media (pointer: coarse) {
+  :root {
+    --target-control: var(--target-touch);
+  }
+  :where(button, [role="button"], [role="tab"], [role="switch"], select) {
+    min-block-size: var(--target-touch);
+    min-inline-size: var(--target-touch);
+  }
+  /* A checkbox is hit through its label: the label is the target, the box keeps its size. */
+  :where(label:has(input[type="checkbox"], input[type="radio"])) {
+    display: inline-flex;
+    align-items: center;
+    min-block-size: var(--target-touch);
+  }
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
