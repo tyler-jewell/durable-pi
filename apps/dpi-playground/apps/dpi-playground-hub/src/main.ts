@@ -11,6 +11,7 @@ import { DeviceMonitor } from "./monitor.js";
 import { StreamMux } from "./mux.js";
 import { proxy } from "./proxy.js";
 import { guard, publicHosts } from "./guard.js";
+import { dropSubscription, loadSubscriptions, rememberSubscription, saveSubscriptions, type PushSubscriptionRecord } from "./push-store.js";
 import { seedFromConfig } from "./seed.js";
 import { err } from "./util.js";
 
@@ -62,6 +63,29 @@ const app = express();
 app.disable("x-powered-by");
 app.use("/api", guard(allowedHosts), express.json({ limit: "256kb" }));
 
+app.get("/api/push/key", (_req, res) => {
+  const key = process.env.VAPID_PUBLIC_KEY ?? "";
+  if (!key) return res.status(503).json(err("unavailable", "push key is not set"));
+  res.json({ publicKey: key });
+});
+app.post(
+  "/api/push/subscribe",
+  safe(async (req, res) => {
+    const body = req.body as PushSubscriptionRecord;
+    if (!body?.endpoint || !body.keys?.p256dh || !body.keys?.auth) throw Error("subscription needs endpoint and keys");
+    saveSubscriptions(rememberSubscription(loadSubscriptions(), body));
+    res.status(201).json({ ok: true });
+  }),
+);
+app.delete(
+  "/api/push/subscribe",
+  safe(async (req, res) => {
+    const endpoint = String(req.body?.endpoint ?? "");
+    if (!endpoint) throw Error("endpoint is required");
+    saveSubscriptions(dropSubscription(loadSubscriptions(), endpoint));
+    res.json({ ok: true });
+  }),
+);
 app.get("/api/network", (_req, res) => res.json({ configFile, devices: monitor.network() }));
 // Devices are configured in dpi-network.yaml and `just net register`; the hub only reads them.
 app.post(

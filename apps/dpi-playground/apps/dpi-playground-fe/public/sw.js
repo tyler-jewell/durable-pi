@@ -1,7 +1,5 @@
-// Durable Pi service worker. Minimal and network-first: the hub is a live agent console, so
-// every navigation tries the network first and only falls back to a cached shell when the
-// Studio is unreachable. iOS Safari registers the worker but does not support background
-// sync or push — that is fine; the install/offline-shell behavior is what matters here.
+// Durable Pi service worker. Network-first for the live console, and a push handler so an
+// installed phone app can show a notification when the hub sends one.
 const CACHE = "durable-pi-v1";
 const SHELL = ["/", "/index.html", "/manifest.webmanifest", "/icons/app-icon-192.png", "/icons/app-icon-512.png", "/icons/apple-touch-icon.png"];
 
@@ -13,6 +11,24 @@ self.addEventListener("activate", (event) => {
   event.waitUntil(
     caches.keys().then((keys) => Promise.all(keys.filter((k) => k !== CACHE).map((k) => caches.delete(k)))).then(() => self.clients.claim()),
   );
+});
+
+self.addEventListener("push", (event) => {
+  const payload = event.data ? event.data.json() : {};
+  const title = payload.title || "Durable Pi";
+  const body = payload.body || "";
+  const url = payload.url || "/";
+  event.waitUntil(self.registration.showNotification(title, { body, data: { url } }));
+});
+
+self.addEventListener("notificationclick", (event) => {
+  event.notification.close();
+  const url = new URL(event.notification.data?.url || "/", self.location.origin).href;
+  event.waitUntil(self.clients.matchAll({ type: "window", includeUncontrolled: true }).then((windows) => {
+    const open = windows.find((client) => "focus" in client);
+    if (open) return open.focus();
+    return self.clients.openWindow(url);
+  }));
 });
 
 self.addEventListener("fetch", (event) => {

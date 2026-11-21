@@ -20,6 +20,7 @@ import OfflinePanel from "./components/OfflinePanel.vue";
 import NewSessionDialog from "./components/NewSessionDialog.vue";
 import PromptDialog from "./components/PromptDialog.vue";
 import ModelPicker from "./components/ModelPicker.vue";
+import { enablePush, pushAvailable } from "./push";
 import {
   attempt,
   boot,
@@ -48,6 +49,10 @@ const onlineCount = computed(
   () => network.devices.value.filter((d) => d.status === "online").length,
 );
 const creatingAgent = ref(false);
+
+async function turnOnPush() {
+  notify(await enablePush());
+}
 
 async function newAgent() {
   const handle = sessionHandle.value;
@@ -189,6 +194,7 @@ onBeforeUnmount(() => {
         <span class="eyebrow">THE DURABLE AGENT NETWORK</span>
         <h1>Close the tab.<br />The work continues.</h1>
         <p>Agents run on your devices. This page is only a window into them.</p>
+        <button v-if="pushAvailable()" class="primary" type="button" @click="turnOnPush">Enable phone notifications</button>
         <button class="primary" :disabled="!onlineCount" @click="openNewSession">
           <Plus :size="18" />{{
             network.devices.value.length ? "Create a session" : "Add a device to dpi-network.yaml"
