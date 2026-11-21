@@ -16,7 +16,6 @@ import type { ModelTools } from "./model-tools.js";
 import { loadStore, select } from "./tool-store.js";
 import { scanFiles, selectFiles } from "./scan-files.js";
 import { liveClient, pushBaseline } from "./artifacts-git.js";
-import { sendBoard } from "./board.js";
 
 // ------------------------------------------------------------------ progress / events
 
@@ -234,19 +233,6 @@ async function runCadence(app: string, includePush: boolean, p: Progress) {
 
 export function registerTools(server: McpServer, models: ModelTools): void {
   registerDiscoveryTools(server, models);
-  server.registerTool(
-    "board_send",
-    {
-      title: "Send work to the agent board",
-      description: "Send a message to the durable agent board. This is how work is requested. Do not open an issue or a pull request.",
-      inputSchema: { message: z.string().min(1).max(4000) },
-      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
-    },
-    async (args) => {
-      const sent = await sendBoard(fetch, process.env, args.message);
-      return { content: [{ type: "text" as const, text: JSON.stringify(sent) }], structuredContent: sent };
-    },
-  );
   server.registerTool(
     "artifacts_push",
     {

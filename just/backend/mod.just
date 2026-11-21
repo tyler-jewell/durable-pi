@@ -32,7 +32,7 @@ check:
     npm run check
     npm test
 
-# Send one message to this machine's device. The token stays in the env file.
+# Send one message to this machine's agent, the same call the composer makes.
 [no-cd]
 send *MESSAGE:
-    node --experimental-strip-types scripts/board-send.mts "{{ MESSAGE }}"
+    node --experimental-strip-types scripts/agent-send.mts "{{ MESSAGE }}"

@@ -121,7 +121,7 @@ Each device owns its agents in SQLite. The hub only stores how to reach them, so
 
 ## Where the code lives
 
-Artifacts is the git server. An agent sends work to the board with `board_send` or `just backend send`, then pushes the commit with `artifacts_push` or `just artifacts push`. That push mints a short-lived write token and does not print it. The same push updates the public main branch. That public update is the only GitHub call.
+Artifacts is the git server. You send the agent a message, in the composer or with `just backend send "add task A"`. That is the same call. The agent pushes the commit with `artifacts_push` or `just artifacts push`. That push mints a short-lived write token and does not print it. The same push updates the public main branch. That public update is the only GitHub call.
 
 ## The next chapter
 
