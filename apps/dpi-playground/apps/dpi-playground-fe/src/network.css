@@ -786,3 +786,11 @@ body {
   overflow: hidden;
   overscroll-behavior: contain;
 }
+
+/* Form controls suppress the native ring, so keyboard focus gets its own visible outline (2.4.7, 1.4.11). */
+input:focus-visible,
+textarea:focus-visible,
+select:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
