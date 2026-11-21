@@ -51,7 +51,11 @@ const onlineCount = computed(
 const creatingAgent = ref(false);
 
 async function turnOnPush() {
-  notify(await enablePush());
+  try {
+    notify(await enablePush());
+  } catch (error) {
+    notify(error instanceof Error ? error.message : "Notifications were not allowed");
+  }
 }
 
 async function newAgent() {
@@ -135,6 +139,9 @@ onBeforeUnmount(() => {
         >
       </div>
       <div class="top-actions">
+        <button v-if="pushAvailable()" class="secondary small" type="button" @click="turnOnPush">
+          Enable phone notifications
+        </button>
         <span class="connection"
           ><i :class="{ online: streamState === 'live' }" />{{
             streamState === "live" ? "Connected" : "Reconnecting"
