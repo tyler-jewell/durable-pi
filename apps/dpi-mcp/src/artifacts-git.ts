@@ -7,6 +7,7 @@ const exec = promisify(execFile);
 
 export const NAMESPACE = "dpi";
 export const BASELINE = "durable-pi";
+const BRANCH = "main";
 const TOKEN_TTL_SECONDS = 900;
 
 export interface GitResult {
@@ -100,6 +101,8 @@ export async function ensureBaseline(client: ArtifactsClient, account: string, t
 export interface PushResult {
   namespace: string;
   repo: string;
+  /** The Artifacts main before this push; empty when the repo had no commits. */
+  previous: string;
   head: string;
   mirrored: boolean;
   mirrorDetail: string;
@@ -120,6 +123,17 @@ export async function pushBaseline(client: ArtifactsClient, env: NodeJS.ProcessE
   const repo = await api(client, account, token, "GET", `/namespaces/${NAMESPACE}/repos/${BASELINE}`);
   const gitRemote = remote || String(repo.json.result?.remote ?? "");
   if (!gitRemote) throw new Error("the baseline has no remote");
+  const authed = {
+    ...env,
+    GIT_TERMINAL_PROMPT: "0",
+    GIT_CONFIG_COUNT: "2",
+    GIT_CONFIG_KEY_0: "http.extraHeader",
+    GIT_CONFIG_VALUE_0: `Authorization: Bearer ${repoToken}`,
+    GIT_CONFIG_KEY_1: "protocol.version",
+    GIT_CONFIG_VALUE_1: "1",
+  };
+  const before = await client.git(["ls-remote", gitRemote, `refs/heads/${BRANCH}`], authed);
+  const previous = before.out.split(/\s+/)[0] ?? "";
   const pushed = await client.git(["push", gitRemote, "HEAD:main"], {
     ...env,
     GIT_TERMINAL_PROMPT: "0",
@@ -130,10 +144,10 @@ export async function pushBaseline(client: ArtifactsClient, env: NodeJS.ProcessE
     GIT_CONFIG_VALUE_1: "1",
   });
   if (pushed.code !== 0) throw new Error(`artifacts push failed: ${redact(`${pushed.err} ${pushed.out}`, repoToken).slice(-300)}`);
-  if (!mirror) return { namespace: NAMESPACE, repo: BASELINE, head, mirrored: false, mirrorDetail: "not requested" };
+  if (!mirror) return { namespace: NAMESPACE, repo: BASELINE, previous, head, mirrored: false, mirrorDetail: "not requested" };
   const mirrored = await client.git(["push", origin, "HEAD:main"], { ...env, GIT_TERMINAL_PROMPT: "0", GIT_CONFIG_COUNT: "0" });
   if (mirrored.code !== 0) {
-    return { namespace: NAMESPACE, repo: BASELINE, head, mirrored: false, mirrorDetail: redact(`${mirrored.err} ${mirrored.out}`, repoToken).slice(-200) };
+    return { namespace: NAMESPACE, repo: BASELINE, previous, head, mirrored: false, mirrorDetail: redact(`${mirrored.err} ${mirrored.out}`, repoToken).slice(-200) };
   }
-  return { namespace: NAMESPACE, repo: BASELINE, head, mirrored: true, mirrorDetail: "public main updated" };
+  return { namespace: NAMESPACE, repo: BASELINE, previous, head, mirrored: true, mirrorDetail: "public main updated" };
 }

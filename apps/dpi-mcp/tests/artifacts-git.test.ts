@@ -36,7 +36,8 @@ test("a push uses a short-lived write token and then updates the public main bra
   const minted = calls.find((call) => call.url.endsWith("/tokens"));
   assert.equal((minted?.body as { ttl: number }).ttl, 900);
   assert.equal((minted?.body as { scope: string }).scope, "write");
-  assert.match(gitCalls[0].header, /Bearer art_secret/);
-  assert.deepEqual(gitCalls[1].args, ["push", "https://example.invalid/public.git", "HEAD:main"]);
-  assert.equal(gitCalls[1].header, "");
+  assert.equal(gitCalls[0].args[0], "ls-remote", "the previous main is read first");
+  assert.match(gitCalls[1].header, /Bearer art_secret/);
+  assert.deepEqual(gitCalls[2].args, ["push", "https://example.invalid/public.git", "HEAD:main"]);
+  assert.equal(gitCalls[2].header, "");
 });

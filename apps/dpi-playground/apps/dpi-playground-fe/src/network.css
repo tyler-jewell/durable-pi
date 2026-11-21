@@ -794,3 +794,26 @@ select:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
 }
+
+/* ---------------------------------------------------------------- changelog from an update notice */
+.changelog-modal {
+  width: min(560px, 100%);
+}
+.changelog-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 10px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+.changelog-list li {
+  display: flex;
+  gap: 10px;
+  align-items: baseline;
+}
+.changelog-list code {
+  color: var(--accent);
+  flex: 0 0 auto;
+}

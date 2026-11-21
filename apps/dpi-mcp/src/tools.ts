@@ -16,6 +16,7 @@ import type { ModelTools } from "./model-tools.js";
 import { loadStore, select } from "./tool-store.js";
 import { scanFiles, selectFiles } from "./scan-files.js";
 import { liveClient, pushBaseline } from "./artifacts-git.js";
+import { notifyUpdate } from "./notify-update.js";
 
 // ------------------------------------------------------------------ progress / events
 
@@ -244,7 +245,8 @@ export function registerTools(server: McpServer, models: ModelTools): void {
     },
     async (args) => {
       const pushed = await pushBaseline(liveClient(ROOT), process.env, args.mirror !== false);
-      const body = { ...pushed };
+      const notified = await notifyUpdate({ from: pushed.previous, to: pushed.head });
+      const body = { ...pushed, notified: { sent: notified.sent, subscriptions: notified.statuses.length, commits: notified.commits, reason: notified.reason } };
       return { content: [{ type: "text" as const, text: JSON.stringify(body) }], structuredContent: body };
     },
   );

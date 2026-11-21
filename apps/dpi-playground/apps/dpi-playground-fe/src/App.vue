@@ -18,6 +18,7 @@ import AgentView from "./components/AgentView.vue";
 import Inspector from "./components/Inspector.vue";
 import OfflinePanel from "./components/OfflinePanel.vue";
 import AppDialog from "./components/AppDialog.vue";
+import type { Commit } from "../../../../dpi-mcp/src/update-notice";
 import NewSessionDialog from "./components/NewSessionDialog.vue";
 import PromptDialog from "./components/PromptDialog.vue";
 import ModelPicker from "./components/ModelPicker.vue";
@@ -109,7 +110,20 @@ function resize(e: PointerEvent) {
   window.addEventListener("pointerup", up);
 }
 
+// A tap on an Artifacts update notice opens the changelog for that update (?changelog=<sha>&from=<sha>).
+const changelog = ref<Commit[] | undefined>();
+async function openChangelogFromLink() {
+  const params = new URLSearchParams(location.search);
+  const to = params.get("changelog");
+  if (!to) return;
+  const from = params.get("from") ?? "";
+  history.replaceState(null, "", location.pathname);
+  const q = new URLSearchParams({ to, ...(from ? { from } : {}) });
+  const res = await fetch(`/api/changelog?${q}`);
+  changelog.value = res.ok ? ((await res.json()) as { commits: Commit[] }).commits : [];
+}
 onMounted(() => {
+  void openChangelogFromLink();
   document.addEventListener("keydown", keydown);
   void boot();
 });
@@ -331,6 +345,23 @@ onBeforeUnmount(() => {
             Tools still need their own idempotency.</span
           >
         </div>
+      </section>
+    </AppDialog>
+    <AppDialog v-if="changelog" labelledby="changelog-title" @close="changelog = undefined">
+      <section class="modal changelog-modal">
+        <header>
+          <div>
+            <span class="eyebrow">DURABLE-PI UPDATE</span>
+            <h2 id="changelog-title">What changed</h2>
+          </div>
+          <button class="icon-button" aria-label="Close changelog" @click="changelog = undefined">
+            <X :size="18" />
+          </button>
+        </header>
+        <ol class="changelog-list">
+          <li v-for="c in changelog" :key="c.sha"><code>{{ c.sha.slice(0, 7) }}</code> {{ c.subject }}</li>
+        </ol>
+        <p v-if="!changelog.length" class="hint">No commits in this range.</p>
       </section>
     </AppDialog>
     <Transition name="toast"

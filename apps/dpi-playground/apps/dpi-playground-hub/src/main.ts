@@ -14,6 +14,8 @@ import { guard, publicHosts } from "./guard.js";
 import { dropSubscription, loadSubscriptions, rememberSubscription, saveSubscriptions, type PushSubscriptionRecord } from "./push-store.js";
 import { seedFromConfig } from "./seed.js";
 import { err } from "./util.js";
+import { execFileSync } from "node:child_process";
+import { isSha, parseLog } from "../../../../dpi-mcp/src/update-notice.js";
 
 const args = process.argv.slice(2);
 const option = (key: string, fallback: string) => {
@@ -86,6 +88,19 @@ app.delete(
     res.json({ ok: true });
   }),
 );
+// The changelog of one update: the commits from `from` to `to`, read from this checkout.
+app.get("/api/changelog", (req, res) => {
+  const to = String(req.query.to ?? "");
+  const from = String(req.query.from ?? "");
+  if (!isSha(to)) return void res.status(400).json(err("invalid", "to must be a commit"));
+  const range = isSha(from) ? [`${from}..${to}`] : ["-n", "20", to];
+  try {
+    const out = execFileSync("git", ["log", "--format=%H%x09%s", ...range], { cwd: resolve(appDir, "../.."), encoding: "utf8" });
+    res.json({ commits: parseLog(out) });
+  } catch {
+    res.status(404).json(err("not_found", "that commit is not in this checkout"));
+  }
+});
 app.get("/api/network", (_req, res) => res.json({ configFile, devices: monitor.network() }));
 // Devices are configured in dpi-network.yaml and `just net register`; the hub only reads them.
 app.post(
