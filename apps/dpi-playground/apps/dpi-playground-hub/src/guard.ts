@@ -1,6 +1,18 @@
 import type { RequestHandler } from "express";
 import { err } from "./util.js";
 
+/** Public names the hub may serve, from DPI_HUB_PUBLIC_HOSTS. A name without a port also allows the HTTPS form. */
+export function publicHosts(value: string | undefined): string[] {
+  const out: string[] = [];
+  for (const raw of (value ?? "").split(",")) {
+    const name = raw.trim().toLowerCase();
+    if (!name) continue;
+    out.push(name);
+    if (!name.includes(":")) out.push(`${name}:443`);
+  }
+  return out;
+}
+
 /**
  * The hub holds every device token and has no login of its own, so it only answers requests
  * whose Host is one it serves (blocks DNS rebinding) from its own origin (blocks CSRF), and

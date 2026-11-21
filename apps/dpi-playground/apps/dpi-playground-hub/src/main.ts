@@ -10,7 +10,7 @@ import { NetworkRegistry } from "../../../../dpi-sdk/src/node/registry.js";
 import { DeviceMonitor } from "./monitor.js";
 import { StreamMux } from "./mux.js";
 import { proxy } from "./proxy.js";
-import { guard } from "./guard.js";
+import { guard, publicHosts } from "./guard.js";
 import { seedFromConfig } from "./seed.js";
 import { err } from "./util.js";
 
@@ -31,7 +31,7 @@ const monitor = new DeviceMonitor(registry);
 monitor.start();
 const mux = new StreamMux(registry, monitor);
 
-const allowedHosts = new Set([`localhost:${port}`, `127.0.0.1:${port}`, `[::1]:${port}`]);
+const allowedHosts = new Set([`localhost:${port}`, `127.0.0.1:${port}`, `[::1]:${port}`, ...publicHosts(process.env.DPI_HUB_PUBLIC_HOSTS)]);
 if (host !== "127.0.0.1" && host !== "localhost") {
   allowedHosts.add(`${hostname().toLowerCase()}:${port}`);
   allowedHosts.add(
